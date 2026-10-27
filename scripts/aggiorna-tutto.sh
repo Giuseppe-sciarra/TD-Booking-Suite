@@ -3,23 +3,23 @@
 # aggiorna-tutto.sh — aggiornamento AUTOMATICO di TD Booking Suite, ogni notte (come il CRM)
 # ─────────────────────────────────────────────────────────────────────────────
 # Cosa aggiorna:
-#   • TD Booking Suite: la versione nuova da GitHub, se è uscita (installazione fatta con git clone);
 #   • Python 3.12 all'ultima immagine e i pacchetti Debian;
 #   • TUTTE le librerie Python all'ultima versione, major comprese, tranne i limiti scritti in
 #     requirements.in con il motivo (per esempio Django resta sulla 5.2 LTS);
 #   • PostgreSQL 17 all'ultima versione 17.x (mai il passaggio a una versione maggiore).
+# Il codice di TD Booking Suite non lo tocca e GitHub non lo guarda: la versione nuova si installa
+# a mano (INSTALLAZIONE.md, passo 11).
 #
 # Come, nell'ordine:
 #   1. fotografa le versioni installate;
-#   2. guarda se ci sono versione nuova su GitHub, immagine Python nuova, librerie nuove,
-#      pacchetti Debian, PostgreSQL nuovo;
+#   2. guarda se ci sono immagine Python nuova, librerie nuove, pacchetti Debian, PostgreSQL nuovo;
 #   3. se serve ricostruisce l'immagine mentre il portale gira ancora con quella di prima;
 #   4. ferma portale e invio email, fa il backup cifrato del database (serve la chiave del passo 9
 #      di INSTALLAZIONE.md), aggiorna PostgreSQL, applica le migrazioni e riavvia
 #      (il portale resta giù da qualche secondo a un minuto);
 #   5. prova la versione nuova: pagina di accesso dall'host e `manage.py selftest` DENTRO il container
 #      (database, cifratura, password, loghi, Authenticator, passkey, pagine): se qualcosa non va
-#      → ROLLBACK a immagine, librerie, codice e, se le migrazioni l'hanno cambiato, database di prima;
+#      → ROLLBACK a immagine, librerie e, se le migrazioni l'hanno cambiato, database di prima;
 #   6. email di riepilogo all'agenzia, con l'invio email del portale (Impostazioni generali);
 #   7. pulizia di Docker che non tocca le immagini di rollback.
 #
@@ -30,8 +30,6 @@
 # Variabili (nel .env oppure davanti al comando):
 #   TDBS_AGG_EMAIL=           a chi mandare il riepilogo (vuoto = email delle richieste di prova o di assistenza)
 #   TDBS_AGG_MAIL_SEMPRE=0    1 = email anche quando era già tutto aggiornato
-#   TDBS_AGG_GITHUB=1         0 = non scaricare le versioni nuove di TD Booking Suite
-#   TDBS_AGG_RAMO=main        il ramo di GitHub da seguire
 #   TDBS_AGG_TIENI_ROLLBACK=3 quante immagini di rollback tenere
 #   TDBS_AGG_CHIAVE=/root/tdbs-backup.key   la chiave dei backup
 #   TDBS_AGG_BACKUP=/var/backups/tdbs       dove vanno i backup fatti prima di aggiornare
@@ -41,14 +39,7 @@
 #   rm compose.override.yaml requirements.auto.lock && docker compose build && docker compose up -d
 # ═════════════════════════════════════════════════════════════════════════════
 set -uo pipefail
-# Gira da una copia: `git merge` può riscrivere questo file mentre bash lo sta ancora leggendo
-if [[ -z "${TDBS_AGG_DIR:-}" ]]; then
-  TDBS_AGG_DIR="$(cd "$(dirname "$0")/.." && pwd)" || exit 1
-  export TDBS_AGG_DIR
-  COPIA=$(mktemp /tmp/tdbs-aggiorna-tutto.XXXXXX) && cp "$0" "$COPIA" && exec bash "$COPIA" "$@"
-  exit 1
-fi
-cd "$TDBS_AGG_DIR" || exit 1
+cd "${TDBS_AGG_DIR:-$(dirname "$0")/..}" || exit 1
 DIR="$(pwd)"
 export TZ=Europe/Rome   # orari del log e delle immagini di rollback in ora italiana (il CT è in UTC)
 
@@ -75,8 +66,6 @@ conf() { local v="${!1:-$(envval "$1")}"; printf '%s' "${v:-$2}"; }   # $1 varia
 
 EMAIL="$(conf TDBS_AGG_EMAIL '')"
 MAIL_SEMPRE="$(conf TDBS_AGG_MAIL_SEMPRE 0)"
-GITHUB="$(conf TDBS_AGG_GITHUB 1)"
-RAMO="$(conf TDBS_AGG_RAMO main)"
 TIENI="$(conf TDBS_AGG_TIENI_ROLLBACK 3)"
 CHIAVE="$(conf TDBS_AGG_CHIAVE /root/tdbs-backup.key)"
 BACKUP_DIR="$(conf TDBS_AGG_BACKUP /var/backups/tdbs)"
@@ -111,7 +100,7 @@ peggiora() {        # l'esito finale è il peggiore incontrato
 }
 DUMP=""
 # il backup in chiaro serve solo durante l'aggiornamento; la copia dello script si toglie alla fine
-trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"; [[ "$0" == /tmp/tdbs-aggiorna-tutto.* ]] && rm -f "$0"' EXIT
+trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"' EXIT
 
 log "── Aggiornamento automatico di TD Booking Suite $( [[ $DRY_RUN == 1 ]] && echo '(dry-run) ' )──"
 for c in docker curl flock python3; do
@@ -142,45 +131,8 @@ DB_ATT=""; [[ -n "$DB_CID" ]] && DB_ATT=$(docker inspect -f '{{.Config.Image}}' 
 db_immagine() { sed -n 's/^ *image: *\([^ ]*postgres:[^ ]*\).*/\1/p' | head -1; }   # l'immagine del servizio db in un compose.yaml
 DB_ATT="${DB_ATT:-$(override_val image)}"; DB_ATT="${DB_ATT:-$(db_immagine < compose.yaml)}"
 
-# ── 1. TD Booking Suite su GitHub ──────────────────────────────────────────
-CODICE_NUOVO=0
-OLD_HEAD=""
-NEW_HEAD=""
-if [[ ! -d .git ]]; then
-  log "TD Booking Suite: installazione senza git, la versione nuova va copiata a mano (INSTALLAZIONE.md, passo 11)"
-elif [[ "$GITHUB" != "1" ]]; then
-  log "TD Booking Suite: versioni nuove da GitHub spente (TDBS_AGG_GITHUB=0)"
-else
-  OLD_HEAD=$(git rev-parse HEAD)
-  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-    log "⚠ ci sono file del progetto modificati a mano: non scarico la versione nuova (git status)"
-    peggiora errore
-    aggiungi "❌ TD Booking Suite: sul server ci sono file del progetto modificati a mano, la versione nuova non è stata scaricata."
-    aggiungi "   Controlla con: cd $DIR && git status"
-  elif ! git fetch -q origin "$RAMO" > logs/git.log 2>&1; then
-    log "⚠ GitHub non risponde (logs/git.log): resta la versione installata"
-    peggiora errore
-    aggiungi "❌ TD Booking Suite: GitHub non ha risposto, versione nuova non controllata."
-  else
-    NEW_HEAD=$(git rev-parse "origin/$RAMO")
-    if [[ "$NEW_HEAD" == "$OLD_HEAD" ]]; then
-      log "TD Booking Suite: già all'ultima versione ($(cat VERSION))"
-    elif git merge-base --is-ancestor "$OLD_HEAD" "$NEW_HEAD"; then
-      CODICE_NUOVO=1
-      log "TD Booking Suite: versione nuova $(git show "$NEW_HEAD:VERSION") ($(git rev-list --count "$OLD_HEAD..$NEW_HEAD") modifiche)"
-    else
-      log "⚠ la versione su GitHub non continua quella installata: va aggiornata a mano"
-      peggiora errore
-      aggiungi "❌ TD Booking Suite: la versione su GitHub non continua quella installata, aggiornala a mano."
-    fi
-  fi
-fi
-dal_rilascio() {   # $1 file: come sarà dopo l'aggiornamento
-  if [[ $CODICE_NUOVO == 1 ]]; then git show "$NEW_HEAD:$1"; else cat "$1"; fi
-}
-
 # ── 2. Immagine Python (3.12 + Debian): c'è una versione nuova? ────────────
-BASE_RIL="$(dal_rilascio Dockerfile | sed -n 's/^ARG PYTHON_IMAGE=//p')"
+BASE_RIL="$(sed -n 's/^ARG PYTHON_IMAGE=//p' Dockerfile)"
 BASE_TAG="${BASE_RIL%@*}"
 BASE_NUOVA="$BASE_ATT"
 if docker pull -q "$BASE_TAG" > /dev/null 2>&1 && D=$(digest_di "$BASE_TAG") && [[ -n "$D" ]]; then
@@ -196,7 +148,7 @@ log "immagine Python $BASE_TAG: $( [[ $BASE_CAMBIATA == 1 ]] && echo 'NUOVA' || 
 #    Nel container usa e getta entrano SOLO requirements.in e la lista di adesso: niente .env, niente dati.
 rm -rf .agg-tmp .agg-lock-nuovo .agg-modifiche.txt
 mkdir -p .agg-tmp
-dal_rilascio requirements.in > .agg-tmp/requirements.in 2>/dev/null
+cp requirements.in .agg-tmp/requirements.in 2>/dev/null
 cp "$LOCK_ATT" .agg-tmp/attuale.lock
 docker run --rm -v "$DIR/.agg-tmp:/w" -w /w "$BASE_NUOVA" sh -c '
   pip install -q --root-user-action=ignore --disable-pip-version-check --upgrade pip > /dev/null 2>&1
@@ -260,7 +212,7 @@ DEB_N="${DEB_N:-0}"
 log "pacchetti Debian da aggiornare: $DEB_N"
 
 # ── 5. PostgreSQL 17: c'è una 17.x nuova? ──────────────────────────────────
-DB_RIL="$(dal_rilascio compose.yaml | db_immagine)"
+DB_RIL="$(db_immagine < compose.yaml)"
 DB_TAG="${DB_RIL%@*}"
 DB_NUOVA="$DB_ATT"
 DB_CAMBIATA=0
@@ -284,12 +236,11 @@ fi
 #    Anche se l'ultima build riuscita aveva codice, Dockerfile, librerie o immagine diversi (per esempio
 #    dopo un aggiornamento fatto a mano). Al primo giro non c'è la firma: si ricostruisce.
 LOCK_DOPO="$LOCK_ATT"; [[ -s .agg-lock-nuovo ]] && LOCK_DOPO=".agg-lock-nuovo"
-firma() { { [[ -d .git ]] && git rev-parse "${NEW_HEAD:-HEAD}"; dal_rilascio Dockerfile; grep -v '^#' "$LOCK_DOPO"; echo "$BASE_NUOVA"; } 2>/dev/null | sha256sum | cut -c1-16; }   # senza i commenti: la data di risoluzione cambia ogni notte
+firma() { { [[ -d .git ]] && git rev-parse HEAD; cat Dockerfile; grep -v '^#' "$LOCK_DOPO"; echo "$BASE_NUOVA"; } 2>/dev/null | sha256sum | cut -c1-16; }   # senza i commenti: la data di risoluzione cambia ogni notte
 FIRMA_ORA=$(firma)
 FIRMA_BUILD=$(cat .agg-ultima-build 2>/dev/null || true)
 DA_RICOSTRUIRE=0
 MOTIVI=()
-[[ $CODICE_NUOVO == 1 ]]  && { DA_RICOSTRUIRE=1; MOTIVI+=("TD Booking Suite $(git show "$NEW_HEAD:VERSION")"); }
 [[ $BASE_CAMBIATA == 1 ]] && { DA_RICOSTRUIRE=1; MOTIVI+=("Python/Debian di base nuovi"); }
 [[ $LIB_CAMBIATE == 1 ]]  && { DA_RICOSTRUIRE=1; MOTIVI+=("librerie Python"); }
 [[ "$DEB_N" -gt 0 ]]      && { DA_RICOSTRUIRE=1; MOTIVI+=("$DEB_N pacchetti Debian"); }
@@ -382,7 +333,6 @@ else
   MIGRA=0
 
   annulla_file() {   # codice, librerie e override come prima dell'aggiornamento
-    [[ -n "$OLD_HEAD" ]] && git reset -q --hard "$OLD_HEAD"
     if [[ -f .agg-lock-prima ]]; then mv .agg-lock-prima requirements.auto.lock; else rm -f requirements.auto.lock; fi
     scrivi_override "$BASE_ATT" "$DB_EFF" "$LOCK_ATT"
     [[ -n "$CUR_ID" ]] && docker tag "$CUR_ID" "$APP_IMG"
@@ -392,7 +342,6 @@ else
   if [[ $DA_RICOSTRUIRE == 1 ]]; then
     log "ricostruisco l'immagine per: $(IFS=', '; echo "${MOTIVI[*]}")"
     [[ -n "$CUR_ID" ]] && docker tag "$CUR_ID" "$ROLLBACK_TAG" && log "immagine attuale salvata come $ROLLBACK_TAG"
-    [[ $CODICE_NUOVO == 1 ]] && git merge -q --ff-only "$NEW_HEAD"
     [[ -s .agg-lock-nuovo ]] && mv .agg-lock-nuovo requirements.auto.lock
     LOCK_USO="requirements.lock"; [[ -s requirements.auto.lock ]] && LOCK_USO="requirements.auto.lock"
     scrivi_override "$BASE_NUOVA" "$DB_ATT" "$LOCK_USO"
@@ -479,10 +428,6 @@ for k in b:
         print(f"   {k}: {a.get(k) or chr(8212)} → {b.get(k)}")
 ' "$PRIMA" "$DOPO" 2>/dev/null)
       [[ -n "$CAMBI" ]] && aggiungi "$CAMBI"
-      if [[ $CODICE_NUOVO == 1 && $APP_OK == 1 ]]; then
-        aggiungi "   Novità di TD Booking Suite:"
-        aggiungi "$(git log --format='   · %s' "$OLD_HEAD..$NEW_HEAD" | head -n 20)"
-      fi
       [[ -n "$MODIFICHE" && $APP_OK == 1 ]] && { aggiungi "   Tutte le librerie cambiate:"; aggiungi "$(printf '%s\n' "$MODIFICHE" | sed 's/^/   /')"; }
       [[ "$DEB_N" -gt 0 && $APP_OK == 1 ]] && aggiungi "   + $DEB_N pacchetti Debian aggiornati"
       aggiungi "   Backup del database fatto prima: $DUMP.enc"

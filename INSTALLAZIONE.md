@@ -32,16 +32,6 @@ cat VERSION
 
 **Deve comparire:** `2.8.0`
 
-**Oppure con git**, che serve per l'aggiornamento automatico ogni notte (passo 13), al posto dei comandi qui sopra:
-
-```
-git clone https://github.com/Giuseppe-sciarra/TD-Booking-Suite.git /opt/td-booking-suite
-cd /opt/td-booking-suite
-cat VERSION
-```
-
-**Deve comparire** l'ultima versione pubblicata.
-
 ## 2. Crea la configurazione
 
 Metti il tuo dominio dopo `--origin`:
@@ -230,7 +220,7 @@ Poi mettilo in cron con `--apply`.
 
 ## 11. Aggiornare a una versione nuova
 
-Con l'installazione fatta con `git clone` e l'aggiornamento automatico (passo 13) non serve: arriva da solo, di notte. Altrimenti leggi prima il registro modifiche della versione. Poi, con lo zip nuovo in `/opt`:
+La versione nuova la installi sempre tu: l'aggiornamento automatico del passo 13 non la scarica. Leggi prima il registro modifiche della versione. Poi, con lo zip nuovo in `/opt`:
 
 ```
 /usr/local/bin/tdbs-backup
@@ -287,11 +277,12 @@ Non serve ricostruire l'immagine né lanciare `migrate`: basta `docker compose u
 
 ## 13. Aggiornamento automatico ogni notte
 
-Ogni notte, da solo, aggiorna tutto: la versione nuova di TD Booking Suite da GitHub, l'immagine di Python 3.12 con i pacchetti Debian, tutte le librerie Python all'ultima versione (tranne i limiti scritti in `requirements.in`, per esempio Django resta sulla 5.2) e PostgreSQL all'ultima 17.x. Prima di toccare qualcosa fa il backup cifrato del database. Dopo prova la versione nuova: pagina di accesso e `manage.py selftest` dentro il container, cioè database, cifratura, password, loghi, app Authenticator, passkey e pagine. Se qualcosa non va torna da solo alla versione di prima, database compreso. Alla fine manda un'email con il riepilogo. Il portale resta fermo da qualche secondo a un minuto, solo quando c'è qualcosa da aggiornare.
+Ogni notte, da solo, aggiorna quello su cui gira il portale: l'immagine di Python 3.12 con i pacchetti Debian, tutte le librerie Python all'ultima versione (tranne i limiti scritti in `requirements.in`, per esempio Django resta sulla 5.2) e PostgreSQL all'ultima 17.x. Prima di toccare qualcosa fa il backup cifrato del database. Dopo prova la versione nuova: pagina di accesso e `manage.py selftest` dentro il container, cioè database, cifratura, password, loghi, app Authenticator, passkey e pagine. Se qualcosa non va torna da solo alla versione di prima, database compreso. Alla fine manda un'email con il riepilogo. Il portale resta fermo da qualche secondo a un minuto, solo quando c'è qualcosa da aggiornare.
+
+Il codice di TD Booking Suite non lo tocca e GitHub non lo guarda: la versione nuova la installi tu (passo 11). Le librerie aggiornate stanno in file a parte (qui sotto), quindi installando una versione nuova non tornano indietro.
 
 Cosa serve:
 
-- l'installazione fatta con `git clone`: qui sotto come passarci da quella con lo zip
 - la chiave dei backup del passo 9, `/root/tdbs-backup.key`: senza, l'aggiornamento non tocca niente
 - l'invio email dell'agenzia (passo 8) e, in **Impostazioni generali**, l'email che riceve le richieste di prova o quella di assistenza. Per un altro indirizzo metti `TDBS_AGG_EMAIL=indirizzo` in `.env`
 
@@ -327,23 +318,9 @@ docker compose build
 docker compose up -d
 ```
 
-Valori facoltativi in `.env`: `TDBS_AGG_EMAIL` (a chi va il riepilogo), `TDBS_AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato), `TDBS_AGG_GITHUB=0` (non scaricare le versioni nuove di TD Booking Suite, solo Python, librerie e PostgreSQL), `TDBS_AGG_TIENI_ROLLBACK=3` (quante immagini di prima tenere), `TDBS_AGG_CHIAVE` e `TDBS_AGG_BACKUP` (chiave e cartella dei backup, se non sono quelle del passo 9).
+Valori facoltativi in `.env`: `TDBS_AGG_EMAIL` (a chi va il riepilogo), `TDBS_AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato), `TDBS_AGG_TIENI_ROLLBACK=3` (quante immagini di prima tenere), `TDBS_AGG_CHIAVE` e `TDBS_AGG_BACKUP` (chiave e cartella dei backup, se non sono quelle del passo 9).
 
 Il passaggio a una versione maggiore di PostgreSQL, per esempio dalla 17 alla 18, non lo fa mai da solo: si fa a mano, con backup e ripristino.
-
-**Da un'installazione con lo zip a quella con git**, una volta sola:
-
-```
-/usr/local/bin/tdbs-backup
-cd /opt/td-booking-suite
-git init -q
-git remote add origin https://github.com/Giuseppe-sciarra/TD-Booking-Suite.git
-git fetch -q origin main
-git reset -q --hard origin/main
-bash scripts/aggiorna-tutto.sh
-```
-
-`git reset --hard` mette i file del progetto uguali a GitHub e non tocca `.env`. L'ultimo comando ricostruisce, applica le migrazioni e riavvia, con il backup e la prova di ogni notte.
 
 ## Se qualcosa non va
 

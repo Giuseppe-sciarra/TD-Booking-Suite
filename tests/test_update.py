@@ -37,13 +37,13 @@ def test_update_report_goes_to_the_agency(monkeypatch):
 def _out(*args):
     out=io.StringIO();call_command(*args,stdout=out);return out.getvalue()
 
-def test_update_scripts_parse_and_run_from_a_copy():
+def test_update_scripts_parse_and_never_fetch_code():
     import subprocess
     from pathlib import Path
     root=Path(settings.BASE_DIR)
     for name in ("aggiorna-tutto.sh","installa-aggiornamento.sh"):
         script=root/"scripts"/name
         assert script.stat().st_mode&0o111 and subprocess.run(["bash","-n",str(script)]).returncode==0,name
-    # git merge may rewrite the script while bash is reading it: it must re-exec from /tmp first
+    # the nightly update never downloads code: no git fetch, merge or pull
     text=(root/"scripts"/"aggiorna-tutto.sh").read_text()
-    assert text.index('exec bash "$COPIA"')<text.index("git merge -q")
+    assert "git fetch" not in text and "git merge" not in text and "git pull" not in text
