@@ -77,7 +77,7 @@ def login_view(request):
     site=current(request)
     return render(request,"login.html",{"error":error,"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled})
 def verify_totp(u,code):
-    if not u.totp:return False
+    if not u.totp or not code.isascii():return False  # compare_digest refuses non-ASCII text (a pasted "１２３")
     generator=pyotp.TOTP(reveal(u.totp,"totp:"+str(u.pk)))
     step=int(time.time())//30
     for candidate in (step,step-1,step+1):
@@ -151,14 +151,14 @@ def security_view(request):
         action=request.POST.get("action")
         try:
             if action=="totp_start":
-                if u.mfa_ready:fresh(request)
+                fresh(request)  # also the first factor: a forgotten open session must not let someone else add theirs
                 request.session["totp_pending"]=protect({"seed":pyotp.random_base32(),"until":time.time()+600},"totp-pending:"+str(u.pk))
             elif action=="totp_confirm":
                 pending=reveal(request.session.get("totp_pending",""),"totp-pending:"+str(u.pk))
                 if pending["until"]<time.time():raise ValueError("Configurazione scaduta.")
                 with transaction.atomic():
                     u=User.objects.select_for_update().get(pk=u.pk)
-                    if u.mfa_ready:fresh(request)
+                    fresh(request)  # also the first factor: a forgotten open session must not let someone else add theirs
                     seed=pending["seed"];gen=pyotp.TOTP(seed);step=int(time.time())//30
                     if not gen.verify(request.POST.get("code",""),valid_window=0):raise ValueError("Codice non valido.")
                     u.totp=protect(seed,"totp:"+str(u.pk));u.last_totp=step;u.save()
@@ -210,7 +210,7 @@ def passkey_begin(request,kind):
     data=json_body(request)
     if kind=="register":
         if not request.user.is_authenticated:raise PermissionDenied
-        if request.user.mfa_ready:fresh(request)
+        fresh(request)
         u=request.user
         if u.passkeys.count()>=20:return JsonResponse({"error":"Limite passkey raggiunto."},status=400)
         opts=generate_registration_options(rp_id=rp,rp_name="TD Booking Suite",user_id=u.pk.bytes,user_name=u.email,
@@ -239,7 +239,7 @@ def passkey_finish(request,kind):
             common={"credential":credential,"expected_challenge":unb64(c.challenge),"expected_rp_id":urlparse(settings.PUBLIC_ORIGIN).hostname,"expected_origin":settings.PUBLIC_ORIGIN,"require_user_verification":True}
             if kind=="register":
                 if not request.user.is_authenticated or request.user.pk!=u.pk:raise ValueError()
-                if u.mfa_ready:fresh(request)
+                fresh(request)  # also the first factor: a forgotten open session must not let someone else add theirs
                 result=verify_registration_response(**common)
                 Passkey.objects.create(user=u,credential_id=b64(result.credential_id),public_key=b64(result.credential_public_key),sign_count=result.sign_count,name=str(data.get("name","Passkey"))[:80])
                 if not u.recovery:new_recovery(request,u)
@@ -252,7 +252,9 @@ def passkey_finish(request,kind):
                 key.sign_count=result.new_sign_count;key.save(update_fields=["sign_count"])
             else:raise ValueError()
             # a passkey login stays signed in when the box is ticked; adding a passkey keeps the current choice
-            finish_login(request,u,remember=bool(data.get("remember")) if kind=="login" else None)
+            # confirming who you are with a passkey (already signed in) keeps the "Resta collegato" choice
+            again=request.user.is_authenticated and request.user.pk==u.pk
+            finish_login(request,u,remember=bool(data.get("remember")) if kind=="login" and not again else None)
             return JsonResponse({"redirect":"/security/" if kind=="register" else safe_next(request.session.pop("after_confirm","/"))})
         except Exception:
             return JsonResponse({"error":error},status=400)

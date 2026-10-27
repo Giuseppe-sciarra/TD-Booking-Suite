@@ -5,10 +5,11 @@ portal address and the code, the plugin calls connect() from its server: the por
 the site for the widget and returns the configuration (business, locations, services), so the
 plugin needs nothing else. config() returns the same public data later, to refresh it.
 """
-import hashlib,json,secrets
+import hashlib,json,re,secrets
 from datetime import timedelta
 from urllib.parse import urlparse
 from django.conf import settings
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -35,6 +36,8 @@ def valid_origin(value):
     p=urlparse(value or "")
     schemes=("https","http") if settings.DEBUG else ("https",)
     if p.scheme not in schemes or not p.hostname or p.path not in ("","/") or p.query or p.fragment or p.username or p.password or "*" in value:return ""
+    # the origin goes into the frame-ancestors directive: a space or a ";" would add sources or whole directives
+    if not re.fullmatch(r"[a-z0-9.-]+(:\d{1,5})?",p.netloc.lower()):return ""
     return f"{p.scheme}://{p.netloc}".lower()
 
 def config(tenant):
@@ -64,15 +67,16 @@ def connect_view(request):
     if len(code)!=16:return fail("Il codice di collegamento non è valido.")
     site=valid_origin(str(data.get("site","")))
     if not site:return fail("L'indirizzo del sito deve essere https://dominio, senza percorsi.")
-    tenant=Tenant.objects.filter(connect_hash=digest(code),connect_until__gt=timezone.now()).first()
-    if not tenant:return fail("Codice non valido o scaduto: generane uno nuovo dal portale.",403)
-    origins=list(tenant.embed_origins or [])
-    if site not in origins:
-        if len(origins)>=10:return fail("L'attività ha già 10 siti collegati: togline uno dalle impostazioni.",409)
-        origins.append(site)
-    # one use only
-    tenant.embed_origins=origins;tenant.connect_hash="";tenant.connect_until=None
-    tenant.save(update_fields=["embed_origins","connect_hash","connect_until"])
+    # one use only, also when two requests arrive together: the row stays locked until the code is spent
+    with transaction.atomic():
+        tenant=Tenant.objects.select_for_update().filter(connect_hash=digest(code),connect_until__gt=timezone.now()).first()
+        if not tenant:return fail("Codice non valido o scaduto: generane uno nuovo dal portale.",403)
+        origins=list(tenant.embed_origins or [])
+        if site not in origins:
+            if len(origins)>=10:return fail("L'attività ha già 10 siti collegati: togline uno dalle impostazioni.",409)
+            origins.append(site)
+        tenant.embed_origins=origins;tenant.connect_hash="";tenant.connect_until=None
+        tenant.save(update_fields=["embed_origins","connect_hash","connect_until"])
     with scope(tenant):audit(tenant,None,"wordpress.connected",tenant.pk,site=site)
     return JsonResponse({"ok":True,**config(tenant)})
 

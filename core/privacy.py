@@ -7,7 +7,7 @@ import hashlib,json,secrets
 from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
-from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,audit
+from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,audit
 from .crypto import encrypt
 from .booking import BookingError
 
@@ -32,7 +32,8 @@ def export_contact(tenant,contact):
             "service":b.snapshot.get("service"),"location":b.snapshot.get("location"),"resource":b.snapshot.get("resource"),"data":d})
     return {"tenant":tenant.name,"generated":timezone.now().isoformat(),"contact":{"id":str(contact.pk),**contact.data,
         "consent":contact.consent,"consent_at":contact.consent_at.isoformat() if contact.consent_at else None,"suppressed":contact.suppressed},
-        "bookings":bookings,"consent_history":[{"at":e.at.isoformat(),"event":e.kind,"channel":e.channel,"text_sha256":e.text_hash} for e in history(contact)]}
+        "bookings":bookings,"treatments":[{"date":t.date.isoformat(),**t.data,"booking":str(t.booking_id or "")} for t in Treatment.objects.filter(contact=contact).order_by("date","created")],
+        "consent_history":[{"at":e.at.isoformat(),"event":e.kind,"channel":e.channel,"text_sha256":e.text_hash} for e in history(contact)]}
 
 def _anonymize_booking(tenant,b):
     b.pii=encrypt(tenant,ANON_BOOKING,"booking:"+str(b.pk))
@@ -46,6 +47,7 @@ def _anonymize_contact(tenant,c):
     c.email_index="erased:"+secrets.token_hex(24)  # the keyed email index can no longer match anyone
     c.consent="revoked";c.consent_proof="";c.suppressed=True;c.save()
     ActionToken.objects.filter(contact=c).delete()
+    Treatment.objects.filter(contact=c).delete()  # 2.8.0: the client record goes with the person
     for d in Delivery.objects.filter(contact=c).exclude(payload=""):
         d.payload=encrypt(tenant,{"redacted":True},"delivery:"+str(d.pk))
         if d.status in ("pending","sending"):d.status="skipped"
@@ -71,9 +73,15 @@ def apply_retention(tenant,apply=False,now=None):
     cutoff=now-timedelta(days=tenant.retention_days)
     old=Booking.objects.filter(end__lt=cutoff).exclude(snapshot__has_key="anonymized")
     report={"bookings":old.count(),"contacts":0,"deliveries":0}
-    candidates=Contact.objects.exclude(consent="yes").exclude(email_index__startswith="erased:")
-    stale=[c for c in candidates if not Booking.objects.filter(contact=c,end__gte=cutoff).exists()]
+    # a client added by hand has no booking yet: only cards older than the period count, and a recent
+    # entry of the client record (2.8.0) keeps the card as much as a recent booking
+    from zoneinfo import ZoneInfo
+    since=cutoff.astimezone(ZoneInfo(tenant.timezone)).date()
+    candidates=Contact.objects.exclude(consent="yes").exclude(email_index__startswith="erased:").filter(created__lt=cutoff)
+    stale=[c for c in candidates if not Booking.objects.filter(contact=c,end__gte=cutoff).exists() and not Treatment.objects.filter(contact=c,date__gte=since).exists()]
     report["contacts"]=len(stale)
+    old_records=Treatment.objects.filter(date__lt=since)
+    report["treatments"]=old_records.count()
     report["deliveries"]=Delivery.objects.filter(created__lt=cutoff).exclude(payload="").count()
     if not apply:return report
     with transaction.atomic():
@@ -81,6 +89,7 @@ def apply_retention(tenant,apply=False,now=None):
         for b in old.iterator(chunk_size=200):_anonymize_booking(tenant,b)
         for c in stale:
             _anonymize_contact(tenant,c);record(tenant,c,"erased","retention")
+        old_records.delete()
         for d in Delivery.objects.filter(created__lt=cutoff).exclude(payload=""):
             d.payload="";d.status="skipped" if d.status in ("pending","sending") else d.status
             d.save(update_fields=["payload","status"])

@@ -32,3 +32,9 @@ def uses_resources(rows):
     if not any(r.resource_id for r in rows) and not Resource.objects.filter(active=True).exists():return ""
     tenant=rows[0].tenant if rows else None
     return units(getattr(tenant,"business_type",""))[0] if tenant else "Operatore"
+
+@register.filter
+def question_kind(q):
+    """2.8.0: how a booking question is answered, in words: Sì o no, Testo, Scelta tra..."""
+    kind={"checkbox":"Casella sì o no","text":"Testo libero","number":"Numero"}.get(q.get("type"),"Scelta tra "+", ".join(q.get("choices") or []))
+    return kind+(", obbligatoria" if q.get("required") else ", facoltativa")

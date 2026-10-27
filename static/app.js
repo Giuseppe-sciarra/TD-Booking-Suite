@@ -127,6 +127,8 @@
  const encoded=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
  const request=async(url,data)=>{
   const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":csrf()},body:JSON.stringify(data),credentials:"same-origin"});
+  // the server asks to confirm who you are first: do it, then come back to this page
+  if(r.redirected&&new URL(r.url).pathname==="/verify/confirm/"){location.assign("/verify/confirm/?next="+encodeURIComponent(location.pathname));return new Promise(()=>{});}
   let result;try{result=await r.json();}catch{throw Error("Operazione non disponibile. Ricarica e riprova.");}
   if(!r.ok)throw Error(result.error||"Operazione non consentita.");return result;
  };
@@ -188,4 +190,9 @@
   $("#add-field").addEventListener("click",()=>{if(fields.length>=12)return;fields.push({key:"campo_"+crypto.randomUUID().replace(/-/g,"").slice(0,12),label:"",type:"text",required:false,choices:[]});render();sync();});
   render();sync();
  }
+ // 2.8.0: a link to a closed <details> (Registra il trattamento) opens it and puts the cursor on what was done
+ const openTarget=()=>{let d=null;try{d=location.hash&&document.getElementById(decodeURIComponent(location.hash.slice(1)));}catch{}
+  if(d&&d.tagName==="DETAILS"){d.open=true;(d.querySelector("[name=service]")||d.querySelector("input:not([type=hidden]),textarea"))?.focus({preventScroll:true});}};
+ window.addEventListener("hashchange",openTarget);openTarget();
+ document.addEventListener("click",e=>{const a=e.target.closest('a[href^="#"]');if(a&&a.getAttribute("href")===location.hash)openTarget();});
 })();

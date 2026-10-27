@@ -12,7 +12,7 @@ from django.db import transaction,IntegrityError
 from django.db.models import ProtectedError
 from django.utils import timezone
 from .models import Location,Resource,Service,ServiceResource,Option,Schedule,ExceptionDay,Occurrence,ShiftRule,audit
-from .presets import PRESETS,initial
+from .presets import PRESETS,initial,first_settings
 from .tenancy import scope
 
 MAX_LOCATIONS=50
@@ -141,6 +141,6 @@ def apply_profile(tenant,preset,names,actor=None):
         for days,start,end in hours:
             for d in days:
                 Schedule.objects.create(tenant=tenant,weekday=d,start=hhmm(start),end=hhmm(end) if end else time(23,59,59,999999))
-        tenant.business_type=preset;tenant.save(update_fields=["business_type"])
+        tenant.save(update_fields=first_settings(tenant,preset))
         audit(tenant,actor,"tenant.profile",tenant.pk,type=preset,locations=len(locations),archived=archived)
     return {**created,"locations":len(locations),"archived":archived,"label":p["label"],"type":preset}

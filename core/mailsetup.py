@@ -124,6 +124,7 @@ def page(request,target,title,description,saved_to=None):
                 messages.success(request,("SMTP salvato. Usa l'email di prova per controllarlo." if target.tenant else "SMTP dell'agenzia salvato: le email di servizio di tutte le attività senza un SMTP proprio partono da qui."))
                 return done()
             except ValueError as ex:form.add_error(None,str(ex))
+            except OSError:form.add_error("host","Server SMTP non trovato: controlla il nome, per esempio smtp.tuodominio.it.")
     elif action=="save_graph":
         tab="microsoft"
         if graph.is_valid():

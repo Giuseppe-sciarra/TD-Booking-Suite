@@ -75,7 +75,8 @@ def candidates(tenant,service,day,option=None,resource=None):
             if tick.astimezone(tz).date()==day and lead<=tick<=horizon and tick-before>=a and end+after<=b:
                 yield tick,end,None
             tick+=timedelta(minutes=service.interval)
-def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None):
+def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None):
+    """Free slots of a day. allowed: resource ids a scoped staff member may book ("Il primo disponibile" stays among them)."""
     service=choice(Service,service_id,active=True,location__active=True)
     option,resource,_=details(service,option_id,resource_id)
     party=integer(party,"Quantità",1,service.max_party)
@@ -85,13 +86,18 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
     resources=[resource]
     if service.kind=="resource" and not resource:
         resources=list(Resource.objects.filter(active=True,location=service.location,id__in=ServiceResource.objects.filter(service=service).values("resource_id")).order_by("name"))
+        if allowed is not None:resources=[r for r in resources if str(r.pk) in allowed]
     result=[]
     for res in resources:
         for start,end,event in candidates(tenant,service,day,option,res):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
             if capacity_available(service,bs,be,party,res,event,exclude):
                 result.append({"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(res.pk) if res else "","resource_name":res.name if res else "","occurrence":str(event.pk) if event else ""})
-    return sorted(result,key=lambda x:(x["start"],x["resource_name"]))[:500]
+    result=sorted(result,key=lambda x:(x["start"],x["resource_name"]))
+    if service.kind=="resource" and not resource:
+        # "Il primo disponibile": one slot per time, the first free resource; cut after this, or many operators hide the evening
+        seen=set();result=[x for x in result if not (x["start"] in seen or seen.add(x["start"]))]
+    return result[:500]
 def normalize_phone(value):
     """2.6.1: Italian numbers as people write them. 333 123 4567, 06 1234567, 0039..., +39... all become +39...;
     a foreign number keeps its own prefix. Empty when it cannot be a phone number."""
@@ -124,6 +130,11 @@ def extras(data,service):
     if not isinstance(data.get("notes",""),str):raise BookingError("Note non valide.")
     result["notes"]=data.get("notes","").strip()
     if len(result["notes"])>4000:raise BookingError("Note troppo lunghe.")
+    # 2.8.0: allergies and intolerances, only from the list the business asks about
+    asked=service.tenant.asked_allergens
+    picked=(data.get("allergies") or []) if asked else []
+    if not isinstance(picked,list) or any(not isinstance(a,str) or a not in asked for a in picked):raise BookingError("Intolleranze non valide: ricarica la pagina e riprova.")
+    if picked:result["allergies"]=[a for a in asked if a in picked]
     answers=data.get("answers",{})
     if not isinstance(answers,dict):raise BookingError("Campi aggiuntivi non validi.")
     result["answers"]={}
@@ -209,6 +220,7 @@ def create_booking(tenant,data,actor=None):
         staff=actor is not None
         pii=personal(data,service,staff)
         start,end,bs,be,party,option,resource,event=bounds(tenant,service,data)
+        known_by_phone=None
         if staff:
             # 2.7.0: the client picked from the card, or found by email or phone, or a new card
             from .clients import find_or_create
@@ -219,13 +231,19 @@ def create_booking(tenant,data,actor=None):
         else:
             idx=index(pii["email"],tenant_key(tenant),"email")
             contact=Contact.objects.filter(email_index=idx).first()
+            # 2.8.0: not found by email, the same phone is the client added at the desk without email: one card,
+            # one history. A card with another email stays another person. The card is never rewritten here
+            from .clients import by_phone
+            if contact is None:known_by_phone=by_phone(tenant,pii["phone"],without_email=True)
+            contact=contact or known_by_phone
             new_contact=contact is None
             if new_contact:
                 contact=Contact(tenant=tenant,email_index=idx)
                 contact.pii=encrypt(tenant,{k:pii[k] for k in ("first_name","last_name","email","phone")},"contact:"+str(contact.pk))
         # An unverified public request never rewrites an existing contact card,
         # its consent state or its proof: the declared data stay in the booking.
-        consent_requested=(data.get("marketing") is True and contact.consent!="yes" and not contact.suppressed
+        # a card found by phone has no email: this request cannot confirm marketing for it
+        consent_requested=(data.get("marketing") is True and contact.consent!="yes" and not contact.suppressed and not known_by_phone
             and not ActionToken.objects.filter(contact_id=contact.pk,kind="consent",used=False,expires__gt=timezone.now()).exists())
         if consent_requested and new_contact:contact.consent="pending"
         contact.save()
@@ -259,7 +277,8 @@ def move_booking(tenant,booking_id,data,actor):
         booking.snapshot.update(service=service.name,location=service.location.name,resource=booking.resource.name if booking.resource else "",option=booking.option.name if booking.option else "")
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
-        queue(tenant,{"to":booking.data["email"],"subject":"Prenotazione aggiornata · "+tenant.name,"body":f"Nuovo orario: {booking.start.astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}.\nContatta l'attività per informazioni."},booking.contact)
+        # a booking taken at the desk may have no email (2.7.0): an empty address would bounce and exclude the client from email
+        if booking.data.get("email"):queue(tenant,{"to":booking.data["email"],"subject":"Prenotazione aggiornata · "+tenant.name,"body":f"Nuovo orario: {booking.start.astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}.\nContatta l'attività per informazioni."},booking.contact)
         from .notify import notify_staff
         notify_staff(tenant,booking,"moved")
         audit(tenant,actor,"booking.moved",booking.pk)

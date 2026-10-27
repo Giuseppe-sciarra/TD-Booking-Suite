@@ -70,6 +70,8 @@ def notify_pending():
     site=SiteSettings.current();config=agency_smtp(site);to=recipient(site);sent=0
     if not config or not to:return 0
     for r in TrialRequest.objects.filter(notified__isnull=True,attempts__lt=MAX_ATTEMPTS,created__gte=timezone.now()-timedelta(days=7)).order_by("created")[:20]:
+        # the worker loops every 10 seconds: wait 2, 4, 8, 16 minutes after a failure, so an outage does not use up the attempts
+        if r.attempts and timezone.now()<r.created+timedelta(minutes=2**r.attempts):continue
         d=r.data
         body=("Nuova richiesta di prova dal portale "+site.name+"\n\n"
               f"Nome: {d['first_name']} {d['last_name']}\nEmail: {d['email']}\nTelefono: {d.get('phone') or 'non indicato'}\n"
@@ -96,7 +98,8 @@ def requests_view(request):
     staff(request);fresh(request)
     if settings.EDITION!="cloud":raise Http404
     if request.method=="POST":
-        r=get_object_or_404(TrialRequest,pk=request.POST.get("request"))
+        try:r=get_object_or_404(TrialRequest,pk=request.POST.get("request"))
+        except ValidationError:raise Http404
         action=request.POST.get("action")
         if action=="archive":r.status="archived";r.save(update_fields=["status"]);messages.success(request,"Richiesta archiviata.")
         elif action=="restore":r.status="new";r.save(update_fields=["status"]);messages.success(request,"Richiesta riportata tra quelle da gestire.")

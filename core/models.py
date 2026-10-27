@@ -72,6 +72,11 @@ class Tenant(models.Model):
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
     logo=models.BinaryField(null=True,blank=True)
+    # 2.8.0: width / height of the logo, so a wide wordmark is shown whole in the portal and on the booking page
+    logo_ratio=models.FloatField(default=1)
+    # 2.8.0: allergies and intolerances the booking form asks about (restaurants), edited by the business
+    allergens=models.JSONField(default=list,blank=True)
+    allergens_on=models.BooleanField(default=False)
     brand_color=models.CharField(max_length=7,default="#7a55ad")
     tagline=models.CharField(max_length=180,blank=True)
     website=models.URLField(blank=True)
@@ -90,6 +95,10 @@ class Tenant(models.Model):
         if not self.wrapped_key:self.wrapped_key=protect(b64(secrets.token_bytes(32)),"tenant-key:"+str(self.pk))
         super().save(*a,**kw)
     def __str__(self):return self.name
+    @property
+    def logo_wide(self):return bool(self.logo) and self.logo_ratio>1.4
+    @property
+    def asked_allergens(self):return list(self.allergens) if self.allergens_on else []
 class Membership(models.Model):
     tenant=models.ForeignKey(Tenant,on_delete=models.CASCADE)
     user=models.ForeignKey(User,on_delete=models.CASCADE)
@@ -235,6 +244,18 @@ class Booking(Scoped):
         indexes=[models.Index(fields=["tenant","start","end"]),models.Index(fields=["resource","busy_start","busy_end"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"booking:"+str(self.pk))
+class Treatment(Scoped):
+    """2.8.0: one entry of the client record: when, what was done, by whom and the details (colour formula,
+    products, inks). Sealed with the business key, never shown to the client, erased with the contact."""
+    contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="treatments")
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="treatments")
+    date=models.DateField()
+    pii=models.TextField()
+    author=models.CharField(max_length=36,blank=True)
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:indexes=[models.Index(fields=["tenant","contact","date"])]
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"treatment:"+str(self.pk))
 class ConsentEvent(Scoped):
     """Append-only consent history. No personal data: who and what live in Contact."""
     contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="consent_events")

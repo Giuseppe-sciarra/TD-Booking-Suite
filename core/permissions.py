@@ -95,7 +95,8 @@ def shown(request,data):
         for key in ("email","phone"):data[key]="•••" if data.get(key) else ""
         data["answers"]={};data["masked"]=True
     if not can(request,"notes.read"):
-        data.pop("notes",None);data.pop("internal_notes",None);data["notes_hidden"]=True
+        # allergies are health data: they go with the notes (2.8.0)
+        data.pop("notes",None);data.pop("internal_notes",None);data.pop("allergies",None);data["notes_hidden"]=True
     data.pop("cancel_token",None)
     return data
 

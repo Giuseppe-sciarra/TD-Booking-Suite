@@ -34,7 +34,10 @@ def http(url,form=None,body=None,headers=None,timeout=15):
     try:
         with urllib.request.urlopen(req,timeout=timeout) as r:raw=r.read();status=r.status
     except urllib.error.HTTPError as ex:raw=ex.read();status=ex.code
-    except (urllib.error.URLError,OSError) as ex:raise ApiError("Servizio non raggiungibile: "+str(getattr(ex,"reason",ex))[:160])
+    # URLError: the request did not get through (DNS, refused, connect timeout). Any other error came while
+    # waiting for the answer: the service may have acted on it (status -1, never retried for a send)
+    except urllib.error.URLError as ex:raise ApiError("Servizio non raggiungibile: "+str(getattr(ex,"reason",ex))[:160])
+    except OSError as ex:raise ApiError("Il servizio non ha risposto: "+str(ex)[:160],-1)
     try:parsed=json.loads(raw or b"{}")
     except ValueError:parsed={}
     return status,parsed if isinstance(parsed,dict) else {}
@@ -103,6 +106,8 @@ def send(config,message):
     try:_send(config,message)
     except ApiError as ex:
         if ex.status==0:raise smtplib.SMTPResponseException(451,str(ex))
+        # no answer after the message was handed over: it may have left, so the outbox marks it uncertain (no double send)
+        if ex.status==-1:raise RuntimeError(str(ex))
         raise
 
 def _send(config,message):

@@ -31,19 +31,40 @@ def widget_data(request,booking=None):
     try:place=uuid.UUID(request.GET.get("location",""))
     except ValueError:place=None
     if place and rows.filter(location_id=place).exists():rows=rows.filter(location_id=place)
+    # 2.8.0: [td_booking_suite service="..."] shows that service only
+    try:only=uuid.UUID(request.GET.get("service",""))
+    except ValueError:only=None
+    if only and rows.filter(pk=only).exists():rows=rows.filter(pk=only)
+    internal=request.path.startswith("/t/")
+    m=getattr(request,"member",None) if internal else None
+    # staff with a scope book only inside it: their locations and their own resources
+    if m and m.locations:rows=rows.filter(location_id__in=m.locations)
+    mine=staff_resources(request)
     for s in rows:
         services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"fields":s.fields,
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration} for o in Option.objects.filter(service=s,active=True)],
-            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_url} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id"))]})
-    internal=request.path.startswith("/t/")
+            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_url} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if mine is None or str(r.pk) in mine]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     result={"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
-        "ticket":signing.dumps({"tenant":str(tenant.pk)},salt="public-booking"),"internal":internal}
+        "ticket":signing.dumps({"tenant":str(tenant.pk)},salt="public-booking"),"internal":internal,
+        "allergens":tenant.asked_allergens}
     if booking:
         result["submit"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-api/"
         result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party}
         result["slots"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-slots/"
     return result
+def staff_resources(request):
+    """Resource ids a staff member is limited to in the portal, None when there is no such limit."""
+    m=getattr(request,"member",None)
+    return list(m.resources) if request.path.startswith("/t/") and m and m.resources else None
+def json_denied(view):
+    """Throttles and permissions answer the booking form in JSON, so it shows the reason instead of "riprova"."""
+    from functools import wraps
+    @wraps(view)
+    def wrapper(request,*a,**kw):
+        try:return view(request,*a,**kw)
+        except PermissionDenied as ex:return JsonResponse({"error":str(ex) or "Operazione non consentita."},status=403)
+    return wrapper
 def first_step(widget):
     """What the customer chooses first: nothing with a single service, the location when the same service
     exists in several locations, otherwise the service."""
@@ -63,10 +84,13 @@ def manual_booking(request,slug):
     widget["client_search"]=can(request,"contacts.read") and can(request,"pii.read")
     if request.GET.get("cliente") and can(request,"pii.read"):
         from .models import Contact
-        c=Contact.objects.exclude(email_index__startswith="erased:").filter(pk=request.GET["cliente"]).first() if len(request.GET["cliente"])==36 else None
+        import uuid
+        try:c=Contact.objects.exclude(email_index__startswith="erased:").filter(pk=uuid.UUID(request.GET["cliente"])).first()
+        except ValueError:c=None
         if c:
             d=c.data;widget["client"]={"id":str(c.pk),**{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
     return render(request,"booking.html",{"widget":widget,"intro":INTRO[first_step(widget)]})
+@json_denied
 def slots_api(request,slug,booking_id=None):
     throttle(request,"availability:"+str(request.tenant.pk),120,60)
     exclude=None
@@ -93,11 +117,12 @@ def slots_api(request,slug,booking_id=None):
                 start,end,*_=bounds(request.tenant,service,data,exclude=exclude)
                 slots=[{"start":start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),"end":end.isoformat(),"resource":"","resource_name":"","occurrence":""}]
         else:
-            slots=available(request.tenant,service.pk,day,request.GET.get("option"),request.GET.get("resource"),request.GET.get("party",1),exclude=exclude)
+            slots=available(request.tenant,service.pk,day,request.GET.get("option"),request.GET.get("resource"),request.GET.get("party",1),exclude=exclude,allowed=staff_resources(request))
         return JsonResponse({"slots":slots})
     except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or "Richiesta non valida."},status=400)
 @csrf_exempt
 @require_POST
+@json_denied
 def public_submit(request,slug):
     # Anonymous capability, independent of third-party cookies in the embedded widget.
     # This endpoint NEVER inherits an authenticated user's privileges.
@@ -109,6 +134,7 @@ def public_submit(request,slug):
     throttle(request,"booking:"+str(request.tenant.pk),20,3600)
     return submit(request,actor=None)
 @require_POST
+@json_denied
 def internal_submit(request,slug):
     require_role(request,write=True)
     try:
@@ -133,12 +159,14 @@ def move_page(request,slug,booking_id):
     booking=get_visible(request,booking_id)
     return render(request,"booking.html",{"widget":widget_data(request,booking),"moving":True})
 @require_POST
+@json_denied
 def move_api(request,slug,booking_id):
     require_role(request,write=True)
-    get_visible(request,booking_id)
+    booking=get_visible(request,booking_id)
     try:
         data=json_body(request)
-        if isinstance(data,dict) and data.get("service"):check_new_booking(request,choice(Service,data["service"]),data.get("resource"))
+        # the new place must be inside the scope, also when only the resource changes
+        if isinstance(data,dict):check_new_booking(request,choice(Service,data.get("service") or booking.service_id),data.get("resource"))
         move_booking(request.tenant,booking_id,data,request.user)
         return JsonResponse({"redirect":f"/t/{slug}/bookings/{booking_id}/"})
     except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex)},status=400)

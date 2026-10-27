@@ -13,11 +13,25 @@
  else select(service,config.services.map(s=>({id:s.id,name:places>1?s.name+" ("+s.location+")":s.name})),"Scegli un servizio");
  const kinds=new Set(config.services.map(s=>s.kind));if(kinds.size===1){const k=[...kinds][0];$("party-label").textContent=["shift","capacity","event"].includes(k)?"Persone":k==="day"?"Ospiti":"Persone / quantità";}
  day.min=config.today;day.value=config.today;departure.min=config.today;
+ // until a service is chosen, the number of people shows only if some service takes more than one
+ $("party-wrap").hidden=Math.max(1,...config.services.map(s=>s.max_party||1))<=1;
+ // 2.8.0: allergies and intolerances from the business's own list, as chips to tick
+ const allergenBox=$("allergens-box");
+ if(allergenBox&&config.allergens?.length&&!config.editing){
+  allergenBox.hidden=false;
+  for(const name of config.allergens){const label=document.createElement("label"),box=document.createElement("input"),text=document.createElement("span");
+   label.className="chip-check";box.type="checkbox";box.value=name;box.dataset.allergen="";text.textContent=name;label.append(box,text);$("allergen-list").append(label);}
+ }
  function buildFields(s){
   const holder=$("booking-fields");if(!holder)return;
   holder.replaceChildren();
   for(const field of s?.fields||[]){
    const wrap=document.createElement("div"),label=document.createElement("label");
+   if(field.type==="checkbox"){
+    // a yes/no question reads as one sentence with its box, across the whole row
+    const box=document.createElement("input");box.type="checkbox";box.id="extra-"+field.key;box.dataset.field=field.key;box.required=field.required===true;
+    label.className="check";label.append(box,field.label+(field.required?" *":""));wrap.className="span-two";wrap.append(label);holder.append(wrap);continue;
+   }
    label.htmlFor="extra-"+field.key;label.textContent=field.label+(field.required?" *":"");
    const input=document.createElement(field.type==="select"?"select":"input");
    input.id="extra-"+field.key;input.dataset.field=field.key;input.required=field.required===true;
@@ -74,13 +88,14 @@
    const s=current(),answers={};
    document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
    const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value};
-   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked});
+   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
    // Persist only a fingerprint and random idempotency key, never personal fields.
+   let cacheKey="";
    try{
     const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(payload)));
     const hash=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,"0")).join("");
-    const cacheKey="tdbs-request:"+config.submit+":"+hash;
+    cacheKey="tdbs-request:"+config.submit+":"+hash;
     requestKey=sessionStorage.getItem(cacheKey)||crypto.randomUUID().replace(/-/g,"");
     sessionStorage.setItem(cacheKey,requestKey);
    }catch{}
@@ -88,6 +103,8 @@
    const response=await fetch(config.submit,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":form.querySelector("[name=csrfmiddlewaretoken]").value,"X-TDBS-Ticket":config.ticket},body:JSON.stringify(payload),credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error("Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.");}
    if(!response.ok)throw Error(result.error||"Prenotazione non completata.");
+   // done: the same data typed again later is a new booking, not this one (it may have been cancelled meanwhile)
+   try{if(cacheKey)sessionStorage.removeItem(cacheKey);}catch{}
    if(result.redirect){location.assign(result.redirect);return;}
    form.hidden=true;$("booking-success").hidden=false;$("booking-reference").textContent="Riferimento: "+result.reference;
    $("cancel-link").href=result.cancel;$("booking-success").scrollIntoView({block:"center"});$("cancel-link").focus();
@@ -97,15 +114,16 @@
  if(config.editing){
   service.value=config.editing.service;changeService();option.value=config.editing.option;resource.value=config.editing.resource;party.value=config.editing.party;loadSlots();
  }else if(config.services.some(s=>s.id===new URLSearchParams(location.search).get("service"))){service.value=new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
- if(window.parent!==window){new ResizeObserver(()=>{window.parent.postMessage({tdbsHeight:document.documentElement.scrollHeight},"*");}).observe(document.body);}
+ // inside the WordPress frame the page is as tall as its content, so the frame can also shrink
+ if(window.parent!==window){document.documentElement.classList.add("framed");new ResizeObserver(()=>{window.parent.postMessage({tdbsHeight:document.body.scrollHeight},"*");}).observe(document.body);}
  // 2.7.0: manual booking, the client from the address book or a new one
  let clientId="";
  const pick=$("client-pick");
  if(pick){
   const box=$("client-search"),list=$("client-results"),chosen=$("client-chosen");let timer=null,seq=0;
   const fields=["first-name","last-name","phone","customer-email"];
-  const choose=c=>{clientId=c.id;$("first-name").value=c.first_name;$("last-name").value=c.last_name;$("phone").value=c.phone;$("customer-email").value=c.email;
-   chosen.querySelector("span").textContent="Cliente: "+(c.first_name+" "+c.last_name).trim()+(c.phone?" · "+c.phone:"");chosen.hidden=false;list.hidden=true;box.value="";box.closest("label")?.focus();};
+  const choose=(c,focus=true)=>{clientId=c.id;$("first-name").value=c.first_name;$("last-name").value=c.last_name;$("phone").value=c.phone;$("customer-email").value=c.email;
+   chosen.querySelector("span").textContent="Cliente: "+(c.first_name+" "+c.last_name).trim()+(c.phone?" · "+c.phone:"");chosen.hidden=false;list.hidden=true;box.value="";if(focus)$("client-clear").focus();};
   const clear=()=>{clientId="";chosen.hidden=true;fields.forEach(f=>$(f).value="");box.focus();};
   $("client-clear").addEventListener("click",clear);
   fields.forEach(f=>$(f).addEventListener("input",()=>{if(clientId){clientId="";chosen.hidden=true;}}));
@@ -117,6 +135,6 @@
      const name=document.createElement("strong");name.textContent=(c.first_name+" "+c.last_name).trim();const sub=document.createElement("small");sub.textContent=[c.phone,c.email].filter(Boolean).join(" · ");
      b.append(name,sub);b.addEventListener("click",()=>choose(c));li.append(b);list.append(li);}
     list.hidden=false;}catch{}},250);});
-  if(config.client)choose(config.client);
+  if(config.client)choose(config.client,false);
  }
 })();

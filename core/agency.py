@@ -184,9 +184,9 @@ def client_new(request):
                 with transaction.atomic():
                     private_guard()
                     tenant=form.save()
-                    from .presets import PRESETS
+                    from .presets import PRESETS,first_settings
                     preset=request.POST.get("preset","")
-                    if preset in PRESETS:tenant.business_type=preset;tenant.save(update_fields=["business_type"])
+                    if preset in PRESETS:tenant.save(update_fields=first_settings(tenant,preset))
                     seed_tenant(tenant,preset)
                     user=User.objects.filter(login_index=login_index(email)).first() or User.objects.create_user(email)
                     # the owner runs the business: services and opening hours included
@@ -245,14 +245,15 @@ def client(request,slug):
                 if was and contacts:contacts[0]["primary"]=True
                 store_profile(t,profile);messages.success(request,"Referente rimosso.");anchor="referenti"
             elif action=="logo":
-                from .branding import clean_logo
+                from .site import clean_brand
                 upload=request.FILES.get("logo")
                 if not upload:raise ValidationError("Scegli un'immagine.")
-                t.logo=clean_logo(upload);t.save(update_fields=["logo"])
+                # 2.8.0: the shape is kept (wide wordmarks too) and the empty transparent margins are cut
+                t.logo,t.logo_ratio=clean_brand(upload);t.save(update_fields=["logo","logo_ratio"])
                 with scope(t):audit(t,request.user,"tenant.logo",t.pk)
-                messages.success(request,"Logo aggiornato: compare anche nella pagina prenotazioni.")
+                messages.success(request,"Logo aggiornato: compare nel portale dell'attività e nella pagina prenotazioni.")
             elif action=="logo_remove":
-                t.logo=None;t.save(update_fields=["logo"])
+                t.logo=None;t.logo_ratio=1;t.save(update_fields=["logo","logo_ratio"])
                 with scope(t):audit(t,request.user,"tenant.logo",t.pk,removed=True)
                 messages.success(request,"Logo rimosso.")
             else:raise ValidationError("Operazione non valida.")

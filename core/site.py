@@ -93,6 +93,14 @@ class SiteForm(forms.ModelForm):
         f=self.cleaned_data.get("logo_dark_file");return clean_brand(f) if f else None
     def clean_favicon_file(self):
         f=self.cleaned_data.get("favicon_file");return clean_icon(f) if f else None
+    def _color(self,name):
+        import re
+        value=self.cleaned_data[name]
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}",value or ""):raise forms.ValidationError("Colore non valido, per esempio #7a55ad.")
+        return value
+    # an invalid colour would break the style sheet of every page
+    def clean_brand_color(self):return self._color("brand_color")
+    def clean_default_brand_color(self):return self._color("default_brand_color")
     def clean_trial_days(self):
         value=self.cleaned_data["trial_days"]
         if not 1<=value<=90:raise forms.ValidationError("Da 1 a 90 giorni.")

@@ -81,6 +81,9 @@ def scope_values(request,tenant):
     locations=[str(x) for x in Location.objects.filter(pk__in=request.POST.getlist("locations")).values_list("pk",flat=True)]
     resources=[str(x) for x in Resource.objects.filter(pk__in=request.POST.getlist("resources")).values_list("pk",flat=True)]
     return locations,resources
+def elsewhere(user,tenant):
+    """Someone who also works in another business (or for the agency): the access of that person is not this business's to hand out."""
+    return user.is_staff or Membership.objects.filter(user=user).exclude(tenant=tenant).exists()
 def members_view(request,slug):
     team_admin(request);fresh(request);tenant=request.tenant;link="";error=""
     if request.method=="POST":
@@ -99,8 +102,13 @@ def members_view(request,slug):
                     elif role=="operator":raise ValueError("Assegna all'operatore sede almeno una sede o una risorsa.")
                 with transaction.atomic():
                     u=User.objects.filter(login_index=login_index(email)).first() or User.objects.create_user(email)
+                    # an account of another business is only added, never activated or given a password from here
+                    if elsewhere(u,tenant) and (request.POST.get("password") or not u.has_usable_password()):
+                        raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
+                    if u.pk==request.user.pk and not request.member:raise ValueError("L'agenzia entra nei contenuti con l'accesso di assistenza concesso dall'attività, non aggiungendo se stessa.")
                     member,_=Membership.objects.get_or_create(tenant=tenant,user=u)
                     if member.user_id==request.user.id and role!="owner":raise ValueError("Non puoi togliere a te stesso il ruolo di amministratore.")
+                    if member.role=="owner" and role!="owner" and not Membership.objects.filter(tenant=tenant,role="owner").exclude(pk=member.pk).exists():raise ValueError("L'attività deve avere almeno un amministratore.")
                     member.role=role;member.can_schedule=role=="owner" or request.POST.get("can_schedule")=="on"
                     member.locations=[] if role=="owner" else locations;member.resources=[] if role=="owner" else resources
                     member.save()
@@ -113,14 +121,21 @@ def members_view(request,slug):
                 member=get_object_or_404(Membership,tenant=tenant,pk=request.POST.get("member"))
                 u=member.user
                 if action=="remove":
-                    if member.role=="owner" and Membership.objects.filter(tenant=tenant,role="owner").count()==1:raise ValueError("L'attività deve avere almeno un amministratore.")
-                    member.delete();audit(tenant,request.user,"member.removed",u.pk)
+                    with transaction.atomic():
+                        owners=list(Membership.objects.select_for_update().filter(tenant=tenant,role="owner"))
+                        if member.role=="owner" and len(owners)==1:raise ValueError("L'attività deve avere almeno un amministratore.")
+                        member.delete();audit(tenant,request.user,"member.removed",u.pk)
                 elif action=="reset":
                     if u.is_staff:raise ValueError("Usa la procedura di recupero amministratore da console.")
+                    # the reset link opens the person's account in every business: only the agency resets someone who works elsewhere too
+                    if elsewhere(u,tenant) and not request.user.is_staff:raise ValueError("Questa persona lavora anche in un'altra attività: il ripristino della password lo fa l'agenzia.")
                     u.auth_version+=1;u.set_unusable_password();u.save(update_fields=["auth_version","password"])
                     link=invitation(u)
                     queue(tenant,{"to":u.email,"subject":"Ripristino accesso · "+tenant.name,"body":"Imposta una nuova password:\n"+link+"\nIl metodo MFA rimane attivo."})
                     audit(tenant,request.user,"member.password_reset",u.pk)
+                    if request.user.is_staff and not request.member:
+                        # the agency enters the contents only with a support grant: the link goes to the person, not on this screen
+                        link="";messages.success(request,"Link per la nuova password inviato a "+u.email+".")
                 else:raise ValueError("Operazione non valida.")
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
     names={str(x.pk):x.name for x in list(Location.objects.all())+list(Resource.objects.all())}
@@ -150,7 +165,8 @@ def support_view(request,slug):
                 audit(tenant,request.user,"support.granted",grant.pk,hours=hours)
                 messages.success(request,f"Accesso concesso per {hours} ore.")
             elif action=="revoke":
-                grant=get_object_or_404(SupportGrant.objects,pk=request.POST.get("grant"))
+                try:grant=get_object_or_404(SupportGrant.objects,pk=request.POST.get("grant"))
+                except ValidationError:raise ValueError("Accesso non trovato.")
                 grant.revoked=True;grant.save(update_fields=["revoked"])
                 audit(tenant,request.user,"support.revoked",grant.pk)
                 messages.success(request,"Accesso revocato.")

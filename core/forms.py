@@ -112,6 +112,8 @@ class ServiceForm(ScopedForm):
         self.fields["resources"].label=many
         self.fields["resources"].help_text=f"Quali {many.lower()} si possono prenotare con questo servizio"
         if not new:self.initial["resources"]=ServiceResource.objects.filter(service=self.instance).values_list("resource_id",flat=True)
+        # 2.8.0: with one location a new service starts with every operator ticked, instead of an error on saving
+        elif not self.is_bound and Location.objects.filter(active=True).count()==1:self.initial["resources"]=list(Resource.objects.filter(active=True).values_list("pk",flat=True))
         if agency:
             # the agency chooses the kind: every field says which kinds use it and the page shows only those
             self.fields["kind"].choices=SERVICE_KINDS
@@ -223,7 +225,7 @@ class CampaignForm(ScopedForm):
         if len(value)>20000:raise ValidationError("Messaggio troppo lungo.")
         return value
 class TenantForm(forms.ModelForm):
-    logo_file=forms.FileField(required=False,label="Logo PNG, JPEG o WebP (max 512 KB)")
+    logo_file=forms.FileField(required=False,label="Logo PNG trasparente, JPEG o WebP, massimo 1 MB, anche orizzontale")
     embed_origins_text=forms.CharField(required=False,label="Siti autorizzati a mostrare il widget (una origine HTTPS per riga)",widget=forms.Textarea(attrs={"rows":3}))
     class Meta:
         model=Tenant
@@ -243,8 +245,8 @@ class TenantForm(forms.ModelForm):
     def clean_logo_file(self):
         value=self.cleaned_data.get("logo_file")
         if value:
-            from .branding import clean_logo
-            return clean_logo(value)
+            from .site import clean_brand
+            return clean_brand(value)  # 2.8.0: (png, width/height), wide logos included
         return None
     def clean_timezone(self):
         val=self.cleaned_data["timezone"]
@@ -271,7 +273,7 @@ class TenantForm(forms.ModelForm):
         return d
     def save(self,commit=True):
         self.instance.embed_origins=self.cleaned_data["embed_origins_text"]
-        if self.cleaned_data.get("logo_file"):self.instance.logo=self.cleaned_data["logo_file"]
+        if self.cleaned_data.get("logo_file"):self.instance.logo,self.instance.logo_ratio=self.cleaned_data["logo_file"]
         return super().save(commit)
 # 2.6.0: credentials of a mailbox, not of the person signed in: password managers must not fill or save them
 NO_AUTOFILL={"autocomplete":"new-password","data-1p-ignore":"","data-lpignore":"true","data-bwignore":"","data-form-type":"other"}

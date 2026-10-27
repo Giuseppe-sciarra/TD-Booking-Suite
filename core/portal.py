@@ -103,7 +103,66 @@ def setup(request,slug):
     return render(request,"setup.html",{"steps":steps,"agency":agency,"done":done,"total":len(steps)+len(agency),
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
         "counts":range(1,6),"max_locations":MAX_LOCATIONS,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
-        "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/")})
+        "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
+        # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
+        "recommended":recommended(t)[0],"allergens_card":t.business_type=="ristorante" or t.allergens_on})
+
+def recommended(tenant):
+    """2.8.0: the usual questions of this kind of business that some active service does not ask yet."""
+    from .presets import questions
+    wanted=questions(tenant.business_type)
+    services=list(Service.objects.filter(active=True).order_by("name")) if wanted else []
+    missing=[q for q in wanted if any(q["key"] not in {f.get("key") for f in s.fields} for s in services)]
+    return missing,services
+
+def recommended_view(request,slug):
+    """Adds the chosen usual questions to every active service that does not ask them yet. Nothing is removed."""
+    from django.http import Http404
+    if request.method!="POST":raise Http404
+    require(request,"catalog.write")
+    missing,services=recommended(request.tenant)
+    chosen=[q for q in missing if q["key"] in request.POST.getlist("q")]
+    changed=0
+    with transaction.atomic():
+        for svc in services:
+            have={f.get("key") for f in svc.fields}
+            new=[q for q in chosen if q["key"] not in have]
+            if new and len(svc.fields)+len(new)<=12:
+                svc.fields=list(svc.fields)+new;svc.save(update_fields=["fields"]);changed+=1
+        audit(request.tenant,request.user,"catalog.questions",request.tenant.pk,questions=len(chosen),services=changed)
+    if changed:messages.success(request,f"Domande aggiunte a {changed} serviz{'io' if changed==1 else 'i'}: compaiono subito nel modulo di prenotazione. Le modifichi in ogni servizio, alla voce Richieste aggiuntive.")
+    else:messages.info(request,"Nessuna domanda da aggiungere.")
+    return redirect(reverse("setup",args=[slug])+"#consigliati")
+
+def allergens_view(request,slug):
+    """2.8.0: the allergies and intolerances the booking form asks about, as the business wants them."""
+    require(request,"catalog.write")
+    from .presets import ALLERGENS
+    t=request.tenant
+    if request.method=="POST":
+        action=request.POST.get("action");items=list(t.allergens or [])
+        try:
+            if action=="toggle":
+                t.allergens_on=request.POST.get("on")=="1"
+                if t.allergens_on and not items:items=list(ALLERGENS)
+                text="Il modulo di prenotazione ora chiede intolleranze e allergie." if t.allergens_on else "Il modulo non le chiede più. Quelle già segnalate restano nelle prenotazioni."
+            elif action=="add":
+                name=" ".join(request.POST.get("name","").split())
+                if not 1<=len(name)<=60 or any(ord(c)<32 for c in name):raise BookingError("Scrivi un nome, al massimo 60 caratteri.")
+                if name.casefold() in {i.casefold() for i in items}:raise BookingError(name+" è già nell'elenco.")
+                if len(items)>=40:raise BookingError("Al massimo 40 voci.")
+                items.append(name);text="Aggiunta: "+name+"."
+            elif action=="remove":
+                name=request.POST.get("name","")
+                items=[i for i in items if i!=name];text="Tolta: "+name+". Resta nelle prenotazioni dove era già segnalata."
+            elif action=="reset":items=list(ALLERGENS);text="Elenco ripristinato: i 14 allergeni di legge più il lattosio."
+            else:raise BookingError("Operazione non valida.")
+            t.allergens=items;t.save(update_fields=["allergens","allergens_on"])
+            audit(t,request.user,"allergens."+action,t.pk,items=len(items),on=t.allergens_on)
+            messages.success(request,text)
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect("allergens",slug)
+    return render(request,"allergens.html",{"items":t.allergens or [],"on":t.allergens_on,"standard":ALLERGENS})
 
 def can_profile(request):
     """Type of business, locations and the WordPress code: the agency, or the administrator of a Private installation."""
@@ -225,6 +284,12 @@ def bookings(request,slug):
 def booking_detail(request,slug,booking_id):
     require(request,"booking.read")
     booking=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service","resource"),pk=booking_id)
+    from .presets import record
+    spec=record(request.tenant) if booking.contact_id else None
+    if request.method=="POST" and request.POST.get("action") in ("treatment","treatment_remove") and spec:
+        try:messages.success(request,record_action(request,booking.contact,booking))
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("booking_detail",args=[slug,booking_id])+"#scheda")
     if request.method=="POST":
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
@@ -238,8 +303,44 @@ def booking_detail(request,slug,booking_id):
             return redirect("booking_detail",slug,booking_id)
         except BookingError as ex:messages.error(request,str(ex))
     data=shown(request,booking.data)
-    answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":v} for k,v in data.get("answers",{}).items()]
-    return render(request,"booking_detail.html",{"booking":booking,"data":data,"answers":answers})
+    answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":"Sì" if v is True else v} for k,v in data.get("answers",{}).items() if v not in ("",None,False)]
+    ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,
+        # 2.8.0: the note kept on the client card shows on every booking, as the main booking software do
+        "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else ""}
+    if spec and can(request,"notes.read"):
+        from .clients import treatments,from_booking
+        entries=treatments(booking.contact);prefill=from_booking(booking,ZoneInfo(request.tenant.timezone))
+        # what was done before this appointment, the newest first: what the operator wants to know before starting
+        ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ("confirmed","completed"),**record_options(spec))
+    return render(request,"booking_detail.html",ctx)
+def uid(value):
+    import uuid
+    try:return uuid.UUID(str(value))
+    except ValueError:return None
+def record_options(spec):
+    """Quick picks of the record form: the catalog services and people, plus what this kind of business records."""
+    names=list(dict.fromkeys(list(Service.objects.filter(active=True).order_by("name").values_list("name",flat=True))+spec["suggest"]))
+    return {"what_options":names,"staff_options":list(Resource.objects.filter(active=True).order_by("name").values_list("name",flat=True))}
+def record_action(request,contact,booking=None):
+    """2.8.0: add, edit or remove one entry of the client record. Returns the message for the page."""
+    from .clients import clean_treatment,save_treatment
+    require(request,"booking.write","notes.read")
+    item=None
+    if request.POST.get("treatment"):
+        item=Treatment.objects.filter(contact=contact,pk=uid(request.POST["treatment"])).first()
+        if not item:raise BookingError("Voce non trovata: forse è già stata eliminata.")
+    with transaction.atomic():
+        if request.POST.get("action")=="treatment_remove":
+            if not item:raise BookingError("Voce non trovata.")
+            item.delete();audit(request.tenant,request.user,"treatment.removed",contact.pk)
+            return "Voce eliminata dalla scheda."
+        d=clean_treatment(request.POST,timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date())
+        if booking is None and not item and request.POST.get("booking"):
+            # the booking it comes from: only one of this client, and only one this user may see
+            booking=visible_bookings(request,Booking.objects.filter(contact=contact)).filter(pk=uid(request.POST["booking"])).first()
+        t=save_treatment(request.tenant,contact,d,request.user,treatment=item,booking=None if item else booking)
+        audit(request.tenant,request.user,"treatment.saved",contact.pk,entry=str(t.pk),edited=item is not None)
+    return "Modifica salvata." if item else "Salvato nella scheda del cliente."
 def contacts(request,slug):
     """2.7.0: search by name, phone or email; visits and last visit of each client; clients added by hand."""
     from .clients import search as find,clean,find_or_create,visit_counts
@@ -275,7 +376,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -291,7 +392,13 @@ def contact_detail(request,slug,contact_id):
             messages.success(request,"Dati del cliente cancellati. Lo storico dei consensi resta, senza dati personali.")
             return redirect("contacts",slug)
         except BookingError as ex:messages.error(request,str(ex))
-    from .clients import history as visits,update
+    from .clients import history as visits,update,treatments,from_booking
+    from .presets import record
+    spec=record(request.tenant)
+    if request.method=="POST" and request.POST.get("action") in ("treatment","treatment_remove") and spec:
+        try:messages.success(request,record_action(request,contact))
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#scheda")
     if request.method=="POST" and request.POST.get("action") in ("notes","card"):
         require(request,"booking.write",*(("notes.read",) if request.POST["action"]=="notes" else ("pii.read",)))
         try:
@@ -306,8 +413,22 @@ def contact_detail(request,slug,contact_id):
     page=Paginator(rows,100).get_page(request.GET.get("page"))
     for b in page:b.shown=shown(request,b.data)
     raw=contact.data
-    return render(request,"contact_detail.html",{"contact":contact,"data":shown(request,raw),"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
-        "notes":raw.get("staff_notes","") if can(request,"notes.read") else None})
+    notes_ok=can(request,"notes.read")
+    ctx={"contact":contact,"data":shown(request,raw),"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
+        "notes":raw.get("staff_notes","") if notes_ok else None,"spec":spec if notes_ok else None,
+        # 2.8.0: every allergy or intolerance the client ever ticked, newest bookings first
+        "allergies":list(dict.fromkeys(a for b in rows for a in b.data.get("allergies",[]))) if notes_ok else []}
+    if spec and notes_ok:
+        now=timezone.now();tz=ZoneInfo(request.tenant.timezone)
+        entries=treatments(contact)
+        recorded={t.booking_id for t in entries if t.booking_id}
+        for b in page:b.recorded=b.pk in recorded;b.recordable=b.start<=now and b.status in ("confirmed","completed")
+        prefill=None
+        if request.GET.get("da"):
+            b=visible_bookings(request,Booking.objects.filter(contact=contact)).filter(pk=uid(request.GET["da"])).first()
+            if b:prefill=from_booking(b,tz)
+        ctx.update(tpage=Paginator(entries,30).get_page(request.GET.get("tp")),entries_count=len(entries),prefill=prefill,today=now.astimezone(tz).date(),**record_options(spec))
+    return render(request,"contact_detail.html",ctx)
 def csv_cell(value,profile):
     s=str(value if value is not None else "")
     if profile=="sheet" and (s.lstrip().startswith(("=","+","-","@")) or s.startswith(("\t","\r","\n"))):s="'"+s
@@ -325,10 +446,10 @@ def export(request,slug):
         qs=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).order_by("start")
         notes=can(request,"notes.read")
         if qs.count()>50000:return HttpResponse("Restringi l'intervallo.",status=400)
-        header=["ID","Nome","Cognome","Email","Telefono","Inizio","Fine","Stato","Servizio","Sede","Risorsa","Note cliente","Note interne","Campi aggiuntivi"]
+        header=["ID","Nome","Cognome","Email","Telefono","Inizio","Fine","Stato","Servizio","Sede","Risorsa","Note cliente","Note interne","Campi aggiuntivi","Intolleranze"]
         for booking in qs.iterator(chunk_size=200):
             d=booking.data
-            rows.append([booking.pk,d.get("first_name"),d.get("last_name"),d.get("email"),d.get("phone"),booking.start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.end.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.status,booking.snapshot.get("service"),booking.snapshot.get("location"),booking.snapshot.get("resource"),d.get("notes") if notes else "",d.get("internal_notes") if notes else "",__import__("json").dumps(d.get("answers",{}),ensure_ascii=False)])
+            rows.append([booking.pk,d.get("first_name"),d.get("last_name"),d.get("email"),d.get("phone"),booking.start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.end.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.status,booking.snapshot.get("service"),booking.snapshot.get("location"),booking.snapshot.get("resource"),d.get("notes") if notes else "",d.get("internal_notes") if notes else "",__import__("json").dumps(d.get("answers",{}),ensure_ascii=False),", ".join(d.get("allergies",[])) if notes else ""])
     elif kind in ("contacts","marketing"):
         qs=campaign_contacts() if kind=="marketing" else Contact.objects.exclude(email_index__startswith="erased:").order_by("created")
         if qs.count()>50000:return HttpResponse("Richiedi un export di portabilità da console per oltre 50.000 contatti.",status=400)

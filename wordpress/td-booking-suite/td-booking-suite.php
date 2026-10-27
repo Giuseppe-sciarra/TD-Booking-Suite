@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite (Cloud o Private). Si collega al portale con un codice e si configura da solo. Nessun dato personale nel database WordPress.
- * Version: 2.7.0
+ * Version: 2.8.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.7.0';
+const TDBS_VERSION='2.8.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -30,7 +30,8 @@ function tdbs_clean_origin($value) {
     $origin=rtrim(esc_url_raw(trim((string)$value),tdbs_schemes()),'/');
     $url=wp_parse_url($origin);
     if (!$origin || empty($url['host']) || !in_array($url['scheme']??'',tdbs_schemes(),true) || !empty($url['path']) || !empty($url['query']) || !empty($url['user']) || !empty($url['fragment'])) return '';
-    return $origin;
+    // the browser reports origins in lower case: the frame resizer compares them as they are
+    return strtolower($origin);
 }
 /** What the portal sent: names and ids of locations and services, nothing personal. */
 function tdbs_clean_profile($data) {
@@ -48,7 +49,8 @@ function tdbs_clean_profile($data) {
 function tdbs_sanitize($value) {
     $old=tdbs_settings();
     if (!is_array($value)) return $old;
-    if (!empty($value['disconnected'])) return array();
+    // disconnected: the Prenota page is remembered, so connecting again does not publish a second one
+    if (!empty($value['disconnected'])) return !empty($old['page'])?array('page'=>absint($old['page'])):array();
     $origin=tdbs_clean_origin($value['origin']??'');
     if (!$origin) {add_settings_error('tdbooking','origin','Indica l’indirizzo del portale come https://dominio, senza percorso.');return $old;}
     $slug=sanitize_title($value['tenant']??'');
@@ -84,7 +86,7 @@ function tdbs_site_origin() {
 }
 function tdbs_booking_page($create) {
     $s=tdbs_settings();
-    if (!empty($s['page']) && get_post_status((int)$s['page'])) return (int)$s['page'];
+    if (!empty($s['page']) && !in_array(get_post_status((int)$s['page']),array(false,'trash'),true)) return (int)$s['page'];
     if (!$create) return 0;
     $id=wp_insert_post(array('post_title'=>'Prenota','post_name'=>'prenota','post_status'=>'publish','post_type'=>'page','post_content'=>'<!-- wp:shortcode -->[td_booking_suite]<!-- /wp:shortcode -->'),true);
     return is_wp_error($id)?0:(int)$id;

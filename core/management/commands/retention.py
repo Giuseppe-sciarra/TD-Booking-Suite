@@ -14,4 +14,4 @@ class Command(BaseCommand):
         if kw["apply"]:
             RateBucket.objects.filter(ends__lt=timezone.now()).delete();Ceremony.objects.filter(expires__lt=timezone.now()).delete()
         verb="Applicato" if kw["apply"] else "Simulazione"
-        self.stdout.write(f"{verb}: {report['bookings']} prenotazioni, {report['contacts']} contatti, {report['deliveries']} email.")
+        self.stdout.write(f"{verb}: {report['bookings']} prenotazioni, {report['contacts']} contatti, {report['treatments']} voci della scheda cliente, {report['deliveries']} email.")

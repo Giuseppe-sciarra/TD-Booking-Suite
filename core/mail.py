@@ -23,6 +23,9 @@ def public_addresses(host,port):
         addresses.append((family,kind,proto,addr))
     if not addresses:raise ValueError("SMTP non risolvibile.")
     return addresses
+class Unreachable(smtplib.SMTPResponseException):
+    """The server could not be reached or refused the session before any message was handed over: safe to retry."""
+    def __init__(self,ex):super().__init__(451,"Server non raggiungibile: "+str(ex)[:200])
 class PinnedSMTP(smtplib.SMTP):
     def _get_socket(self,host,port,timeout):
         family,kind,proto,addr=public_addresses(host,port)[0]
@@ -59,11 +62,18 @@ def send_message(config,payload,message_id):
     if config.get("method","smtp")!="smtp":
         from .mailapi import send
         return send(config,message)
-    with cls(config["host"],config["port"],**kwargs) as smtp:
-        smtp.ehlo()
-        if config["mode"]=="starttls":
-            smtp.starttls(context=ssl.create_default_context());smtp.ehlo()
-        if config["username"]:smtp.login(config["username"],config["password"])
+    # refused, DNS, timeouts before MAIL FROM: nothing has left yet, the outbox retries like a busy server
+    try:smtp=cls(config["host"],config["port"],**kwargs)
+    except (ssl.SSLError,ValueError):raise
+    except OSError as ex:raise Unreachable(ex)
+    with smtp:
+        try:
+            smtp.ehlo()
+            if config["mode"]=="starttls":
+                smtp.starttls(context=ssl.create_default_context());smtp.ehlo()
+            if config["username"]:smtp.login(config["username"],config["password"])
+        except (smtplib.SMTPResponseException,ssl.SSLError):raise
+        except OSError as ex:raise Unreachable(ex)
         # 2.6.0: the envelope comes from the authenticated mailbox (smtp@...), the From header shows the
         # sender the customers see (info@...): servers such as Register.it and Aruba accept any address
         # of the domain this way, and SPF and DMARC stay aligned on the same domain
@@ -81,6 +91,7 @@ def send_test(config,to,name):
         send_message(config,{"to":to,"subject":"Email di prova da "+name,"body":body},"<test-"+secrets.token_hex(8)+"@"+settings.PUBLIC_ORIGIN.split("//")[-1]+">")
         return ""
     except ApiError as ex:return str(ex)
+    except Unreachable as ex:return str(ex.smtp_error)
     except smtplib.SMTPAuthenticationError:return "Il server ha rifiutato utente o password."
     except smtplib.SMTPRecipientsRefused:return "Il server ha rifiutato il destinatario."
     except smtplib.SMTPSenderRefused:return "Il server non accetta questo mittente: deve essere un indirizzo autorizzato sull'account SMTP."

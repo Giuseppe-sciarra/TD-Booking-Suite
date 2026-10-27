@@ -8,7 +8,7 @@ from django.db.models import Count,Max,Q
 from django.utils import timezone
 from .booking import BookingError,normalize_phone
 from .crypto import encrypt,index,tenant_key
-from .models import Contact,Booking
+from .models import Contact,Booking,Treatment
 
 ERASED="erased:"
 
@@ -38,15 +38,24 @@ def clean(data,require_contact=True):
 
 def key_for(tenant,d):return email_index(tenant,d["email"]) if d.get("email") else phone_index(tenant,d["phone"])
 
+def by_phone(tenant,phone,without_email=False):
+    """The card of a phone number: keyed by it (added at the desk without email) or with it among its data
+    (booked online, keyed by the email). The same phone means the same person; without_email keeps only cards
+    with no email, for an online request that brings its own (two emails are two people, even on one phone).
+    shortcut: reads up to 5000 cards, most recent first; add a phone index column past that size."""
+    if not phone:return None
+    c=Contact.objects.filter(email_index=phone_index(tenant,phone)).first()
+    if c:return c
+    for c in Contact.objects.exclude(email_index__startswith=ERASED).order_by("-created")[:5000]:
+        d=c.data
+        if d.get("phone")==phone and not (without_email and d.get("email")):return c
+    return None
+
 def find_or_create(tenant,d):
     """The contact of a manual booking or of a client added by hand: by email, then by phone."""
-    for idx in ([email_index(tenant,d["email"])] if d.get("email") else [])+([phone_index(tenant,d["phone"])] if d.get("phone") else []):
-        c=Contact.objects.filter(email_index=idx).first()
-        if c:return c,False
-    if d.get("phone"):
-        # a client who booked online has the email as key: the same phone means the same person
-        for c in Contact.objects.exclude(email_index__startswith=ERASED).order_by("-created")[:5000]:
-            if c.data.get("phone")==d["phone"]:return c,False
+    c=Contact.objects.filter(email_index=email_index(tenant,d["email"])).first() if d.get("email") else None
+    c=c or by_phone(tenant,d.get("phone"))
+    if c:return c,False
     c=Contact(tenant=tenant,email_index=key_for(tenant,d))
     c.pii=encrypt(tenant,{k:d.get(k,"") for k in ("first_name","last_name","email","phone")},"contact:"+str(c.pk));c.save()
     return c,True
@@ -90,6 +99,42 @@ def history(contact,visible):
         "cancelled":sum(1 for b in rows if b.status=="cancelled"),"no_show":sum(1 for b in rows if b.status=="no_show"),
         "service":services.most_common(1)[0] if services else None,"staff":staff.most_common(1)[0] if staff else None,"total":len(rows)}
     return rows,stats
+
+def clean_treatment(data,today):
+    """2.8.0: one entry of the client record typed by the staff: a past or today's date, what was done (required),
+    who did it and the details, line breaks included."""
+    from datetime import date
+    try:day=date.fromisoformat(str(data.get("date","")))
+    except ValueError:raise BookingError("Data non valida.")
+    if day>today:raise BookingError("La data non può essere nel futuro: qui si scrive quello che è stato fatto.")
+    if day.year<1900:raise BookingError("Data non valida.")
+    out={"date":day}
+    for k,limit in (("service",120),("staff",100)):
+        v=str(data.get(k,"") or "").strip()
+        if len(v)>limit or any(ord(c)<32 for c in v):raise BookingError("Dati non validi o troppo lunghi.")
+        out[k]=v
+    if not out["service"]:raise BookingError("Scrivi cosa è stato fatto.")
+    details=str(data.get("details","") or "").replace("\r\n","\n").strip()
+    if len(details)>4000 or any(ord(c)<32 and c not in "\n\t" for c in details):raise BookingError("Dettagli non validi o troppo lunghi.")
+    out["details"]=details
+    return out
+
+def save_treatment(tenant,contact,d,actor,treatment=None,booking=None):
+    t=treatment or Treatment(tenant=tenant,contact=contact,booking=booking,author=str(getattr(actor,"pk","") or ""))
+    t.date=d["date"];t.pii=encrypt(tenant,{k:d[k] for k in ("service","staff","details")},"treatment:"+str(t.pk))
+    t.save();return t
+
+def treatments(contact):
+    """The record of a client, newest first, each entry with its decrypted info."""
+    rows=list(Treatment.objects.filter(contact=contact).select_related("booking").order_by("-date","-created"))
+    for r in rows:r.info=r.data
+    return rows
+
+def from_booking(booking,tz):
+    """What a booking already says about the treatment: day, service with its variant, who."""
+    s=booking.snapshot
+    return {"date":booking.start.astimezone(tz).date(),"service":(s.get("service") or booking.service.name)+(" · "+s["option"] if s.get("option") else ""),
+        "staff":s.get("resource") or "","details":"","booking":str(booking.pk)}
 
 def visit_counts(contacts):
     """Visits and last visit for a page of the client list."""

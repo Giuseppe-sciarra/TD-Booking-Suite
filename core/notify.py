@@ -51,3 +51,4 @@ def send_telegram(tenant,payload):
             if not json.loads(response.read() or b"{}").get("ok"):raise TelegramError("telegram_rejected",False)
     except urllib.error.HTTPError as ex:
         raise TelegramError(f"telegram_{ex.code}",ex.code==429 or ex.code>=500)
+    except urllib.error.URLError:raise TelegramError("telegram_unreachable",True)  # network down: retry instead of losing it
