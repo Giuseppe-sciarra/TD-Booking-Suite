@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block topbar %}{% endblock %}{% block notices %}{% endblock %}{% block footer %}{% endblock %}{% block content %}<div class="showcase">
+<header class="show-hero"><span class="orb orb-a" aria-hidden="true"></span><span class="orb orb-b" aria-hidden="true"></span>{% include '_show_nav.html' %}
+ <div class="show-head"><h1>{{ site.why_title }}</h1><p>{{ site.why_intro }}</p></div>
+</header>
+<div class="show-body">
+ {% if points %}<section class="why-points">{% for title,text in points %}<article><span class="why-num" aria-hidden="true">{{ forloop.counter }}</span><div><h2>{{ title }}</h2>{% if text %}<p>{{ text }}</p>{% endif %}</div></article>{% endfor %}</section>{% endif %}
+ {% if rows and columns %}<section class="compare"><h2>Cosa cambia, punto per punto</h2><div class="table-scroll"><table><thead><tr><th><span class="sr-only">Voce</span></th>{% for c in columns %}<th{% if forloop.first %} class="ours"{% endif %}>{{ c }}</th>{% endfor %}</tr></thead><tbody>{% for label,cells in rows %}<tr><th scope="row">{{ label }}</th>{% for cell in cells %}<td{% if forloop.first %} class="ours"{% endif %}>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% if site.why_note %}<p class="show-note compare-note">{{ site.why_note }}</p>{% endif %}</section>{% endif %}
+ <section class="show-band"><div><h2>Pronto a provarlo?</h2><p>{% if pricing_on %}Guarda i piani oppure chiedici una prova con la tua attività{% else %}Chiedici una prova con la tua attività{% endif %}</p></div><span class="band-actions">{% if pricing_on %}<a class="button show-ghost" href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}{% if trial_available %}<a class="button show-cta" href="{% url 'trial' %}">Richiedi la prova</a>{% endif %}</span></section>
+</div>
+<footer class="show-foot"><span class="foot-name">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}</span><span>{% if pricing_on %}<a href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}<a href="{% url 'privacy' %}">Privacy</a><a href="{% url 'login' %}">Accedi</a></span></footer>
+</div>{% endblock %}

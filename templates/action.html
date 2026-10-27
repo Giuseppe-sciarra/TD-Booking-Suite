@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="card auth-card centered"><span class="eyebrow">{{ tenant.name }}</span><h1>{{ title }}</h1>{% if done %}<p>Richiesta già registrata.</p>{% else %}<p>Conferma per completare l'operazione.</p><form method="post">{% csrf_token %}<button class="primary wide">Conferma</button></form>{% endif %}</section>{% endblock %}

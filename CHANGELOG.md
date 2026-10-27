@@ -1,0 +1,283 @@
+# TD Booking Suite 2.7.0 — registro modifiche
+
+**26 ottobre 2026 · versione 2.7.0 · copia di lavoro `work/implementation/td-booking-suite` (ex Prenodo) · sorgenti recuperati invariati**
+
+La fase 1 del piano chiude sul prototipo i rilievi di coda email, spostamenti, calendario, validazione e anagrafiche, più N09, N11, N13 e N14. Ogni rilievo ha almeno un test di regressione che **fallisce sul codice di partenza e passa su quello corretto** (27 fallimenti sulla baseline, 0 dopo le modifiche).
+
+## 2.7.0 — scheda cliente con lo storico, prenotazioni inserite a mano
+
+- **Scheda cliente** (Clienti, poi il nome): tutto quello che il cliente ha prenotato, dal più recente, con data, ora, servizio, variante, con chi, persone, sede, stato, le note del cliente e le note interne della prenotazione. In alto visite fatte e ultima visita, prossima prenotazione, servizio preferito e con chi di solito, disdette e assenze. Ognuno vede solo le prenotazioni che il suo ruolo permette
+- **Note sul cliente**, che restano per le prossime volte: il colore usato, le allergie, le preferenze. Le scrive chi crea prenotazioni, le legge chi vede le note; il cliente non le vede mai e sono cifrate come il resto. Dalla scheda si correggono anche nome, telefono ed email
+- **Nuova prenotazione dalla scheda**: il pulsante apre la prenotazione a mano con il cliente già scelto. Dalla prenotazione si torna alla scheda con *Scheda cliente e storico*
+- **Prenotazione a mano più veloce**: si cerca il cliente in rubrica per nome, cognome o telefono e si sceglie con un clic; per uno nuovo bastano nome e telefono. Cognome ed email sono facoltativi: senza email non parte la conferma. Un cliente che ha già prenotato online viene riconosciuto dal telefono, così lo storico resta uno solo. Niente consenso marketing chiesto a nome del cliente
+- **Clienti**: ricerca per nome, cognome, telefono o email (prima solo email esatta), visite e ultima visita di ognuno, etichetta per chi ha una prenotazione in arrivo. **Nuovo cliente** per chi chiama o passa in negozio, anche senza email; se c'è già, si apre la sua scheda
+- **Login con gli effetti anche su Windows con le animazioni spente**: le sfere, la luce, i chip, la scritta che cambia e l'anteprima restavano ferme quando il sistema chiede di ridurre le animazioni (Windows lo fa con Effetti animazione disattivati, spesso anche in desktop remoto). Ora si muovono sempre, in tutto il portale
+- **Modulo di prenotazione nell'ordine giusto**, sulla pagina pubblica e quindi anche nel sito WordPress che la mostra: prima i recapiti, poi la prenotazione su una riga sola che si adatta all'attività (ristorante: persone e data; parrucchiere ed estetista: operatore e data; hotel: camera, ospiti, arrivo e partenza), in fondo le richieste, la privacy e il consenso. Lo stesso nella prenotazione a mano: prima il cliente. Se c'è un solo servizio il messaggio chiede solo la data
+- **Richiesta di prova**: il link alla privacy nel consenso resta dentro la frase, prima finiva staccato a destra
+- `tests/test_clients.py`: 5 test nuovi (prenotazione al banco con il solo telefono e stesso cliente riconosciuto, cliente online ritrovato dal telefono, prenotazione dalla scheda e cliente non scelto dalle richieste online, storico e numeri della scheda, note cifrate e visibili solo a chi può, modifica dei dati, clienti aggiunti a mano, ricerca e permessi)
+
+## 2.6.1 — ristorante senza turni di serie, orari all'italiana, telefono senza prefisso, dashboard ordinata
+
+- **Ristorante senza turni, di serie**: il cliente sceglie solo l'ora di arrivo e i coperti valgono per tutto il pranzo o tutta la cena, fino alla chiusura della fascia di apertura. Con 40 coperti a pranzo, quando sono prenotati tutti il pranzo è pieno, e la cena ha i suoi 40. Niente più "fino alle" sotto gli orari. Il lavoro **a turni** (il tavolo si libera dopo un tempo fisso e si riprenota) diventa un'opzione del servizio, *A turni: il posto si libera dopo un tempo fisso*, per i locali che lo fanno e per corsi, officine e ogni prenotazione a posti: solo se è accesa compaiono *Quanto resta occupato il posto* e la pausa dopo. I servizi da ristorante creati con la 2.6.0 passano da soli senza fasce (migrazione `0017`); gli altri restano com'erano
+- **Orari all'italiana**: 12:30, 20:00, sempre a 24 ore e senza "CET" accanto; tolta la riga del fuso orario, che compare solo per un'attività fuori dall'Italia. Gli orari stanno in una griglia regolare
+- **Telefono senza prefisso**: il cliente scrive il numero come gli viene, per esempio 333 123 4567, 06-1234567, 0039 o +39. Il portale lo salva con il +39 davanti. Un numero estero con il suo prefisso resta com'è
+- Per scegliere un operatore, la voce *Prima risorsa disponibile* diventa *Il primo disponibile*
+- **Dashboard dell'attività**: le schede sono tutte larghe e alte uguali, due per riga (oggi, prossimi 7 giorni, prenotazioni ricevute, come sono andate, servizi più richiesti, clienti); gli elenchi lunghi scorrono dentro la scheda. Sul telefono una sotto l'altra. Le prenotazioni di oggi sono un elenco compatto: ora, cliente, servizio e persone, stato. Nell'agenda la colonna di operatori o camere compare solo dove ci sono, con il loro nome; al ristorante l'orario non ha più il "fino alle"
+- Al ristorante sparisce anche il collegamento *Varianti dei servizi* sotto i servizi in *Configura l'attività*
+- `tests/test_profile.py`: 5 test nuovi (coperti per pranzo e cena senza turni, turni accesi, orari a 24 ore, telefono senza prefisso, niente varianti al ristorante)
+
+## 2.6.0 — configurazione in un clic, plugin che si collega da solo, Gmail e Microsoft 365
+
+- **Tipo di attività e sedi in un passo** (*Configura l'attività*, in cima): scegli il tipo tra i 16 disponibili (ristorante e pizzeria, parrucchiere, studio medico, SPA, hotel, eventi...) e il numero di sedi con i loro nomi: da una a cinque con un clic, oppure *Di più* e il numero, fino a 50. **Applica la configurazione** rifà il catalogo per quel tipo, uguale in ogni sede, con valori pronti da ritoccare. Il ristorante ha il tavolo con 40 posti nello stesso momento, il parrucchiere Taglio, Piega e Colore con due operatori, l'hotel le camere, l'evento le serate già in calendario per otto settimane. Ci sono anche gli orari tipici e le sedi rinominate o aggiunte. **Le prenotazioni non si toccano mai**: quello che usano viene solo disattivato, il resto si cancella. Pagina prenotazioni e modulo nel sito cambiano nello stesso momento, utile anche per una demo che passa da pizzeria a parrucchiere a hotel. Nel Cloud lo fa solo l'agenzia: l'amministratore del cliente vede il riepilogo e la frase "lo imposta l'agenzia", e il server rifiuta la richiesta anche se inviata a mano. Nel Private lo fa l'amministratore dell'installazione. Nella scheda cliente il tipo compare in *Come è configurato* con il collegamento *Cambia*. Il tipo non si sceglie più in *Impostazioni e sito*, per non avere due posti
+- **Plugin WordPress che si configura da solo**: in *Configura l'attività › Sito WordPress* l'agenzia (o l'amministratore del Private) genera un **codice di collegamento**, valido 24 ore e una volta sola. In WordPress, *Impostazioni › TD Booking Suite › Collegati al portale*, si inseriscono indirizzo del portale e codice. Il plugin autorizza da solo il sito per il modulo, legge nome, sedi e servizi, crea la pagina **Prenota** con il modulo ed elenca gli shortcode pronti: tutto, una sola sede (`[td_booking_suite location="..."]`) o un solo servizio. *Aggiorna la configurazione* rilegge l'elenco; il modulo nel sito è sempre in tempo reale. Dal portale si vedono i siti collegati e si scollegano con un clic. Le impostazioni manuali restano disponibili. Plugin 2.6.0
+- **Invio email con Google / Gmail e Microsoft 365 / Exchange**, come in TD Forms, per l'agenzia e per ogni attività, oltre all'SMTP. **Google**: Client ID e secret della propria app Google Cloud, poi *Collega con Google* e il consenso al solo invio (`gmail.send`); le email partono dall'API Gmail, anche da un alias "Invia come". **Microsoft 365**: ID directory, ID applicazione, segreto e casella, con il permesso `Mail.Send` dell'applicazione; le credenziali si verificano al salvataggio. In entrambi i casi parte lo stesso messaggio dell'SMTP, con disiscrizione e identificativo. La pagina spiega i passaggi una volta sola, con l'indirizzo di ritorno da copiare, e mostra l'account collegato. Errori chiari, nuovo tentativo se il servizio è occupato. Tutto cifrato come prima. L'invio si può anche rimuovere: le conferme tornano all'invio dell'agenzia
+- **SMTP con mittente diverso dalla casella autenticata**: la busta parte dall'utente SMTP (per esempio smtp@) e i clienti vedono l'indirizzo scelto (info@). Register.it, Aruba e simili accettano così qualunque indirizzo del dominio. Pulsanti per i fornitori più comuni (Gmail, Microsoft 365, Aruba, Register.it, OVHcloud, Brevo) che compilano server e porta e spiegano utente, password e mittente. La scheda cliente mostra come partono le conferme dell'attività e porta alla pagina dell'invio
+- **Resta collegato**: all'accesso la casella, spuntata di serie, tiene il dispositivo collegato per 30 giorni dall'ultima visita (valore in `TDBS_SESSION_REMEMBER_DAYS`), anche con la passkey. Chi lavora alla cassa o in reception non si ritrova più fuori ogni mezz'ora. Senza la spunta la sessione finisce dopo 30 minuti di inattività o alla chiusura del browser. Le operazioni sensibili chiedono comunque di confermare chi sei
+- **Tolto il passaggio da TD Booking**, il vecchio plugin che non esiste più. Dal plugin spariscono l'interruttore *Passaggio completato*, l'export dei dati, il file di ritorno e lo shortcode `[td_booking]`. Dal portale spariscono il comando `import_legacy`, il parametro `legacy_service` della pagina prenotazioni e la tabella `core_legacymap`, eliminata dalla migrazione `0016`. Spariscono anche la guida `MIGRAZIONE.md` e le prove relative. Restano, con prove proprie, le funzioni nate per allinearsi a TD Booking: camere e mezzi con il loro nome, soggiorno minimo, termine di disdetta
+- **La scritta animata della pagina di accesso** ("Per ristoranti e pizzerie", poi parrucchieri, hotel...) a volte non compariva, poi arrivava di colpo e non si leggeva. Il testo con la sfumatura ritagliata sulle lettere, mosso da una trasformazione, in alcuni browser restava invisibile fino al ridisegno. Ora è un testo pieno che sfuma e scorre di poco ogni 3 secondi, sempre leggibile; il titolo è bianco pieno. Con il movimento ridotto nel sistema la scritta resta ferma
+- **Gestori di password fuori da tutte le pagine**: 1Password, Bitwarden, LastPass, Dashlane e il browser non compilano e non propongono più di salvare password e utenti nelle pagine del portale: SMTP, segreti di Google e Microsoft, password scelte per altri utenti, catalogo, impostazioni, prenotazioni a mano, pagine dell'agenzia. Restano solo dove servono: accesso, codice del secondo fattore, conferma con la password, invito e password del proprio account. Nella pagina prenotazioni pubblica i gestori stanno zitti, ma il browser suggerisce ancora al cliente nome, email e telefono. Il campo della password SMTP e i segreti sono marcati anche nel codice della pagina, il resto lo fa lo script del portale
+- **Catalogo che parla la lingua dell'attività**: ogni sede, servizio, operatore o camera, variante, turno e data si può **eliminare** dall'elenco. Se ci sono prenotazioni collegate viene solo disattivato: resta nello storico, le prenotazioni già fatte restano valide e non se ne fanno di nuove. Una sede porta via con sé i suoi servizi e le sue risorse; l'ultima sede non si elimina. Le "risorse" prendono il nome giusto per il tipo di attività: Operatori dal parrucchiere, Professionisti nello studio medico, Camere in hotel, Campi e sale, Istruttori, Mezzi. Al ristorante, e dove si prenotano solo posti, non compaiono proprio, e nemmeno le varianti: bastano posti e orari. La pagina dei servizi spiega la differenza con le sedi (la sede è il luogo, il servizio è cosa si prenota lì) e mostra la sede di ogni servizio. Gli elementi disattivati vanno in fondo con l'etichetta. Il riquadro dei modelli per l'agenzia porta a *Tipo di attività e sedi*, il modello del singolo servizio resta in un menu
+- **Moduli del catalogo**: il modulo di un servizio nuovo partiva sempre come appuntamento con operatore, perché un identificativo esiste già prima del salvataggio. Così il ristorante mostrava notti e check-in. Ora segue davvero il tipo di prenotazione: il ristorante ha *Posti disponibili nello stesso momento* come tetto massimo, durata del tavolo e intervallo degli orari spiegati con esempi, e niente notti. L'attività non sceglie il tipo, l'agenzia sì. Etichette in italiano anche per indirizzo e telefono della sede; con una sola sede o un solo servizio il campo non compare; nome della sede solo dove ce n'è più di una. L'agenzia modifica il catalogo di ogni attività senza accesso di assistenza
+- **Prezzi e versioni**: tutti i piani sulla stessa riga, larghi uguali, con nome, prezzo, voci e pulsante allineati; la versione (Cloud o Private) è un'etichetta sulla scheda. Nuovo campo **Mesi gratuiti** per piano: "I primi 2 mesi sono gratis" in verde sotto il prezzo
+- **Perché sceglierci** (prima *Perché sceglierlo*, all'indirizzo `/perche-sceglierci/`; il vecchio rimanda al nuovo): collegata anche dalla pagina di accesso, in alto accanto a *Prezzi e versioni*. **Il nome dell'azienda porta al suo sito** sotto il logo e in fondo alle pagine pubbliche: nuovo campo *Sito di chi lo offre* in Impostazioni generali (di serie tastieredigitali.it)
+- Migrazione `0016`: mesi gratuiti dei piani, sito dell'azienda, codice di collegamento WordPress, titolo della pagina Perché sceglierci, tabella del passaggio da TD Booking eliminata
+- `tests/test_profile.py`: 26 test nuovi (elimina e disattiva dal catalogo, ristorante senza operatori e varianti, ogni tipo produce un catalogo prenotabile, ristorante con posti e senza notti su due sedi, prenotazioni conservate al cambio di tipo, nomi delle sedi, più di cinque sedi, profilo riservato all'agenzia nel Cloud e all'amministratore nel Private, scheda cliente; codice WordPress monouso, scaduto, sito non valido, generato e mostrato una volta, scollegamento, configurazione pubblica e filtro per sede, plugin con il collegamento; busta SMTP dalla casella autenticata, Gmail collegato e invio con l'API, Microsoft 365 con segreto verificato, errori di configurazione e servizio occupato, pagina riservata e rimozione; modulo del servizio per tipo, sede in italiano; piani su una riga e mesi gratuiti; nome dell'azienda con il suo sito; Resta collegato; gestori di password fuori dai moduli). `tests/test_phase3.py` tiene le prove di camere e mezzi su dati costruiti direttamente, senza import. Collaudo WordPress rifatto sul solo connettore: shortcode senza collegamento, impostazioni manuali, collegamento con il codice, pagina Prenota, codice monouso, aggiornamento, sede e tema, autorizzazione del sito, scollegamento
+
+## 2.5.0 — pagine pubbliche, privacy, due loghi
+
+- **Prezzi e versioni** (`/prezzi/`, edizione Cloud): pagina pubblica con i piani divisi per versione (Cloud in abbonamento, Private sul server del cliente), prezzo, periodo, nota, voci incluse, etichetta come "Il più scelto", pulsante (di serie porta alla richiesta di prova), punti di forza, domande frequenti e nota sui prezzi. Tutto si scrive da **Area agenzia › Prezzi e versioni**, piani compresi (aggiungi, modifica, nascondi, ordina, elimina). È **spenta di serie**: si accende con una casella e compare il collegamento sotto l'accesso. Pensata per il portale dimostrativo, da lasciare spenta sull'installazione che serve i clienti. Arriva con tre piani di esempio da cambiare
+- **Perché sceglierlo** (`/perche-sceglierlo/`): pagina a parte, anche questa spenta di serie e collegata solo da Prezzi e versioni, con i motivi numerati e una tabella di confronto per categorie (la colonna del portale in evidenza) e una nota. Colonne e righe si scrivono dal pannello, una per riga con le celle separate da |
+- **Privacy** (`/privacy/`, sempre attiva): con il testo vuoto mostra una informativa standard compilata con ragione sociale, partita IVA, sede, email per la privacy e luogo dei server inseriti in *Impostazioni generali › Dati dell'azienda e privacy*; oppure si scrive un testo proprio, con ## per i titoli e il trattino per gli elenchi (sempre trattato come testo, mai come HTML). Data di aggiornamento automatica quando cambiano i dati della privacy. Collegata dall'accesso e dal consenso del modulo di prova. **Nessun banner cookie**: il portale usa solo cookie tecnici (sessione e protezione dei moduli) e la memoria del browser per tema e vista, e la pagina lo spiega
+- **Due loghi del portale**, uno per gli sfondi chiari e uno per quelli scuri: menu laterale e pagina di accesso, che hanno sempre lo sfondo scuro, usano quello scuro; modulo di accesso e barra in alto seguono il tema chiaro o scuro. Senza il logo scuro, quello chiaro va su un riquadro bianco. I **loghi orizzontali** si vedono per intero, senza il nome ripetuto accanto; i margini trasparenti vengono tolti al caricamento e il logo è conservato fino a 800 × 300 px (prima veniva ridotto a un quadrato di 256 px e su un fondo bianco sembrava sparire). Anteprima dei due loghi su fondo chiaro e scuro nelle impostazioni
+- `tests/test_showcase.py`: 11 test nuovi (markup pulito e senza stili in linea; pagine spente di serie, piani attivi per versione, pagina del confronto a parte e collegata solo dai prezzi, niente vetrina in Private, privacy standard con i dati dell'azienda, testo proprio sempre escapato, data della privacy, pannello riservato all'agenzia con collegamenti sicuri, due loghi e loghi orizzontali, ritaglio dei margini trasparenti)
+
+## 2.4.0 — dashboard per agenzia e attività, schede cliente, secondo fattore facoltativo
+
+- **Dashboard** come prima pagina dell'Area agenzia: clienti attivi, in prova e sospesi, prenotazioni degli ultimi 30 giorni con la variazione sui 30 precedenti, prenotazioni in arrivo, email inviate, grafico delle prenotazioni ricevute nelle ultime 12 settimane e tabella di utilizzo per cliente (prenotazioni, andamento, in arrivo, utenti, ultimo accesso). Il riquadro **Da controllare** raccoglie per cliente prove in scadenza o scadute, servizi sospesi, invii email non riusciti, richieste di marketing, manutenzione e clienti in cui nessuno è ancora entrato. Sono solo conteggi: nomi e contatti dei clienti delle attività restano nei loro portali
+- **Dashboard dell'attività** al posto di *Oggi*: appuntamenti di oggi, conteggi di oggi e dei prossimi 7 giorni con il grafico giorno per giorno, prenotazioni ricevute negli ultimi 30 giorni con la variazione, disdette con la percentuale sulle ricevute, grafico delle ultime 12 settimane, *Come sono andate* (svolte o confermate, disdette, assenze degli ultimi 30 giorni), servizi più richiesti e, per chi vede i clienti, rubrica, nuovi clienti e iscritti alle comunicazioni. Ogni numero passa dagli stessi filtri dell'agenda: l'operatore sede conta solo la sua sede o le sue risorse, il ruolo Marketing non vede numeri sulle prenotazioni
+- **Clienti**: vista a griglia o a elenco (la scelta resta sul browser), ricerca per nome, città, settore o referente, filtro per stato con i conteggi. Ogni card mostra logo, referente principale, numeri e andamento
+- **Scheda cliente**: logo (lo stesso della pagina prenotazioni), anagrafica con ragione sociale, partita IVA, codice fiscale, SDI, PEC, email, telefono, indirizzo, città, settore, data di inizio e sito, note interne, referenti con ruolo, email, telefono e note (uno principale), utenti del portale con secondo fattore e ultimo accesso, collegamenti a Impostazioni e sito, Persone e permessi e pagina prenotazioni. Anagrafica e referenti stanno nella nuova tabella `core_clientprofile`, cifrati con la chiave del cliente e sotto la stessa separazione per attività delle altre tabelle (migrazione `0012`); il portale del cliente non li legge mai
+- **Nuovo cliente** su una pagina sua, con il referente facoltativo che finisce subito nella scheda. Dopo la creazione la pagina mostra il link di invito e porta alla scheda
+- **Secondo fattore facoltativo** per tutti i ruoli: con la sola password si entra subito, senza passare dalla pagina di configurazione, e in alto resta l'avviso *Proteggi il tuo account* con il pulsante *Attiva ora* finché non si aggiunge Authenticator o una passkey. Chi l'ha attivato continua a usarlo all'accesso. Le pagine sensibili chiedono di nuovo la password, al massimo ogni 15 minuti, a chi non ha un secondo fattore. Le sessioni già aperte senza secondo fattore entrano senza ripetere l'accesso
+- **Pagina di accesso** rifatta: luci sfumate in movimento e una luce che segue il puntatore; sullo sfondo salgono piano orari, "Confermata", persone, calendari e le icone di tavolo, taglio e camera; il tipo di attività cambia da solo sopra il titolo ("Per ristoranti e pizzerie", "Per parrucchieri ed estetisti"...), il titolo ha un riflesso che scorre; l'anteprima dell'agenda si inclina seguendo il mouse, le righe entrano una alla volta e l'ultima passa da *Da confermare* a *Confermata*; il contatore delle prenotazioni sale, le barre crescono, la notifica di nuova prenotazione ricompare con testi diversi. Il modulo sta in una card con il bordo sfumato che ruota, pulsante *Mostra* per la password, email e password prima e passkey subito sotto. Tutto entra in una schermata anche sui portatili da 768 px; le animazioni si spengono da sole su chi ha chiesto al sistema di ridurre il movimento, e sul telefono resta solo il necessario
+- **Revisione di impaginazione**: sul telefono il menu sta dietro un pulsante *Menu* che apre l'elenco completo, invece della striscia tagliata che scorreva di lato; barra laterale più compatta, con i link in fondo sempre leggibili; pulsanti dei filtri alla stessa altezza dei campi; elenco di *Persone e permessi* con il titolo e i pulsanti allineati; impostazioni generali con le caselle su una riga intera
+- **Cambio di edizione documentato** (istruzioni, punto 12): da Cloud a Private e ritorno con una riga del file `.env`. Se l'edizione Private trova più di un'attività nel database, il portale non parte e spiega come tornare a Cloud, senza toccare i dati
+- **Richieste di prova** (edizione Cloud): sotto l'accesso, "Non sei ancora cliente? Prova il servizio" apre nella stessa pagina un modulo con nome, cognome, email, attività, telefono facoltativo, tipo di attività tra quelli disponibili e consenso a essere ricontattati. La richiesta arriva all'agenzia per email (indirizzo in *Impostazioni generali › Richieste di prova*, altrimenti quello di assistenza), la manda il worker con l'SMTP dell'agenzia, e resta in *Area agenzia › Richieste di prova* con il conteggio nel menu e in Dashboard. **Attiva** apre *Nuovo cliente* già compilato: attività, indirizzo breve, email, tipo di attività, referente e prova dei giorni impostati; alla creazione la richiesta passa ad *Attivate* con il collegamento alla scheda. Si possono archiviare ed eliminare. I dati sono cifrati con la chiave principale (tabella `core_trialrequest`, migrazione `0013`); il modulo ha un campo trappola per i bot e accetta al massimo 5 richieste all'ora per indirizzo. Nell'edizione Private non c'è
+- **Nome del mittente** per l'SMTP dell'agenzia e per quello delle attività: le email partono come "Booking Suite TD &lt;info@...&gt;" invece che dal solo indirizzo. Se non lo indichi vale il nome del portale. **Email di prova** dalla pagina dell'SMTP, con l'esito subito a schermo: inviata, oppure utente o password rifiutati, mittente non autorizzato, server non raggiungibile
+- Menu laterale: *Dashboard* e *Clienti* al posto di *Attività e clienti*; la voce giusta resta evidenziata anche dentro una scheda o un sottomenu. Dal portale di un'attività, il nome nella barra in alto porta alla scheda del cliente
+- `tests/test_agency.py`: 28 test nuovi (richieste di prova: pulsante solo in Cloud e se acceso, dati cifrati, controlli e trappola per i bot, limite orario, email all'agenzia con il nome del mittente, attivazione in cliente con tipo e referente, accesso riservato ed eliminazione; nome del mittente ed email di prova con esito; nome del mittente senza intestazioni nascoste; pagina di accesso con password da mostrare e animazioni disattivabili; dashboard dell'attività con ricevute, disdette e servizi; operatore che conta solo le sue prenotazioni; Marketing senza numeri sulle prenotazioni; accesso riservato all'agenzia, conteggi e segnalazioni, grafici con il punto decimale anche in italiano, griglia ed elenco, anagrafica cifrata e invisibile al cliente, valori non validi, referenti, logo, nuovo cliente con referente, utenti e secondo fattore, tabella separata per attività, accesso con sola password, conferma con password, codice ancora richiesto a chi ha Authenticator, sessioni aperte prima dell'aggiornamento)
+
+## 2.3.2 — plugin WordPress dal portale
+
+- **Area agenzia › Plugin WordPress**, solo nell'edizione Cloud e solo per l'amministratore dell'agenzia. Si scarica lo zip del connettore della stessa versione del portale, e c'è la tabella con i valori da inserire per ogni attività: indirizzo del portale (con il tasto per copiarlo), indirizzo breve e siti autorizzati, con il collegamento a Impostazioni e sito per chi non ne ha. Nell'edizione Private la pagina non esiste
+- `tests/test_site.py`: 3 test nuovi (contenuto e versione dello zip, accesso negato alle attività, nessuna pagina in Private)
+
+## 2.3.1 — aggiornamento che non lascia indietro migrate
+
+- **Errore 500 dopo l'aggiornamento alla 2.3.0.** `docker compose build` ricostruiva `web` e `worker` ma non `migrate`, che sta nel profilo "tools". Così `migrate` girava ancora con il codice vecchio, rispondeva "No migrations to apply" e la tabella nuova non veniva creata: ogni pagina, compresa quella di accesso, andava in errore. Ora i tre servizi usano la stessa immagine `tdbooking-suite:local` e un solo `docker compose build` aggiorna anche `migrate`
+- **Controllo all'avvio.** `web` e `worker` non partono se il database non ha tutte le migrazioni della versione: nel log c'è l'elenco e il comando da lanciare. Le impostazioni generali, se la loro tabella manca, usano i valori predefiniti invece di rompere le pagine
+- **Gunicorn 26** apriva un socket di controllo nella cartella dell'utente, che nel container è in sola lettura, e scriveva un errore nel log a ogni avvio: ora è disattivato con `--no-control-socket`
+- **Pagina di accesso nuova**: a sinistra il marchio e un'anteprima del portale (l'agenda di oggi e l'avviso di una nuova prenotazione), a destra il modulo. Prima l'email, poi la passkey oppure la password. Nome, logo e testi vengono dalle impostazioni generali
+- `tests/test_deploy.py`: 4 test nuovi, tutti falliscono sulla 2.3.0
+
+## 2.3.0 — impostazioni generali e conferma al posto del 403
+
+- **Impostazioni generali** nell'area agenzia, una volta per tutto il portale:
+  - nome del portale e di chi lo offre, logo, icona del browser (favicon) e colore principale;
+  - titolo e testo della pagina di accesso, email e telefono di assistenza (in fondo alle pagine e nella pagina di accesso);
+  - **SMTP dell'agenzia** dal portale, cifrato con la chiave principale: vale per inviti, conferme e notifiche delle attività senza un SMTP proprio, mai per le campagne. Quello nel file `.env` resta valido come alternativa;
+  - i valori con cui parte ogni nuova attività: fuso orario, colore, informativa, consenso, conservazione e limiti email. Precompilano il modulo Nuova attività; le attività esistenti non cambiano.
+  - Migrazione `0010`, tabella `core_sitesettings`
+- **Niente più 403 vuoto.** Le pagine che cambiano accessi o impostazioni (persone, impostazioni, SMTP, nuova attività) richiedono il secondo fattore confermato negli ultimi 15 minuti: prima era 5, e superato il limite compariva una pagina bianca "403 Forbidden", anche dopo aver compilato il modulo. Ora la conferma si chiede prima di aprire la pagina: codice dell'app, codice di recupero o passkey, poi si torna alla pagina. Lo stesso vale per l'accesso di assistenza dell'agenzia
+- Le pagine non consentite spiegano il motivo e cosa fare, con il menu del portale, invece di un testo semplice
+- **Ruoli con il nome di quello che fanno**: Proprietario diventa **Amministratore**, che nella sua attività può tutto, servizi e orari compresi. Responsabile sede diventa **Amministratore sede**. Operatore diventa **Operatore sede**: vede l'agenda della sua sede, oppure solo delle risorse assegnate se l'attività ha risorse personali. Con una sola sede, la sede è assegnata da sola. Restano Reception, Marketing e Consultazione. Migrazione `0011`, solo nomi
+- **Pagina prenotazioni che chiede solo il necessario.** Con un solo servizio, per esempio un ristorante, la scelta del servizio non compare. Con lo stesso servizio in più sedi si sceglie la **Sede**; con servizi diversi in più sedi, il servizio con la sede tra parentesi. Il numero di persone non compare se il servizio è per una persona sola e si chiama Persone o Ospiti a seconda del tipo. Tolta la barra "1. Servizio, 2. Giorno e orario, 3. Conferma", che non avanzava
+- **Si vede solo quello che si può usare.** Agli utenti delle attività non compaiono più il sito autorizzato, l'invio email e le altre impostazioni dell'agenzia. Nella prenotazione, chi non può modificarla non vede la scheda Azioni, e chi non vede i recapiti non vede le righe vuote. La coda email in Oggi la vede solo l'amministratore. Nella scheda dell'attività, l'agenzia vede "Apri il portale" solo con un accesso di assistenza attivo
+
+## 2.2.0 — portale riorganizzato, nuova grafica, guida
+
+- **Si capisce chi sei.** In alto, accanto al nome dell'attività, c'è il tuo ruolo; in basso nel menu, la tua email e il ruolo. L'area dell'agenzia (Attività e clienti) è separata dal menu dell'attività, e dentro un'attività l'agenzia vede a parte la sua gestione tecnica
+- **Menu per argomento**: Ogni giorno, La tua attività, Comunicazioni, Controlli, Aiuto. Ogni voce compare solo se il ruolo la può usare
+- **Configura l'attività**: una pagina sola al posto delle otto schede. Sedi, orari, servizi e risorse in ordine, con lo stato di ciascun passo, più persone, sito autorizzato e invio email. Turni del ristorante ed eventi con data compaiono solo se un servizio li usa. Ogni pagina di configurazione spiega in una frase a cosa serve
+- **Guida nel portale**, adatta al ruolo: come funziona, chi vede cosa, configurazione, più sedi, sito WordPress, lavoro di ogni giorno, accessi, privacy e marketing, accesso dell'agenzia, problemi comuni
+- **Due modi per dare un accesso**: link d'invito da copiare con un tasto e mandare a mano (anche senza SMTP, e il portale dice se l'email è partita), oppure una password scelta da chi crea l'accesso. La password non sovrascrive mai un account esistente. Al primo accesso si registra comunque il secondo fattore
+- **Il proprietario gestisce sempre servizi e orari.** Prima, il titolare creato insieme all'attività non poteva modificarli
+- **Più sedi sulla pagina prenotazioni**: con più sedi il servizio mostra tra parentesi la sua sede
+- **Nuova grafica** con l'identità Tastiere Digitali: viola e lavanda, marchio TD, Poppins per i titoli e Figtree per il testo, entrambi serviti dal portale stesso. Pulsanti distanziati da campi e bordi, niente etichette in maiuscolo, titoli senza punto finale, tema chiaro e scuro, pagina di accesso nuova
+- I colori dell'attività valgono solo per la pagina prenotazioni pubblica; il portale resta con i colori TD. Il colore predefinito di una nuova attività è il viola TD (migrazione `0009`: le attività ancora sul blu predefinito passano al viola)
+
+## 2.1.0 — senza Caddy, porta diretta
+
+- **Tolto Caddy.** Il pacchetto non contiene più un proxy: davanti c'è NPMplus, che gestisce dominio e HTTPS. Sono stati rimossi il servizio `proxy`, `deploy/Caddyfile`, `deploy/compose.npmplus.yaml`, i volumi di Caddy e la variabile `SITE_ADDRESS`
+- **Porta diretta.** `web` è pubblicato sulla porta **8085** del server, su tutti gli indirizzi. Si avvia tutto con un solo `docker compose up -d`. La porta si cambia con `TDBS_PORT` in `.env`; con `TDBS_BIND` la si limita a un solo indirizzo
+- **Istruzioni riscritte.** Un solo percorso, passo per passo: per ogni comando c'è cosa deve comparire, e in fondo una tabella "Se qualcosa non va"
+- Chi arriva dalla 2.0.x: il comando con `-f deploy/compose.npmplus.yaml` non serve più. Dopo l'aggiornamento usa `docker compose up -d --remove-orphans`. Le righe `SITE_ADDRESS` e `TDBS_HTTP_PORT` rimaste in `.env` non hanno più effetto; per la porta ora si usa `TDBS_PORT`
+
+## 2.0.3 — permessi del pacchetto
+
+- **Il database non creava il ruolo applicativo.** Nello zip 2.0.2, come già nei precedenti, molti file erano leggibili solo da root. PostgreSQL gira come utente `postgres` e non poteva leggere `deploy/init-db.sh`, quindi il ruolo `tdbooking_app` non veniva creato e il primo avvio si fermava. Ora file e cartelle sono leggibili da tutti (`644`/`755`) e gli script eseguibili (`755`). Due test nuovi lo controllano e falliscono sullo zip 2.0.2
+- **Il ruolo si crea anche senza `init-db.sh`.** `grant_runtime`, eseguito da `migrate`, crea `tdbooking_app` se manca, con gli stessi attributi: nessun privilegio di amministratore e solo login. Se il ruolo esiste, gli riallinea la password a quella di `.env`. Si ferma se il ruolo è superuser o BYPASSRLS. Per questo `migrate` riceve `APP_DB_PASSWORD`
+- **Script di collaudo.** I passaggi che finivano in `&& step` potevano saltare in silenzio. Ora ogni passaggio fallito ferma il collaudo con "FALLITO". `installazione_pulita.sh` verifica anche la creazione del ruolo da parte di `grant_runtime`
+- Guida e PDF: nuove voci per il database *unhealthy* con "Permission denied" e per la password cambiata, che ora si sistema rilanciando `migrate`
+
+## 2.0.2 — dal primo deploy reale
+
+Correzioni nate dalla prima installazione sul server dell'agenzia. Il codice dell'applicazione e le migrazioni non cambiano: cambiano la configurazione, gli script di rilascio e la guida.
+
+- **NPMplus su un altro container.** `deploy/compose.npmplus.yaml` pubblicava l'applicazione solo su `127.0.0.1`, quindi la raggiungeva solo un NPMplus sullo stesso server. Ora l'indirizzo si sceglie con `TDBS_BIND` in `.env`: per esempio l'IP interno di un LXC dedicato al booking. Il valore predefinito resta `127.0.0.1`
+- **`.env` vuoto o incompleto.** `configure.py` rispondeva solo "esiste già". Così un `.env` vuoto, per esempio una copia di `.env.example`, lasciava `docker compose` a fallire su ogni variabile. Ora lo script dice se il file è vuoto o quali chiavi mancano e come ripartire, e continua a non modificarlo mai. Anche gli errori di `docker compose` rimandano a `scripts/configure.py`
+- **Guida e PDF.** Nuovo caso del container separato, con firewall e `TDBS_BIND`. Nuove voci tra i problemi comuni: variabili mancanti, DNS di Docker durante la build e 502 da NPMplus
+- **Script di collaudo.** `installazione_pulita.sh` non si fermava se il ruolo `tdbooking_app` esisteva già, per esempio lasciato da un'altra prova, e saltava in silenzio la creazione del ruolo. Ora quel caso ferma il collaudo con un errore. Il log 2.0.1 era incompleto proprio per questo: quel passaggio mancava. Nuovo `tests/release/aggiornamento_dal_prototipo.sh`: ripete l'aggiornamento dal prototipo, che prima era una procedura a mano
+- `tests/test_deploy.py`: 10 test nuovi, 8 dei quali falliscono sulla 2.0.1
+
+## 2.0.1 — dietro NPMplus e nginx
+
+- **Indirizzo del visitatore dietro il proxy.** nginx e NPMplus aggiungono l'indirizzo del visitatore in coda all'intestazione `X-Forwarded-For`. Se il visitatore ne inviava già uno (alcuni operatori mobili e proxy aziendali lo fanno), la 2.0.0 rifiutava la richiesta: niente orari e niente prenotazione. Ora conta solo l'ultimo indirizzo, quello scritto dal vostro proxy; i valori inviati dal visitatore non servono a scavalcare i limiti di frequenza. 6 test nuovi, 3 dei quali falliscono sulla 2.0.0
+- **`deploy/compose.npmplus.yaml`**: per i server che hanno già un reverse proxy. Non avvia Caddy e pubblica l'applicazione solo su `127.0.0.1:8085`
+- **`INSTALLAZIONE.md`** e il PDF *Istruzioni di installazione*: deploy da zero, sia sul server dell'agenzia dietro NPMplus sia su un server autonomo con Caddy
+
+## Esito delle verifiche
+
+Eseguite il 26 ottobre 2026 su **PostgreSQL 16 reale**, in un ambiente di test separato (nessuna installazione sul Mac).
+
+| Suite | Contenuto | Esito |
+|---|---|---|
+| `tests/test_core.py` | Suite originale, compresi concorrenza sull'ultimo posto e RLS | 33 passati |
+| `tests/test_phase1.py` | Rilievi N03–N16 (27 falliscono sul prototipo recuperato) e, dalla 2.0.1, indirizzi inoltrati da nginx/NPMplus | 44 passati |
+| `tests/test_phase2.py` | Ruoli e accesso assistenza, N10 (9 falliscono con le protezioni spente) | 11 passati |
+| `tests/test_privacy.py` | Consensi, accesso, cancellazione, conservazione (N12), export (N15), codici di recupero MFA | 9 passati |
+| `tests/test_phase3.py` | Camere e mezzi con il loro nome: soggiorno intero, capienza, minimo di notti, chiusure, termine di disdetta, concorrenza, spostamenti. Dalla 2.6.0 senza le prove del passaggio da TD Booking, tolto | 7 passati |
+| `tests/test_notifications.py` | Notifiche email e Telegram, preset di attività | 12 passati |
+| `tests/test_deploy.py` | Dalla 2.0.2: `configure.py` con `.env` nuovo, completo, vuoto e incompleto; `compose.yaml` e override NPMplus risolti da `docker compose config`, anche con `TDBS_BIND` (8 falliscono sulla 2.0.1). Dalla 2.3.1: stessa immagine per web, worker e migrate, migrazioni mancanti segnalate all'avvio, pagine che reggono senza la tabella delle impostazioni, gunicorn senza socket di controllo. Dalla 2.4.0: edizione Private che si ferma se il database ha più attività. Dalla 2.0.3: permessi dei file e ruolo applicativo senza privilegi (2 falliscono sullo zip 2.0.2). Dalla 2.1.0: nessun proxy incluso e `web` pubblicato sulla porta 8085 o su quella di `TDBS_PORT` | 19 passati |
+| `tests/test_access.py` | Dalla 2.2.0: accesso con invito o con password, password che non sovrascrive account esistenti, amministratore con servizi e orari, ruolo sempre visibile, pagina Configura l'attività, guida adatta al ruolo. Dalla 2.3.0: nomi dei ruoli, operatore sede limitato alla sua sede e senza voci che non può usare, sede unica assegnata da sola, impostazioni dell'agenzia invisibili alle attività | 14 passati |
+| `tests/test_site.py` | Dalla 2.3.0: impostazioni generali (nome, logo, favicon, testi, colore, valori iniziali), SMTP dell'agenzia mai per le campagne, conferma del secondo fattore con ritorno alla pagina e senza reindirizzamenti esterni, pagina 403 che spiega, pagina prenotazioni che chiede solo il necessario, plugin WordPress scaricabile dall'agenzia nella sola edizione Cloud | 13 passati |
+| `tests/test_pages.py` | Ogni pagina con ognuno dei 6 ruoli, con lo staff senza e con concessione e senza accesso: nessun errore del server, permessi attesi, etichette collegate ai campi e nessun id duplicato | 8 passati |
+| `tests/test_showcase.py` | Dalla 2.5.0: Prezzi e versioni, Perché sceglierci, privacy, due loghi | 11 passati |
+| `tests/test_agency.py` | Dalla 2.4.0: dashboard dell'agenzia e dell'attività (anche per operatore e Marketing), elenco clienti, scheda cliente cifrata, referenti, logo, nuovo cliente, secondo fattore facoltativo e conferma con password, pagina di accesso, richieste di prova, nome del mittente ed email di prova | 28 passati |
+| `tests/test_clients.py` | Dalla 2.7.0: prenotazioni a mano con il cliente dalla rubrica o nuovo, scheda cliente con storico, note e modifica, ricerca, clienti aggiunti a mano | 5 passati |
+| `tests/test_profile.py` | Dalla 2.6.0: tipo di attività e sedi, plugin WordPress con il codice, Gmail e Microsoft 365, busta SMTP, moduli del catalogo per tipo, piani su una riga e mesi gratuiti, Resta collegato, gestori di password, elimina dal catalogo, nomi per tipo di attività. Dalla 2.6.1: ristorante senza turni, orari a 24 ore, telefono senza prefisso | 31 passati |
+| **Totale su PostgreSQL** | Python 3.13 e Python 3.12 (quello dell'immagine Docker) con `requirements.lock` | **245 passati, 0 saltati** |
+| Stessa suite su SQLite | Le prove che richiedono PostgreSQL vengono saltate | 238 passati, 7 saltati |
+| `manage.py check` / `makemigrations --check` | | nessun problema, migrazioni allineate |
+
+## Controlli di rilascio
+
+| Controllo | Come | Esito |
+|---|---|---|
+| Vulnerabilità note nelle dipendenze | `pip-audit -r requirements.lock` | nessuna |
+| **Installazione pulita in produzione** | `tests/release/installazione_pulita.sh`: gli stessi passi di Dockerfile e compose (configure.py, init-db.sh, migrate, grant_runtime, build_static, check_runtime, bootstrap, gunicorn dietro proxy) e poi una prenotazione pubblica vera | 29 passaggi superati: `.env` a 600 e mai sovrascritto, `compose.yaml` valido, ruolo `tdbooking_app` creato senza privilegi da `init-db.sh` e, se manca, da `grant_runtime`, `check --deploy` senza avvisi, avvio rifiutato come superuser, HTTPS forzato, HSTS e CSP, host estranei e origini estranee rifiutati, richieste ripetute senza doppioni, indirizzo aggiunto in coda da nginx accettato |
+| **Aggiornamento dal prototipo** | `tests/release/aggiornamento_dal_prototipo.sh`: database creato e popolato con il codice Prenodo 2.0.0-rc1 originale, poi migrato alla 2.6.0 con il vecchio `.env` (`PRENODO_*`) | migrazioni 0004–0017 applicate, dati e cifratura intatti, consensi in sospeso confermabili, posti già occupati rispettati, controllo RLS su 18 tabelle superato (la tabella del passaggio da TD Booking non c'è più) |
+| **Collaudo WordPress reale** | `tests/e2e/wordpress_e2e.py`: WordPress 7.1.3 con MariaDB e connettore 2.7.0, su un database del core appena creato con una pizzeria su due sedi | 22 passaggi superati: shortcode senza collegamento, impostazioni manuali con indirizzi sbagliati rifiutati, collegamento con il codice dal server WordPress al portale, sito autorizzato da solo, pagina Prenota creata, codice monouso, configurazione aggiornata, shortcode per sede e tema, scollegamento; nessun avviso del connettore nel log |
+| Immagine Docker | Il registro Docker non era raggiungibile dall'ambiente di prova | non costruita: i suoi passi sono coperti dall'installazione pulita; va fatta la prima `docker compose build` sul server |
+
+## Rilievi chiusi
+
+| ID | Correzione | File | Test |
+|---|---|---|---|
+| N03 | Il worker seleziona solo invii eleggibili, notifiche prima delle campagne; una campagna in pausa resta ferma senza occupare la coda | `core/mail.py` | `test_n03_*` |
+| N04 | 4xx del destinatario: nuovo tentativo con attesa, nessuna soppressione. 5xx: fallito e soppresso. Esito incerto dopo DATA mai reinviato | `core/mail.py` | `test_n04_*` |
+| N05 | Endpoint `move-slots/` dedicato: esclude la prenotazione stessa risolvendola lato server nel tenant, solo per ruoli in scrittura | `core/public.py`, `tdbooking/urls.py` | `test_n05_*` |
+| N06 | Il fallback arrivo/partenza si risolve livello per livello; un livello con sole eccezioni eredita nei giorni senza eccezioni | `core/calendar.py` | `test_n06_*` |
+| N07 | Una prenotazione pubblica non riscrive scheda, consenso o prova di un contatto esistente; la prova del consenso si scrive solo alla conferma del titolare della casella | `core/booking.py`, `core/public.py` | `test_n07_*` |
+| N08 | Validazione tipizzata: niente `null`→"None", checkbox solo booleani reali, zero ammesso nei numeri obbligatori, liste/oggetti rifiutati | `core/booking.py` | `test_n08_*` |
+| N09 | Analisi d'impatto completa dopo modifiche al catalogo: picco di capienza per gruppo, collegamenti servizio/risorsa rimossi, nessun limite a 2.001 righe; il messaggio riporta il totale | `core/portal.py` | `test_n09_*` |
+| N11 | Private senza stati commerciali (prova/sospensione ignorati, campi nascosti); nuovo stato **Manutenzione tecnica** distinto, valido in entrambe le edizioni (HTTP 503) | `core/middleware.py`, `core/forms.py`, `core/models.py`, migrazione `0004`, `templates/platform.html` | `test_n11_*` |
+| N13 | Elenco atteso delle tabelle tenant derivato dai modelli; l'avvio controlla RLS, FORCE, policy USING/WITH CHECK, vincolo `(id, tenant_id)` e connessione senza tenant | `core/rls.py`, `check_runtime.py` | `test_n13_*` |
+| N14 | Backup e `.env` creati 0600 dal primo byte; decifratura in file temporaneo pubblicato solo dopo il tag GCM valido | `scripts/backup_crypto.py`, `scripts/configure.py` | `test_n14_*` |
+| N16 | Le campagne usano solo l'SMTP del tenant, mai quello globale; quote separate tra marketing e notifiche | `core/mail.py` | `test_n16_*` |
+
+I rilievi rimasti aperti dopo la fase 1 (N01, N02, N10, N12, N15) sono stati chiusi nelle fasi successive, descritte più sotto. Quello che resta è in fondo, in «Ancora aperti».
+
+## Come rieseguire i test
+
+Servono Python 3.12+ con le dipendenze di `requirements-dev.txt` e, per la parte PostgreSQL, un database di prova (per esempio in CI o su un server di sviluppo, non sul Mac):
+
+```sh
+pip install -r requirements-dev.txt
+DATABASE_URL=postgresql://utente@host:5432/postgres python -m pytest -q
+```
+
+Il ruolo `tdbooking_app` deve esistere nel cluster (lo crea `deploy/init-db.sh`). Senza `DATABASE_URL` la suite gira su SQLite e salta le 7 prove che richiedono PostgreSQL.
+
+L'installazione pulita si ripete con `PY=python3.12 PGPORT=5432 tests/release/installazione_pulita.sh` su un PostgreSQL di prova (crea e cancella database e ruolo: mai su un server vero). L'aggiornamento dal prototipo si ripete allo stesso modo con `PROTO=cartella-del-prototipo tests/release/aggiornamento_dal_prototipo.sh`. Il collaudo WordPress (`tests/e2e/wordpress_e2e.py`) richiede un WordPress con MySQL, i due plugin attivi e il core in esecuzione: le istruzioni sono in testa al file.
+
+## Rinomina in TD Booking Suite
+
+Il prototipo si chiamava Prenodo; ora il prodotto è **TD Booking Suite**, nelle edizioni Private e Cloud, con il connettore **TD Booking Suite per WordPress**.
+
+| Elemento | Prima | Ora |
+|---|---|---|
+| Cartella del progetto | `implementation/prenodo` | `implementation/td-booking-suite` |
+| Modulo Django | `prenodo` | `tdbooking` |
+| Variabili d'ambiente | `PRENODO_*` | `TDBS_*` (le vecchie `PRENODO_*` vengono ancora lette, così un `.env` già creato continua a funzionare) |
+| Database e ruolo PostgreSQL | `prenodo`, `prenodo_app` | `tdbooking`, `tdbooking_app` |
+| Intestazione backup | `PRENODO-BACKUP-1` | `TDBS-BACKUP-1` (i backup vecchi si ripristinano ancora, c'è un test) |
+| Nome in Authenticator e passkey | Prenodo | TD Booking Suite |
+| Plugin WordPress | `wordpress/prenodo/prenodo.php` | `wordpress/td-booking-suite/td-booking-suite.php` |
+| Shortcode | `[prenodo_booking]` | `[td_booking_suite]`, resta l'alias `[td_booking]` del vecchio plugin |
+| Opzioni e funzioni PHP, classi CSS, chiavi del browser | `prenodo_*`, `prenodo-*` | `tdbs_*`, `tdbs-*` |
+
+Da sapere prima di un'installazione: database e ruolo hanno un nome nuovo, quindi un'eventuale installazione di prova del prototipo va rinominata o ricreata. Gli utenti dovranno riassociare Authenticator solo se vogliono vedere il nome nuovo, i codici esistenti continuano a funzionare. Il vecchio file `dev.sqlite3`, vuoto, è stato spostato in `_to_delete/`.
+
+## Fase 2 — ruoli, ambiti e accesso di assistenza (N10)
+
+| Ruolo | Vede | Non vede / non può |
+|---|---|---|
+| Proprietario | Tutto della propria attività, team, accessi di assistenza, export | Altre attività. Servizi e disponibilità solo con la spunta dedicata, come prima |
+| Responsabile sede | Agenda, clienti, note, export prenotazioni; limitabile a una o più sedi | Campagne, utenti, export contatti |
+| Reception | Agenda, recapiti, note, annullamenti | Export, campagne, utenti |
+| Operatore | Solo le prenotazioni delle **risorse assegnate** (obbligatorie) e può prenotare solo su quelle | Clienti, export, prenotazioni altrui (404) |
+| Marketing | Clienti, consensi, campagne, export contatti | Agenda e **mai le note** del cliente o interne |
+| Consultazione | Agenda con nomi abbreviati (M.) | Email, telefono, note, campi aggiuntivi; nessuna modifica |
+
+**Amministratore della piattaforma:** non scavalca più i permessi. Senza concessione vede solo impostazioni, SMTP, utenti e un pannello con metriche tecniche senza dati personali (prenotazioni in arrivo, email in coda, invii da verificare). Per entrare nei contenuti serve una **concessione** che il proprietario crea dalla nuova pagina *Accesso assistenza*: una persona precisa, motivo obbligatorio, durata 1–72 ore, revocabile subito. Durante l'accesso serve un MFA confermato negli ultimi 15 minuti, ogni pagina aperta viene registrata e il proprietario la vede nella stessa pagina. L'export dei contatti resta escluso anche con la concessione.
+
+Altre regole: l'attività deve avere sempre almeno un proprietario, nessuno può togliersi da solo il ruolo di proprietario, gli ID di sedi o risorse di altre attività vengono scartati.
+
+| File | Modifica |
+|---|---|
+| `core/permissions.py` (nuovo) | Ruoli, permessi, ambito, mascheramento dei dati |
+| `core/models.py`, migrazione `0005` | Nuovi ruoli, ambito su sedi e risorse, tabella `SupportGrant` con RLS |
+| `core/middleware.py` | Staff limitato alle pagine tecniche, concessione + MFA recente + audit |
+| `core/portal.py`, `core/public.py`, `core/platform.py`, `core/booking.py`, `core/context.py` | Controlli lato server su ogni vista, spostamenti e prenotazioni manuali dentro l'ambito, pagina assistenza, metriche piattaforma |
+| `templates/` | Menu e azioni in base ai permessi, gestione team con ambiti, nuova pagina `support.html` |
+| `tests/test_phase2.py` | 11 test sui criteri di accettazione di N10 |
+
+## Privacy e consensi (N12, N15)
+
+- **Storico dei consensi** in sola aggiunta (`ConsentEvent`): richiesta, conferma, revoca, esclusione per rifiuto del server, cancellazione, con canale e impronta del testo informativo. Non contiene dati personali. Su PostgreSQL un trigger impedisce modifiche e cancellazioni anche a chi ha accesso diretto al database; il ruolo applicativo non ha nemmeno i permessi
+- **Scheda cliente** con prenotazioni e storico del consenso. Il proprietario (nuovo permesso "richieste privacy") può scaricare tutti i dati del cliente in JSON e cancellarli. La cancellazione toglie nomi, recapiti, note e collegamenti da tutte le prenotazioni, rende inutilizzabile l'indice email e chiude i link attivi; con prenotazioni future aperte viene rifiutata
+- **Conservazione** riscritta (`manage.py retention`): oltre il periodo le prenotazioni perdono i dati personali e il legame con il contatto; i contatti senza prenotazioni recenti e senza consenso attivo vengono cancellati; chi ha un consenso confermato resta, perché è una relazione attiva. Il comando ora dice cosa fa, senza chiamarlo anonimizzazione generale
+- **Export per Brevo e Mailchimp** solo per i destinatari con consenso confermato: niente più rubrica completa con una colonna "consenso"
+- **Codici di recupero MFA**: erano già presenti (10 monouso); ora un test ne verifica l'uso singolo
+
+## Fase 3 — parità con TD Booking e migrazione (N01, N02)
+
+**Motore (N01)**
+- **Unità nominative** per soggiorni e noleggi: le risorse collegate a un servizio a giorni sono camere o mezzi, con ospiti massimi, descrizione e foto. Ogni soggiorno occupa **la stessa unità per tutte le notti**; due richieste simultanee non ottengono mai la stessa unità (prova su PostgreSQL con due connessioni); una chiusura della singola camera la esclude
+- Il widget mostra le unità libere con nome, capienza e descrizione e lascia scegliere; "Qualsiasi unità libera" assegna la prima disponibile
+- **Minimo di giorni** per servizio, come nel vecchio plugin
+- **Termine di disdetta online** per servizio. Vale la regola in vigore quando il cliente ha prenotato, salvata nella prenotazione; l'attività può sempre annullare dal portale
+- Sedi con indirizzo e telefono; risorse con descrizione e foto (solo https)
+
+**Migrazione (N02)** — procedura completa in `MIGRAZIONE.md`
+- Comando `import_legacy`: simulazione di default, import ripetibile senza doppioni (tabella `LegacyMap`), rapporto di riconciliazione per tabella con il motivo di ogni esclusione e le differenze di significato da rivedere (servizi multi sede divisi per sede, eventi importati disattivati, eccezioni orarie convertite, giorni della settimana, nomi, telefoni, foto http)
+- I link di annullamento delle vecchie email continuano a funzionare con il termine di disdetta originale
+- `--rollback-export` produce le prenotazioni nate nel nuovo sistema con gli ID del vecchio plugin; `--undo` annulla un import mai usato e si rifiuta se esistono prenotazioni nuove
+- **Connettore WordPress**: interruttore "Passaggio completato". Dopo il passaggio `[td_booking]` mostra TD Booking Suite su tutte le pagine esistenti, `[td_booking service="3"]` mostra i servizi importati dal vecchio servizio 3, il vecchio plugin rifiuta nuove prenotazioni (409) e i vecchi link "annulla" portano alla conferma nuova. Senza spunta il vecchio plugin torna l'unica autorità e si possono reinserire le prenotazioni nuove dal file di ritorno, senza doppioni
+- Requisiti del connettore riportati a WordPress 6.2 e PHP 8.0 (prima 6.5 e 8.2), per non escludere i siti che usavano il vecchio plugin
+- Versioni allineate: core e connettore `2.2.0`
+
+## Notifiche per l'attività e modelli di attività (parità con TD Booking)
+
+- **Notifiche** a ogni prenotazione nuova, spostata o annullata, via **email** e **Telegram**, configurabili dal proprietario nella nuova pagina *Notifiche* con un pulsante di prova. Il contenuto è ridotto al necessario: servizio, orario, sede, risorsa, nome abbreviato e link alla prenotazione nel portale. Email, telefono, note e risposte non escono mai (rilievo S14 del vecchio plugin). Il token del bot è cifrato e non viene più mostrato. Gli invii Telegram passano dalla stessa coda delle email, con nuovi tentativi solo per errori temporanei e senza consumare le quote SMTP
+- **I 16 modelli di attività del vecchio plugin** (ristorante, parrucchiere, studio medico, consulenze, centro estetico, SPA, tattoo, autoscuola, campi sportivi, corsi, officina, hotel, casa vacanze, noleggio, evento, tour): si sceglie il tipo quando si crea l'attività, e in *Servizi* ci sono i pulsanti "Parti da un modello" che precompilano durata, intervalli, capienza e risorse. Tutto resta modificabile
+- **Nome delle risorse** per servizio ("Operatore", "Stanza", "Campo"), mostrato nel widget e nelle notifiche; l'import lo riprende dal vecchio plugin insieme al modello
+
+## Fuori da questa versione
+
+- **Eventi a date**: i vecchi eventi arrivano disattivati, perché nel vecchio plugin la capienza valeva per tutte le date insieme; le date vanno create a mano
+- **Moduli di raccolta dati** con campi diversi per categoria e versioni dei campi; oggi i campi sono per servizio e la prenotazione conserva le etichette in vigore quando è stata fatta
+- **Permessi personalizzabili** per singolo utente oltre ai sei ruoli
+- **Export molto grandi** (oltre 50.000 righe) come attività in background
+- **Prove che servono a voi**: import su Brevo e Mailchimp con account di prova, controllo visivo su browser e telefoni, pilota su un sito cliente con dati veri anonimizzati

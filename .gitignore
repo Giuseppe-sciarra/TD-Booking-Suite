@@ -1,0 +1,9 @@
+.env
+.dev*
+*.sqlite3
+*.sqlite3-*
+__pycache__/
+.pytest_cache/
+static-collected/
+.venv/
+backups/

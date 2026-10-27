@@ -1,0 +1,102 @@
+{% extends 'base.html' %}{% block content %}<div class="page-heading"><div><h1>Guida</h1><p>{% if staff %}Sei un amministratore dell'agenzia{% elif role %}Sei {{ role|lower }}{% if tenant %} di {{ tenant.name }}{% endif %}{% else %}Come funziona TD Booking Suite{% endif %}. Qui trovi come funziona e come si fanno le cose principali</p></div></div>
+<div class="guide">
+<nav class="card guide-toc" aria-label="Indice della guida"><h2>In questa guida</h2><ol><li><a href="#come-funziona">Come funziona</a></li><li><a href="#ruoli">Chi vede cosa</a></li>{% if staff %}<li><a href="#agenzia">Per l'agenzia</a></li>{% endif %}<li><a href="#configurare">Configurare l'attività</a></li><li><a href="#sedi">Più sedi</a></li><li><a href="#sito">Le prenotazioni dal sito</a></li><li><a href="#ogni-giorno">Il lavoro di ogni giorno</a></li><li><a href="#persone">Dare un accesso a qualcuno</a></li><li><a href="#clienti">Clienti, privacy e marketing</a></li><li><a href="#assistenza">L'accesso dell'agenzia</a></li><li><a href="#account">Il tuo account</a></li><li><a href="#problemi">Se qualcosa non va</a></li></ol></nav>
+<div class="guide-body">
+
+<section class="card" id="come-funziona"><h2>Come funziona</h2>
+<p>Ci sono tre livelli, e ognuno vede solo il suo:</p>
+<dl class="levels"><div><dt>L'agenzia</dt><dd>Tastiere Digitali crea le attività, le configura dal lato tecnico (sito autorizzato, invio email, stato del servizio) e invita l'amministratore dell'attività. Senza un suo permesso non vede prenotazioni né clienti</dd></div><div><dt>L'attività</dt><dd>Una pizzeria, un salone, un hotel. Ha i suoi servizi, i suoi orari e i suoi clienti, separati da quelli di tutte le altre attività</dd></div><div><dt>Le persone dell'attività</dt><dd>L'amministratore dell'attività e chi lavora con lui, ognuno con un ruolo che decide cosa può vedere e fare</dd></div></dl>
+<p>Il ruolo con cui stai lavorando è sempre scritto in alto nella pagina e in basso nel menu.</p></section>
+
+<section class="card" id="ruoli"><h2>Chi vede cosa</h2>
+<div class="table-scroll"><table><thead><tr><th>Ruolo</th><th>Cosa può fare</th></tr></thead><tbody>
+<tr><td><strong>Amministratore</strong></td><td>Tutto, nella sua attività: agenda, clienti, configurazione, persone e permessi, marketing, notifiche, registro e accesso dell'agenzia</td></tr>
+<tr><td><strong>Amministratore sede</strong></td><td>Agenda, prenotazioni e clienti della sua sede, esportazione delle prenotazioni. Con il permesso apposito modifica anche servizi e orari</td></tr>
+<tr><td><strong>Operatore sede</strong></td><td>L'agenda della sua sede, o solo delle risorse che gli assegni, per esempio i suoi appuntamenti. Inserisce e sposta prenotazioni, non le annulla</td></tr>
+<tr><td><strong>Reception</strong></td><td>Agenda, prenotazioni e clienti, senza configurazione</td></tr>
+<tr><td><strong>Marketing</strong></td><td>Clienti e campagne email. Non vede le note delle prenotazioni</td></tr>
+<tr><td><strong>Consultazione</strong></td><td>Solo l'agenda, con i nomi abbreviati</td></tr>
+{% if staff %}<tr><td><strong>Amministratore dell'agenzia</strong></td><td>Tutte le attività, le impostazioni generali e le impostazioni tecniche di ogni attività (sito, invio email, stato). I contenuti di un'attività solo con l'accesso concesso dal suo amministratore</td></tr>{% endif %}
+</tbody></table></div>
+<p class="muted">Servizi, orari e sedi li modifica l'amministratore. Gli altri ruoli solo se, in Persone e permessi, hai spuntato "Può modificare servizi e disponibilità".</p></section>
+
+{% if staff %}<section class="card" id="agenzia"><h2>Per l'agenzia</h2>
+<p><strong>Una volta sola, Impostazioni generali:</strong> nome del portale, logo, icona del browser, colore, testi della pagina di accesso, contatti di assistenza, SMTP dell'agenzia e i valori con cui parte ogni nuova attività (fuso orario, colore, informativa, consenso, conservazione, limiti email).</p>
+<p><strong>Dashboard:</strong> la prima pagina dell'Area agenzia. Prenotazioni ricevute da tutti i clienti nelle ultime 12 settimane, quelle in arrivo, le email inviate e l'utilizzo di ogni cliente. A destra, <strong>Da controllare</strong>: prove in scadenza o scadute, servizi sospesi, invii email non riusciti, richieste di marketing, clienti in cui nessuno è ancora entrato. Sono solo numeri: nomi e contatti dei clienti delle attività restano nei loro portali.</p>
+<p><strong>Clienti:</strong> tutte le attività, a griglia o in elenco, con ricerca per nome, città, settore o referente e filtro per stato. Ogni cliente ha la sua <strong>scheda</strong>: logo, anagrafica (ragione sociale, partita IVA, codice fiscale, SDI, PEC, indirizzo), referenti con ruolo e telefono, note interne, utenti del portale con l'ultimo accesso e i collegamenti a impostazioni, persone e pagina prenotazioni. L'anagrafica e i referenti li vede solo l'agenzia e sono cifrati con la chiave del cliente.</p>
+{% if edition == 'cloud' %}<p><strong>Richieste di prova:</strong> sotto l'accesso c'è "Non sei ancora cliente? Prova il servizio". Chi compila il modulo (nome, cognome, email, attività e tipo di attività) finisce in <strong>Richieste di prova</strong>, e ti arriva un'email all'indirizzo scelto in Impostazioni generali. Con <strong>Attiva</strong> si apre Nuovo cliente già compilato, con il tipo di attività, il referente e la prova dei giorni impostati. Il pulsante si spegne da Impostazioni generali.</p>{% endif %}
+{% if edition == 'cloud' %}<p><strong>Prezzi e versioni e Perché sceglierci:</strong> due pagine pubbliche per presentare il servizio, spente finché non le accendi da Area agenzia › Prezzi e versioni. Lì scrivi piani, prezzi, punti di forza, domande frequenti, motivi e il confronto con le altre soluzioni. Accese, compaiono in alto nella pagina di accesso e in fondo, sotto il modulo; i piani stanno tutti su una riga e per ognuno puoi indicare i mesi gratuiti. Sono pensate per il portale dimostrativo: su un'installazione che serve solo i clienti lasciale spente.</p>{% endif %}
+<p><strong>Privacy e loghi:</strong> in Impostazioni generali inserisci ragione sociale, partita IVA, sede ed email per la privacy: la pagina /privacy/ si compila da sola, oppure scrivi il tuo testo. Il portale usa solo cookie tecnici, quindi non serve il banner. Sempre lì carichi due loghi, uno per gli sfondi chiari e uno per quelli scuri (menu laterale, pagina di accesso, tema scuro); un logo orizzontale si vede per intero, senza il nome accanto.</p>
+<p><strong>Invio email dell'agenzia:</strong> in Impostazioni generali › Invio email scegli come partono le email: <strong>SMTP</strong> (con i pulsanti per Gmail, Microsoft 365, Aruba, Register.it, OVHcloud e Brevo che compilano server e porta), <strong>Google / Gmail</strong> collegando l'account con la tua app Google Cloud, oppure <strong>Microsoft 365 / Exchange</strong> con un'app di Entra e il permesso Mail.Send. La pagina spiega i passaggi. Con l'SMTP le email partono dalla casella con cui entri, per esempio smtp@, e i clienti vedono il mittente che scegli, per esempio "Booking Suite TD" &lt;info@...&gt;. Dalla stessa pagina mandi un'email di prova e vedi subito se è partita o perché no.</p>
+<p><strong>Per ogni nuova attività:</strong></p>
+<ol class="guide-steps">
+<li><strong>Clienti › Nuovo cliente.</strong> Nome, indirizzo breve (finisce nell'indirizzo delle pagine, per esempio <code>pizzeria-da-mario</code>), email dell'amministratore dell'attività e tipo di attività. Se indichi il referente, finisce subito nella scheda</li>
+<li><strong>Configura l'attività › Tipo di attività e sedi.</strong> Scegli il tipo e quante sedi ha, con i loro nomi, e premi Applica: servizi, operatori o camere, orari e date degli eventi sono pronti, da ritoccare. Puoi rifarlo quando vuoi, anche per una demo: le prenotazioni restano. Lo decidi solo tu, l'attività vede il riepilogo</li>
+<li><strong>Accesso dell'amministratore dell'attività.</strong> Lascia vuota la password e compare un link di invito valido 24 ore: copialo e mandalo tu, per esempio su WhatsApp. Parte anche per email se l'invio email è configurato. Oppure scegli tu una password e comunicala tu</li>
+<li><strong>Sito WordPress.</strong> In Configura l'attività › Sito WordPress genera il codice di collegamento e inseriscilo nel plugin: il sito si autorizza e si configura da solo (vedi sotto). In Impostazioni e sito ci sono colore, logo, testi di privacy e consenso, stato del servizio e marketing</li>
+<li><strong>Invio email.</strong> Solo se l'attività vuole il suo, con SMTP, Gmail o Microsoft 365: serve soprattutto per le conferme delle prenotazioni e, se il marketing è attivo, per le campagne. Altrimenti inviti, conferme e notifiche partono dall'invio dell'agenzia</li>
+</ol></section>{% endif %}
+
+<section class="card" id="configurare"><h2>Configurare l'attività</h2>
+<p>Dal menu, <strong>Configura l'attività</strong>: una pagina con i passi in ordine e lo stato di ciascuno. Si fanno una volta e poi si ritoccano quando serve. In cima c'è il tipo di attività con le sedi: {% if edition == 'private' %}l'amministratore lo cambia in un clic e servizi, risorse e orari si rifanno per quel tipo, senza toccare le prenotazioni{% else %}lo imposta l'agenzia, che rifà in un clic servizi, risorse e orari per quel tipo{% endif %}.</p>
+<p><strong>Resta collegato:</strong> all'accesso lascia la spunta e quel dispositivo, per esempio il computer della cassa o il tablet della reception, resta dentro per 30 giorni dall'ultima volta che lo usi. Sui dispositivi di altri togli la spunta: la sessione finisce dopo mezz'ora senza usarla o alla chiusura del browser.</p>
+<ol class="guide-steps">
+<li><strong>Sedi.</strong> Il luogo dove lavori. Ce n'è già una, "Sede principale": rinominala e aggiungi indirizzo e telefono</li>
+<li><strong>Orari di apertura.</strong> Una fascia per ogni giorno, per esempio lunedì 9:00–13:00 e lunedì 15:00–19:00. Ferie e festivi vanno in "Chiusure e giorni speciali", che vincono sugli orari normali</li>
+<li><strong>Servizi.</strong> Quello che i clienti prenotano: durata, ogni quanto parte un orario, quante persone, quanto preavviso. Si può partire da un modello (Parrucchiere, Ristorante, Hotel e altri). Le "Varianti" servono per lo stesso servizio con durate diverse</li>
+<li><strong>Operatori, camere, campi.</strong> Le persone o le cose che si prenotano una alla volta, ognuna con la sua agenda: il nome cambia con il tipo di attività (Operatori dal parrucchiere, Camere in hotel, Campi e sale). Servono ai servizi su appuntamento e ai soggiorni; il cliente può sceglierne uno o prendere il primo libero. Al ristorante non ci sono: contano i posti e gli orari</li>
+<li><strong>Persone.</strong> Chi lavora con te, ognuno con il suo ruolo</li>
+</ol>
+<p class="muted">Ristoranti a turni ed eventi hanno due pagine in più, Turni del ristorante ed Eventi con data: compaiono da sole quando c'è un servizio di quel tipo.</p></section>
+
+<section class="card" id="sedi"><h2>Più sedi</h2>
+<p>Ogni servizio e ogni risorsa appartiene a una sede. Con due negozi, per esempio:</p>
+<ol class="guide-steps">
+<li>In <strong>Sedi</strong> crea "Negozio centro" e "Negozio mare"</li>
+<li>In <strong>Servizi</strong> crea il servizio per ciascuna sede, scegliendo la sede nel modulo. Lo stesso servizio in due sedi sono due servizi, ognuno con la sua capienza</li>
+<li>In <strong>Operatori</strong> (o Camere, Campi...) crea chi o cosa si prenota, indicando la sede</li>
+<li>In <strong>Orari di apertura</strong>, se le sedi hanno orari diversi, crea le fasce indicando la sede. Una fascia senza sede vale per tutte</li>
+<li>In <strong>Persone e permessi</strong> puoi limitare un responsabile o una reception alla sua sede</li>
+</ol>
+<p class="muted">Sulla pagina prenotazioni il cliente vede i servizi con il nome della sede.</p></section>
+
+<section class="card" id="sito"><h2>Le prenotazioni dal sito</h2>
+<p>Ogni attività ha una sua pagina prenotazioni, che si apre da <strong>Dashboard › Apri la pagina</strong>. Si può mandare come link o mostrare dentro il sito WordPress:</p>
+<ol class="guide-steps">
+<li>In WordPress installa il plugin <strong>TD Booking Suite</strong>{% if staff and edition == 'cloud' %}: lo scarichi da Area agenzia › Plugin WordPress, dove trovi anche i valori da inserire per ogni attività{% endif %}</li>
+<li>Nel portale, <em>Configura l'attività › Sito WordPress</em>, genera il codice di collegamento: vale 24 ore e una volta sola{% if not staff and edition == 'cloud' %}. Lo genera l'agenzia{% endif %}</li>
+<li>In WordPress, <em>Impostazioni › TD Booking Suite › Collegati al portale</em>, inserisci l'indirizzo del portale e il codice. Il plugin autorizza il sito, legge sedi e servizi e crea la pagina <strong>Prenota</strong></li>
+<li>Per una pagina con una sola sede o un solo servizio usa gli shortcode elencati nelle impostazioni del plugin, per esempio <code>[td_booking_suite location="..."]</code></li>
+</ol>
+<p class="muted">Il modulo nel sito legge sedi, servizi e orari dal portale in tempo reale: se cambi qualcosa qui, il sito si aggiorna da solo. Restano anche le impostazioni manuali del plugin: indirizzo del portale e indirizzo breve, con il sito autorizzato dall'agenzia.</p></section>
+
+<section class="card" id="ogni-giorno"><h2>Il lavoro di ogni giorno</h2>
+<dl class="levels"><div><dt>Clienti</dt><dd>La rubrica: cerchi per nome, cognome o telefono e apri la scheda con tutto lo storico, le visite, la prossima prenotazione e le note che restano per le volte successive, come il colore usato. Da lì parte anche una nuova prenotazione già intestata</dd></div><div><dt>Dashboard</dt><dd>Gli appuntamenti di oggi e dei prossimi 7 giorni, le prenotazioni ricevute e disdette, come sono andati gli appuntamenti (svolti, disdetti, assenze), i servizi più richiesti e i clienti. Ognuno vede i numeri di quello che il suo ruolo gli permette: l'operatore sede quelli della sua sede o delle sue risorse</dd></div><div><dt>Agenda e prenotazioni</dt><dd>Tutte le prenotazioni di un periodo, da filtrare ed esportare in CSV. Apri una prenotazione per vederne i dettagli, spostarla o annullarla</dd></div><div><dt>Nuova prenotazione</dt><dd>Per inserire a mano chi chiama o passa in negozio: cerchi il cliente in rubrica o scrivi nome e telefono di uno nuovo, l'email è facoltativa. Controlla la disponibilità come la pagina pubblica</dd></div></dl>
+<p>Il cliente riceve un'email con il link per annullare. Fino a quanto prima può farlo da solo si decide nel servizio.</p></section>
+
+<section class="card" id="persone"><h2>Dare un accesso a qualcuno</h2>
+<p>In <strong>Persone e permessi</strong> inserisci email e ruolo. Ci sono due modi per consegnare l'accesso:</p>
+<dl class="levels"><div><dt>Con un link di invito</dt><dd>Lascia vuota la password. Compare un link valido 24 ore: copialo e mandalo tu. Se l'invio email è attivo, parte anche per email</dd></div><div><dt>Con una password scelta da te</dt><dd>Apri "Oppure imposta tu la password". L'accesso è pronto subito, senza email: comunica tu la password alla persona</dd></div></dl>
+<p>In tutti e due i casi la persona entra subito. In alto vede un avviso che la invita ad aggiungere un secondo fattore, un'app come Google Authenticator oppure una passkey, finché non lo attiva. "Ripristina password" crea un nuovo link per chi l'ha dimenticata.</p></section>
+
+<section class="card" id="clienti"><h2>Clienti, privacy e marketing</h2>
+<p>Ogni prenotazione crea o aggiorna la scheda del cliente. Nomi, email e telefoni sono cifrati.</p>
+<dl class="levels"><div><dt>Privacy</dt><dd>Dalla scheda del cliente si esportano i suoi dati o si cancellano, quando lo chiede. Le prenotazioni vecchie vengono cancellate dopo il periodo di conservazione dell'attività, con la pulizia periodica che imposta l'agenzia</dd></div><div><dt>Marketing</dt><dd>Lo attiva l'agenzia. Le campagne arrivano solo a chi ha dato il consenso e l'ha confermato dal link nell'email. Ogni messaggio ha il link per disiscriversi</dd></div><div><dt>Notifiche</dt><dd>Un'email o un messaggio Telegram all'amministratore per ogni nuova prenotazione</dd></div></dl></section>
+
+<section class="card" id="assistenza"><h2>L'accesso dell'agenzia</h2>
+<p>L'agenzia non vede prenotazioni e clienti di un'attività. Quando serve un aiuto, l'amministratore dell'attività apre <strong>Accesso dell'agenzia</strong> e concede un accesso per un tempo limitato, con il motivo. Durante l'accesso ogni pagina aperta finisce nel <strong>Registro attività</strong>. Si può revocare in qualsiasi momento.</p></section>
+
+<section class="card" id="account"><h2>Il tuo account</h2>
+<p>In basso nel menu, <strong>Account e sicurezza</strong>: cambiare la password, aggiungere una passkey, rigenerare i codici di recupero. Conserva i codici di recupero nel gestore di password: servono se perdi il telefono.</p>
+<p>Le pagine che cambiano accessi o impostazioni chiedono di confermare con il codice dell'app o con la passkey, oppure con la password se non hai ancora un secondo fattore, al massimo una volta ogni 15 minuti. Dopo la conferma torni alla pagina dove eri.</p></section>
+
+<section class="card" id="problemi"><h2>Se qualcosa non va</h2>
+<div class="table-scroll"><table><thead><tr><th>Cosa vedi</th><th>Cosa fare</th></tr></thead><tbody>
+<tr><td>Una pagina dice che il tuo ruolo non lo consente</td><td>La funzione è per un altro ruolo: chiedi all'amministratore dell'attività di cambiarlo in Persone e permessi</td></tr>
+<tr><td>La pagina prenotazioni non mostra orari</td><td>Controlla in Configura l'attività: servono almeno una sede, un orario di apertura e un servizio attivo. Guarda anche le chiusure del giorno scelto</td></tr>
+<tr><td>Il widget non compare nel sito</td><td>Il sito non è tra i siti autorizzati dell'attività, oppure nel plugin l'indirizzo breve è sbagliato</td></tr>
+<tr><td>Le email restano "in attesa"</td><td>Manca l'invio email: l'agenzia lo imposta in Impostazioni generali, oppure per la singola attività. Le prenotazioni restano valide</td></tr>
+<tr><td>Ti chiede il codice prima di aprire una pagina</td><td>È la conferma per le pagine sensibili: inserisci il codice dell'app o usa la passkey e torni alla pagina</td></tr>
+<tr><td>L'invito è scaduto</td><td>In Persone e permessi, Ripristina password crea un nuovo link</td></tr>
+</tbody></table></div></section>
+</div></div>{% endblock %}

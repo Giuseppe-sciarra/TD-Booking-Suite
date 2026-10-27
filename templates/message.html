@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="card centered"><h1>{{ title }}</h1><p>{{ text }}</p>{% if tenant %}<a class="button secondary" href="{% url 'public_booking' tenant.slug %}">Pagina prenotazioni</a>{% endif %}</section>{% endblock %}

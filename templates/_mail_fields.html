@@ -1,0 +1,1 @@
+{{ f.non_field_errors }}<div class="form-grid">{% for field in f.visible_fields %}{% if field.name != 'verified' %}<div class="field{% if field.name == 'sender_name' or field.name == 'tenant_id' %} span-two{% endif %}">{{ field.label_tag }}{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}</div>

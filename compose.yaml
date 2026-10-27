@@ -1,0 +1,79 @@
+name: tdbooking
+x-app-environment: &app-environment
+  TDBS_EDITION: ${TDBS_EDITION:?manca in .env, generalo con scripts/configure.py}
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?manca in .env, generalo con scripts/configure.py}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?manca in .env, generalo con scripts/configure.py}
+  TDBS_KEYS: ${TDBS_KEYS:?manca in .env, generalo con scripts/configure.py}
+  TDBS_ACTIVE_KEY: ${TDBS_ACTIVE_KEY:-v1}
+  TDBS_DEV: "0"
+  TRUST_PROXY: "1"
+  DATABASE_URL: ${DATABASE_URL:?manca in .env, generalo con scripts/configure.py}
+  TRANSACTIONAL_SMTP_HOST: ${TRANSACTIONAL_SMTP_HOST:-}
+  TRANSACTIONAL_SMTP_PORT: ${TRANSACTIONAL_SMTP_PORT:-587}
+  TRANSACTIONAL_SMTP_USER: ${TRANSACTIONAL_SMTP_USER:-}
+  TRANSACTIONAL_SMTP_PASSWORD: ${TRANSACTIONAL_SMTP_PASSWORD:-}
+  TRANSACTIONAL_FROM: ${TRANSACTIONAL_FROM:-}
+  TDBS_SESSION_REMEMBER_DAYS: ${TDBS_SESSION_REMEMBER_DAYS:-30}
+services:
+  db:
+    image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    environment:
+      POSTGRES_DB: tdbooking
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?manca in .env, generalo con scripts/configure.py}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?manca in .env, generalo con scripts/configure.py}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/10-tdbooking.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tdbooking"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    build: .
+    image: tdbooking-suite:local
+    profiles: ["tools"]
+    environment:
+      <<: *app-environment
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?manca in .env, generalo con scripts/configure.py}@db:5432/tdbooking
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?manca in .env, generalo con scripts/configure.py}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh","-c","python manage.py migrate --noinput && python manage.py grant_runtime"]
+  web:
+    build: .
+    image: tdbooking-suite:local
+    environment: *app-environment
+    # Published straight on the host: the reverse proxy in front (NPMplus) forwards here and handles HTTPS.
+    ports:
+      - "${TDBS_BIND:-0.0.0.0}:${TDBS_PORT:-8085}:8000"
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+  worker:
+    build: .
+    image: tdbooking-suite:local
+    environment: *app-environment
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["sh","-c","python manage.py check_runtime && python manage.py mail_worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  pgdata:
