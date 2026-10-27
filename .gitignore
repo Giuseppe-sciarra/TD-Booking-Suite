@@ -12,3 +12,5 @@ logs/
 compose.override.yaml
 requirements.auto.lock
 .agg-*
+# file di sistema del Mac
+.DS_Store

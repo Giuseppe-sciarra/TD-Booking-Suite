@@ -92,6 +92,13 @@ APP_IMG="tdbooking-suite:local"
 START_TS=$(date +%s)
 STAMP="$(date '+%Y%m%d-%H%M')"
 mkdir -p logs
+# Tetto al log: il timer/cron lo allunga a ogni giro (>>). Oltre 1 MB tiene l'ultimo mezzo MB.
+# cat > riscrive lo stesso file, così chi ci sta già scrivendo in coda continua a scriverci.
+if [[ -f logs/aggiorna-tutto.log ]] && (( $(stat -c %s logs/aggiorna-tutto.log) > 1048576 )); then
+  tail -c 524288 logs/aggiorna-tutto.log | tail -n +2 > logs/.aggiorna-tutto.taglio &&
+    cat logs/.aggiorna-tutto.taglio > logs/aggiorna-tutto.log
+  rm -f logs/.aggiorna-tutto.taglio
+fi
 RIEPILOGO=""        # righe dell'email
 ESITO="nessuno"     # nessuno | ok | rollback | errore
 aggiungi() { RIEPILOGO+="$*"$'\n'; }
@@ -329,6 +336,8 @@ db_risponde() {
 }
 backup_db() {      # con portale ed email fermi: è esattamente il database che si rimette in caso di rollback
   mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR" || return 1
+  # quelli degli aggiornamenti di prima restano 30 giorni, come i backup di ogni notte (passo 9)
+  find "$BACKUP_DIR" -maxdepth 1 -name 'pre-aggiornamento-*.dump.enc' -mtime +30 -delete 2>/dev/null || true
   DUMP="$BACKUP_DIR/pre-aggiornamento-$STAMP.dump"
   docker compose exec -T db pg_dump -U postgres -Fc tdbooking > "$DUMP" 2> logs/backup.log && [[ -s "$DUMP" ]] || return 1
   chmod 600 "$DUMP"

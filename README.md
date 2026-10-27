@@ -134,7 +134,14 @@ docker compose up -d
 
 # 3. First agency administrator
 docker compose run --rm web python manage.py bootstrap --email admin@example.com
+
+# 4. Backup key and nightly automatic update
+python3 scripts/backup_crypto.py keygen /root/tdbs-backup.key
+bash scripts/installa-aggiornamento.sh
 ```
+
+Copy `/root/tdbs-backup.key` to your password manager, apart from `.env`: without it the backups
+cannot be read and the automatic update does not start.
 
 Point the proxy at `http://<server>:8085`, with HTTPS. `--origin` must be the address users open
 in the browser. `--edition private` gives the single-business edition.

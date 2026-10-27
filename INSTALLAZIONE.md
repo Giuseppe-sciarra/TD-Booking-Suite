@@ -32,6 +32,16 @@ cat VERSION
 
 **Deve comparire:** `2.8.0`
 
+**Oppure con git**, che serve per l'aggiornamento automatico ogni notte (passo 13), al posto dei comandi qui sopra:
+
+```
+git clone https://github.com/Giuseppe-sciarra/TD-Booking-Suite.git /opt/td-booking-suite
+cd /opt/td-booking-suite
+cat VERSION
+```
+
+**Deve comparire** l'ultima versione pubblicata.
+
 ## 2. Crea la configurazione
 
 Metti il tuo dominio dopo `--origin`:
@@ -164,7 +174,7 @@ Prova finale:
 
 ## 9. Backup ogni notte
 
-Una volta sola, crea la chiave dei backup e copiala nel gestore di password, separata da `.env`:
+Una volta sola, crea la chiave dei backup e copiala nel gestore di password, separata da `.env`. Se l'hai già creata col passo 4 del README, salta la seconda riga:
 
 ```
 mkdir -p /var/backups/tdbs && chmod 700 /var/backups/tdbs
@@ -306,6 +316,8 @@ bash scripts/installa-aggiornamento.sh
 | leggere il log | `tail -f /opt/td-booking-suite/logs/aggiorna-tutto.log` |
 | aggiornare subito | `bash scripts/aggiorna-tutto.sh` |
 | togliere la pianificazione | `bash scripts/installa-aggiornamento.sh --remove` |
+
+Il log non supera 1 MB: quando ci arriva restano le righe più recenti. I backup fatti prima di ogni aggiornamento (`pre-aggiornamento-….dump.enc` in `/var/backups/tdbs`) restano 30 giorni, poi li cancella lo script stesso.
 
 Le immagini e le librerie aggiornate finiscono in `compose.override.yaml` e `requirements.auto.lock`. Li scrive lo script, stanno fuori da git e `docker compose` li legge da solo. Per tornare a quelle fissate nel rilascio:
 
