@@ -41,7 +41,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .ghost{background:transparent;color:var(--muted)}.ghost:hover{color:var(--ink);background:var(--soft)}
 .danger{background:transparent;border-color:var(--danger);color:var(--danger)}.danger:hover{background:var(--danger-soft)}
 .small{font-size:13px;padding:6px 12px}
-.wide{width:100%;margin-top:16px}
+button.wide,.button.wide{width:100%;margin-top:16px}
 label{display:block;font-size:14px;font-weight:600;margin:16px 0 6px}
 input,select,textarea{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--ink);min-height:44px}
 input:hover,select:hover,textarea:hover{border-color:var(--pastel)}
@@ -708,9 +708,6 @@ main:has(>.showcase){max-width:none;padding:0}
 .type-tile input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}
 .segmented{display:inline-flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--paper)}
 .segmented label{cursor:pointer}.segmented input{position:absolute;opacity:0;pointer-events:none}
-.segmented span{display:block;padding:7px 16px;border-radius:999px;font-weight:600;font-size:14px;color:var(--muted)}
-.segmented input:checked+span{background:var(--brand);color:#fff}
-.segmented input:focus-visible+span{outline:2px solid var(--brand);outline-offset:1px}
 .loc-names{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px}
 .profile-apply{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
 .profile-apply p{margin:0;max-width:640px;font-size:14px}.profile-apply button{flex:none}
