@@ -1,0 +1,15 @@
+# Librerie usate da TD Booking Suite. scripts/aggiorna-tutto.sh, ogni notte, porta queste e le loro
+# dipendenze all'ultima versione (major comprese) rispettando i limiti scritti qui, ciascuno con il motivo,
+# e mette il risultato in requirements.auto.lock. requirements.lock resta la combinazione provata del rilascio.
+Django>=5.2,<6        # 5.2 è LTS fino ad aprile 2028; il passaggio a Django 6 va provato a mano
+dj-database-url
+psycopg[binary]
+gunicorn
+whitenoise
+cryptography
+argon2-cffi           # hash delle password (PASSWORD_HASHERS)
+webauthn              # passkey
+PyOTP                 # app Authenticator
+qrcode                # QR dell'app Authenticator
+pillow                # loghi
+tzdata                # fusi orari anche se l'immagine Debian non li avesse

@@ -103,6 +103,8 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   password per le pagine sensibili, limiti ai tentativi, registro delle attività.
 - Export e cancellazione GDPR per cliente, regole di conservazione per attività, rotazione delle
   chiavi, backup cifrati.
+- **Aggiornamento automatico ogni notte** di portale, Python, Debian, librerie e PostgreSQL 17.x,
+  con il backup prima e il ritorno automatico alla versione di prima se quella nuova non passa le prove.
 
 ## Cosa serve
 
@@ -158,6 +160,13 @@ docker compose up -d --remove-orphans
 ```
 
 Prima fai il backup e leggi il [CHANGELOG](CHANGELOG.md) della versione nuova.
+
+**Oppure ogni notte, da solo**: `bash scripts/installa-aggiornamento.sh` pianifica `scripts/aggiorna-tutto.sh`
+(timer systemd, o cron). Prende la versione nuova da GitHub, l'ultima immagine di Python 3.12 con i suoi
+pacchetti Debian, tutte le librerie Python all'ultima versione (nei limiti di `requirements.in`) e l'ultimo
+PostgreSQL 17.x. Prima fa il backup cifrato, poi prova la versione nuova dentro il suo container; se qualcosa
+non va torna da solo a quella di prima, database compreso, e manda un'email di riepilogo. I dettagli sono in
+[INSTALLAZIONE.md](INSTALLAZIONE.md), passo 13.
 
 ## Tecnologie
 

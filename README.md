@@ -100,6 +100,8 @@ Italian.
   for sensitive pages, rate limits, audit log.
 - GDPR export and erasure per client, retention rules per business, key rotation, encrypted
   backups.
+- **Nightly automatic update** of the app, Python, Debian, libraries and PostgreSQL 17.x, with a
+  backup first and an automatic rollback if the new version fails its tests.
 
 ## Requirements
 
@@ -155,6 +157,13 @@ docker compose up -d --remove-orphans
 ```
 
 Back up first, and read the [CHANGELOG](CHANGELOG.md) of the new version.
+
+**Or every night, by itself**: `bash scripts/installa-aggiornamento.sh` schedules `scripts/aggiorna-tutto.sh`
+(systemd timer, or cron). It takes the new version from GitHub, the latest Python 3.12 image with its
+Debian packages, every Python library at its latest version (within the limits in `requirements.in`) and
+the latest PostgreSQL 17.x. It makes an encrypted backup first, tests the new version inside its container,
+rolls everything back by itself — database included — if something breaks, and emails a summary. Details
+in [INSTALLAZIONE.md](INSTALLAZIONE.md), step 13.
 
 ## Stack
 

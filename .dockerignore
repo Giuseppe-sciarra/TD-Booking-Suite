@@ -9,3 +9,6 @@ static-collected
 backups
 tests
 docs/screenshots
+logs
+compose.override.yaml
+.agg-*

@@ -7,3 +7,8 @@ __pycache__/
 static-collected/
 .venv/
 backups/
+# generati sul server da scripts/aggiorna-tutto.sh
+logs/
+compose.override.yaml
+requirements.auto.lock
+.agg-*
