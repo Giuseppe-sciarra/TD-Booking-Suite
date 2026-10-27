@@ -196,7 +196,7 @@ def plugin_allowed(request):
     staff_only(request)
 
 def plugin_version():
-    return (settings.BASE_DIR/"VERSION").read_text().strip()
+    return settings.VERSION
 
 def plugin_zip():
     import io,zipfile

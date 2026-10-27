@@ -12,4 +12,4 @@ def presentation(request):
  if user and user.is_authenticated and user.is_staff and settings.EDITION=="cloud":
   from .trial import new_count
   trials=new_count()
- return {"trial_new":trials,"mfa_missing":missing,"site":current(request),"edition":settings.EDITION,"tenant":brand,"member":getattr(request,"member",None),"support":getattr(request,"support",None),"can":can,"mfa_ok":mfa_ok}
+ return {"trial_new":trials,"mfa_missing":missing,"site":current(request),"edition":settings.EDITION,"tenant":brand,"member":getattr(request,"member",None),"support":getattr(request,"support",None),"can":can,"mfa_ok":mfa_ok,"app_version":settings.VERSION,"source_url":settings.SOURCE_URL}

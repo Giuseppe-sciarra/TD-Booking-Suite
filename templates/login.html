@@ -46,7 +46,6 @@
   </div>{% endif %}
  </div>
  {% if trial_available %}<a class="trial-cta" href="{% url 'trial' %}" data-trial-open{% if trial_open %} hidden{% endif %}><span class="cta-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg></span><span class="cta-text"><strong>Non sei ancora cliente?</strong><small>Prova il servizio: compili un modulo e ti richiamiamo</small></span><span class="cta-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span></a>{% endif %}
- <p class="login-foot">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}{% if site.support_phone %}, {{ site.support_phone }}{% endif %}</p>
- <p class="login-legal">{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}{% if pricing_on %}<a href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}<a href="{% url 'privacy' %}">Privacy</a></p>
 </section>
+<footer class="login-footer"><span class="login-foot">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}{% if site.support_phone %}, {{ site.support_phone }}{% endif %}</span><span class="login-legal">{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}{% if pricing_on %}<a href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}<a href="{% url 'privacy' %}">Privacy</a></span>{% include '_license.html' %}</footer>
 </div>{% endblock %}

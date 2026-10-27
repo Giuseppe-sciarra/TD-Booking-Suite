@@ -3,5 +3,5 @@
  <div class="show-head"><h1>Privacy</h1><p>Come trattiamo i dati di chi usa {{ site.name }}{% if updated %}. Ultimo aggiornamento: {{ updated|date:"d/m/Y" }}{% endif %}</p></div>
 </header>
 <div class="show-body"><article class="card policy">{{ policy }}</article></div>
-<footer class="show-foot"><span class="foot-name">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}</span><span>{% if pricing_on %}<a href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}<a href="{% url 'login' %}">Accedi</a></span></footer>
+<footer class="show-foot"><span class="foot-name">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}</span><span>{% if pricing_on %}<a href="{% url 'pricing' %}">Prezzi e versioni</a>{% endif %}{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}<a href="{% url 'login' %}">Accedi</a></span>{% include '_license.html' %}</footer>
 </div>{% endblock %}

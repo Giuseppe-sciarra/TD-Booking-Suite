@@ -206,6 +206,16 @@ def test_login_page_animated_even_with_reduced_motion():  # 2.7.0: Windows with 
     css=open("static/app.css").read();js=open("static/app.js").read()
     assert "reduced-motion" not in css and "reduced-motion" not in js and "style=" not in page
 
+def test_every_footer_links_the_source_code(sample,settings):  # 2.8.0: AGPL-3.0, one footer at the bottom centre
+    t,o,s=sample
+    for path in ("/login/",f"/book/{t.slug}/","/privacy/"):
+        page=Client().get(path).content.decode()
+        assert f"versione {settings.VERSION}" in page and f'href="{settings.SOURCE_URL}"' in page and "(AGPL-3.0)" in page,path
+    page=Client().get("/login/").content.decode()
+    assert page.rindex("</section>")<page.index('class="login-footer"')<page.rindex('href="/privacy/"')  # out of the form column
+    settings.SOURCE_URL=""
+    assert "Codice sorgente" not in Client().get("/login/").content.decode()
+
 # 2.4.0: "Non sei ancora cliente? Prova il servizio"
 from core.models import TrialRequest
 from core import trial as trial_module

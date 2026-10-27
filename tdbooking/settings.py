@@ -13,6 +13,9 @@ SECRET_KEY=os.environ.get("DJANGO_SECRET_KEY","")
 KEYS=json.loads(env("KEYS","{}"))
 ACTIVE_KEY=env("ACTIVE_KEY","v1")
 EDITION=env("EDITION","cloud")
+VERSION=(BASE_DIR/"VERSION").read_text().strip()
+# AGPL-3.0: the footer links here so every user can reach the source; empty hides the link
+SOURCE_URL=env("SOURCE_URL","https://github.com/Giuseppe-sciarra/TD-Booking-Suite").strip()
 PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN","http://localhost:8000" if DEV else "").rstrip("/")
 if "index" not in KEYS or len(SECRET_KEY)<50 or ACTIVE_KEY not in KEYS or len(base64.urlsafe_b64decode(KEYS[ACTIVE_KEY]))!=32:
     raise RuntimeError("Configurare DJANGO_SECRET_KEY e TDBS_KEYS con chiavi casuali distinte; usare scripts/configure.py.")

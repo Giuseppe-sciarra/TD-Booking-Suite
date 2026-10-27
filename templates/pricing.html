@@ -10,5 +10,5 @@
  {% if faq %}<section class="show-faq"><h2>Domande frequenti</h2>{% for q,a in faq %}<details><summary>{{ q }}</summary>{% if a %}<p>{{ a }}</p>{% endif %}</details>{% endfor %}</section>{% endif %}
  {% if trial_available %}<section class="show-band"><div><h2>Vuoi vederlo con la tua attività?</h2><p>Lasciaci i tuoi dati: prepariamo il portale per il tuo tipo di attività e ti contattiamo</p></div><a class="button show-cta" href="{% url 'trial' %}">Richiedi la prova</a></section>{% endif %}
 </div>
-<footer class="show-foot"><span class="foot-name">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}</span><span>{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}<a href="{% url 'privacy' %}">Privacy</a><a href="{% url 'login' %}">Accedi</a></span></footer>
+<footer class="show-foot"><span class="foot-name">{{ site.name }}{% if site.owner_name %} di {% include '_owner.html' with prefix='' cls='owner-foot' %}{% endif %}</span><span>{% if why_on %}<a href="{% url 'why' %}">Perché sceglierci</a>{% endif %}<a href="{% url 'privacy' %}">Privacy</a><a href="{% url 'login' %}">Accedi</a></span>{% include '_license.html' %}</footer>
 </div>{% endblock %}
