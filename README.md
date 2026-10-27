@@ -167,10 +167,26 @@ then `pytest`; the row-level security tests run on PostgreSQL).
 - [`INSTALLAZIONE.md`](INSTALLAZIONE.md) — installation and operations, step by step (Italian).
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed in each version (Italian).
 - [`SECURITY.md`](SECURITY.md) — how to report a vulnerability.
+- [`THIRD-PARTY.md`](THIRD-PARTY.md) — third-party components and their licences.
 - The **Guide** inside the portal — every page explained, for the agency and for the businesses.
 - `wordpress/td-booking-suite/` — the WordPress plugin.
 
 ## Licence
 
-Copyright © Giuseppe Sciarra — [Tastiere Digitali](https://tastieredigitali.it). All rights
-reserved.
+TD Booking Suite is free software released under the [GNU Affero General Public License v3.0 or
+later](LICENSE). If you run a modified version for other people over a network, you must offer
+them its source code. The WordPress plugin in `wordpress/td-booking-suite/` is released under the
+GNU General Public License v2.0 or later, like WordPress. Third-party components keep their own
+licences (`THIRD-PARTY.md`).
+
+Copyright © Giuseppe Sciarra — [Tastiere Digitali](https://tastieredigitali.it)
+
+---
+
+## Support the project
+
+If TD Booking Suite is useful to you, you can support its development with a donation:
+
+**[paypal.me/raxiel87](https://paypal.me/raxiel87)**
+
+Bug reports and pull requests are welcome.

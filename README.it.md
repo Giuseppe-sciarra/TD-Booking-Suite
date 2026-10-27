@@ -170,10 +170,26 @@ requirements-dev.txt`, poi `pytest`; i test della row-level security girano su P
 - [`INSTALLAZIONE.md`](INSTALLAZIONE.md) — installazione e gestione, passo per passo.
 - [`CHANGELOG.md`](CHANGELOG.md) — cosa cambia in ogni versione.
 - [`SECURITY.md`](SECURITY.md) — come segnalare una vulnerabilità.
+- [`THIRD-PARTY.md`](THIRD-PARTY.md) — componenti di terze parti e le loro licenze.
 - La **Guida** dentro il portale — ogni pagina spiegata, per l'agenzia e per le attività.
 - `wordpress/td-booking-suite/` — il plugin WordPress.
 
 ## Licenza
 
-Copyright © Giuseppe Sciarra — [Tastiere Digitali](https://tastieredigitali.it). Tutti i diritti
-riservati.
+TD Booking Suite è software libero rilasciato sotto la [GNU Affero General Public License v3.0 o
+successiva](LICENSE). Se fai girare una versione modificata per altre persone attraverso la rete,
+devi offrire loro il suo codice sorgente. Il plugin WordPress in `wordpress/td-booking-suite/` è
+rilasciato sotto la GNU General Public License v2.0 o successiva, come WordPress. I componenti di
+terze parti mantengono le loro licenze (`THIRD-PARTY.md`).
+
+Copyright © Giuseppe Sciarra — [Tastiere Digitali](https://tastieredigitali.it)
+
+---
+
+## Sostieni il progetto
+
+Se TD Booking Suite ti è utile, puoi sostenerne lo sviluppo con una donazione:
+
+**[paypal.me/raxiel87](https://paypal.me/raxiel87)**
+
+Segnalazioni di bug e pull request sono benvenute.
