@@ -24,6 +24,9 @@ EDITION_LABEL=""  # name in the sidebar, empty = Private or Cloud
 AGENCY_NAMES={"area":"Area agenzia","admin":"Amministratore dell'agenzia","who":"agenzia","access":"Accesso dell'agenzia"}  # how the staff pages and role are called
 ROLE_LABELS={}  # an edition can rename roles: {"owner":"Titolare"}
 LOGIN_NOTE=()  # an edition can explain its accounts under the sign-in form: ({"title","text"},...)
+LOGIN_USERNAMES=False  # an edition can let accounts have a username, with the email optional
+MFA_ENABLED=True  # Authenticator and passkeys; an edition on a PC that only it reaches can turn them off
+MFA_REMINDER="all"  # who sees "Proteggi il tuo account" until a second factor is set: "all", "staff" or ""
 PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN","http://localhost:8000" if DEV else "").rstrip("/")
 if "index" not in KEYS or len(SECRET_KEY)<50 or ACTIVE_KEY not in KEYS or len(base64.urlsafe_b64decode(KEYS[ACTIVE_KEY]))!=32:
     raise RuntimeError("Configurare DJANGO_SECRET_KEY e TDBS_KEYS con chiavi casuali distinte; usare scripts/configure.py.")

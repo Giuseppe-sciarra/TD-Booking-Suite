@@ -169,7 +169,7 @@ def clients(request):
 def client_new(request):
     """Create the client's portal, its administrator and, if given, the first contact on the card."""
     from .forms import TenantForm
-    from .platform import private_guard,seed_tenant,grant_access
+    from .platform import private_guard,seed_tenant,grant_access,account_for
     from .booking import queue
     from .site import tenant_defaults,mail_ready
     from .presets import CHOICES
@@ -179,7 +179,8 @@ def client_new(request):
     except (ValueError,ValidationError):trial,values=None,{}
     if request.method=="POST":
         try:
-            email=request.POST.get("email","").strip().casefold();validate_email(email)
+            email=request.POST.get("email","").strip().casefold()
+            if email or not settings.LOGIN_USERNAMES:validate_email(email)
             contact={"name":clean_text(request.POST,"contact_name",100,"Referente"),"role":"Titolare","email":email,
                      "phone":clean_text(request.POST,"contact_phone",40,"Telefono"),"notes":"","primary":True}
             form=TenantForm(request.POST,request.FILES)
@@ -191,14 +192,14 @@ def client_new(request):
                     preset=request.POST.get("preset","")
                     if preset in PRESETS:tenant.save(update_fields=first_settings(tenant,preset))
                     seed_tenant(tenant,preset)
-                    user=User.objects.filter(login_index=login_index(email)).first() or User.objects.create_user(email)
+                    user,_=account_for(request.POST)
                     # the owner runs the business: services and opening hours included
                     Membership.objects.create(tenant=tenant,user=user,role="owner",can_schedule=True)
                     direct=bool(request.POST.get("password"))
                     link=grant_access(user,request.POST.get("password",""))
                     with scope(tenant):
                         audit(tenant,request.user,"tenant.created",tenant.pk)
-                        if link:queue(tenant,{"to":email,"subject":"Il tuo accesso a "+tenant.name,"body":"Imposta la password per entrare nel portale:\n"+link})
+                        if link and user.email:queue(tenant,{"to":user.email,"subject":"Il tuo accesso a "+tenant.name,"body":"Imposta la password per entrare nel portale:\n"+link})
                     if contact["name"]:store_profile(tenant,{**{k:"" for k,_,_ in FIELDS},"since":timezone.localdate().isoformat(),"notes":"","contacts":[contact]})
                     if trial:
                         # the request becomes this client: business type and contact already in place

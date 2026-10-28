@@ -33,6 +33,20 @@ def grant_access(user,password=""):
     validate_password(password,user)
     user.set_password(password);user.auth_version+=1;user.save(update_fields=["password","auth_version"])
     return ""
+def account_for(post):
+    """The account a form names: its email or, where the edition has them, its username with the email optional.
+    An existing one is returned as it is, a new one is created without password. Returns (user, email)."""
+    from .models import clean_username
+    username=clean_username(post.get("username","")) if settings.LOGIN_USERNAMES else ""
+    email=post.get("email","").strip().casefold()
+    if not email and not username and settings.LOGIN_USERNAMES:raise ValueError("Scrivi lo username o l'email.")
+    if email or not username:validate_email(email)
+    by_mail=User.objects.filter(login_index=login_index(email)).first() if email else None
+    by_name=User.objects.filter(name_index=login_index(username)).first() if username else None
+    if by_mail and by_name and by_mail.pk!=by_name.pk:raise ValueError("Username ed email appartengono a due account diversi.")
+    found=by_mail or by_name
+    if not found and settings.LOGIN_USERNAMES and not username:raise ValueError("Per una persona nuova scegli lo username: l'email da sola basta per chi ha già un accesso.")
+    return (found or User.objects.create_user(email,username=username)),email
 def mail_ready(tenant):
     from .site import mail_ready as ready
     return ready(tenant)
@@ -94,7 +108,6 @@ def members_view(request,slug):
         try:
             action=request.POST.get("action")
             if action=="invite":
-                email=request.POST.get("email","").strip().casefold();validate_email(email)
                 role=request.POST.get("role")
                 if role not in ROLES:raise ValueError("Ruolo non valido.")
                 locations,resources=scope_values(request,tenant)
@@ -104,7 +117,8 @@ def members_view(request,slug):
                     if len(only)==1:locations=[str(only[0])]
                     elif role=="operator":raise ValueError("Assegna all'operatore sede almeno una sede o una risorsa.")
                 with transaction.atomic():
-                    u=User.objects.filter(login_index=login_index(email)).first() or User.objects.create_user(email)
+                    u,email=account_for(request.POST)
+                    email=email or u.email
                     # an account of another business is only added, never activated or given a password from here
                     if elsewhere(u,tenant) and (request.POST.get("password") or not u.has_usable_password()):
                         raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
@@ -117,8 +131,8 @@ def members_view(request,slug):
                     member.save()
                     direct=bool(request.POST.get("password"))
                     link=grant_access(u,request.POST.get("password",""))
-                    if link:queue(tenant,{"to":email,"subject":"Invito · "+tenant.name,"body":"Attiva il tuo accesso:\n"+link})
-                    if direct:messages.success(request,email+" può già accedere con la password che hai scelto.")
+                    if link and email:queue(tenant,{"to":email,"subject":"Invito · "+tenant.name,"body":"Attiva il tuo accesso:\n"+link})
+                    if direct:messages.success(request,u.login_name+" può già accedere con la password che hai scelto.")
                     audit(tenant,request.user,"member.invited",u.pk,role=role,locations=len(member.locations),resources=len(member.resources))
             else:
                 member=get_object_or_404(Membership,tenant=tenant,pk=request.POST.get("member"))
@@ -132,11 +146,13 @@ def members_view(request,slug):
                     if u.is_staff:raise ValueError("Usa la procedura di recupero amministratore da console.")
                     # the reset link opens the person's account in every business: only the agency resets someone who works elsewhere too
                     if elsewhere(u,tenant) and not request.user.is_staff:raise ValueError("Questa persona lavora anche in un'altra attività: il ripristino della password lo fa l'agenzia.")
+                    agency=request.user.is_staff and not request.member
+                    if agency and not u.email:raise ValueError("Questo account non ha un'email a cui mandare il link: la password la ripristina chi gestisce l'attività, da Persone e permessi.")
                     u.auth_version+=1;u.set_unusable_password();u.save(update_fields=["auth_version","password"])
                     link=invitation(u)
-                    queue(tenant,{"to":u.email,"subject":"Ripristino accesso · "+tenant.name,"body":"Imposta una nuova password:\n"+link+"\nIl metodo MFA rimane attivo."})
+                    if u.email:queue(tenant,{"to":u.email,"subject":"Ripristino accesso · "+tenant.name,"body":"Imposta una nuova password:\n"+link+"\nIl metodo MFA rimane attivo."})
                     audit(tenant,request.user,"member.password_reset",u.pk)
-                    if request.user.is_staff and not request.member:
+                    if agency:
                         # the agency enters the contents only with a support grant: the link goes to the person, not on this screen
                         link="";messages.success(request,"Link per la nuova password inviato a "+u.email+".")
                 else:raise ValueError("Operazione non valida.")
@@ -156,9 +172,8 @@ def support_view(request,slug):
         try:
             action=request.POST.get("action")
             if action=="grant":
-                email=request.POST.get("email","").strip().casefold()
-                staff_user=User.objects.filter(login_index=login_index(email),is_staff=True).first()
-                if not staff_user:raise ValueError("Nessun amministratore della piattaforma con questa email.")
+                staff_user=User.objects.by_login(request.POST.get("email","").strip()[:254]).filter(is_staff=True).first()
+                if not staff_user:raise ValueError("Nessun amministratore della piattaforma con questa email." if not settings.LOGIN_USERNAMES else "Nessun amministratore con questo username o email.")
                 reason=request.POST.get("reason","").strip()
                 if not 10<=len(reason)<=300:raise ValueError("Descrivi il motivo dell'assistenza (10-300 caratteri).")
                 try:hours=int(request.POST.get("hours","4"))

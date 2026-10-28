@@ -1,20 +1,35 @@
-import uuid,secrets
+import re,uuid,secrets
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser,BaseUserManager,PermissionsMixin
 from django.core.exceptions import ValidationError
 from .crypto import protect,reveal,login_index,b64,encrypt,decrypt
 from .tenancy import TenantManager,current_tenant
 
+USERNAME=re.compile(r"[a-z0-9][a-z0-9._-]{2,39}")
+def clean_username(value):
+    """An edition with LOGIN_USERNAMES: a name to sign in with, never an "@", so it cannot be taken for an email."""
+    value=(value or "").strip().casefold()
+    if value and not USERNAME.fullmatch(value):
+        raise ValidationError("Username non valido: da 3 a 40 caratteri tra lettere, numeri, punto, trattino e trattino basso, senza spazi né accenti.")
+    return value
 class UserManager(BaseUserManager):
-    def create_user(self,email,password=None,**extra):
-        user=self.model(login_index=login_index(email),**extra)
-        user.pii=protect({"email":email.strip().casefold()},"user:"+str(user.pk))
+    def create_user(self,email,password=None,username="",**extra):
+        email=(email or "").strip().casefold();username=clean_username(username)
+        if not email and not username:raise ValidationError("Serve un'email o uno username.")
+        # usernames and emails share the index space without clashing (no "@" in a username); without an email the username is the login
+        user=self.model(login_index=login_index(email or username),name_index=login_index(username) if username else None,**extra)
+        user.pii=protect({"email":email,**({"username":username} if username else {})},"user:"+str(user.pk))
         user.set_password(password);user.save();return user
     def create_superuser(self,email,password,**extra):
         return self.create_user(email,password,is_staff=True,is_superuser=True,**extra)
+    def by_login(self,value):
+        """The account an email or a username signs in to."""
+        key=login_index(value or "")
+        return self.filter(models.Q(login_index=key)|models.Q(name_index=key))
 class User(AbstractBaseUser,PermissionsMixin):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     login_index=models.CharField(max_length=64,unique=True)
+    name_index=models.CharField(max_length=64,unique=True,null=True,blank=True)  # 2.9.0: the username, where an edition uses them
     pii=models.TextField()
     is_active=models.BooleanField(default=True)
     is_staff=models.BooleanField(default=False)
@@ -26,6 +41,13 @@ class User(AbstractBaseUser,PermissionsMixin):
     objects=UserManager()
     @property
     def email(self): return reveal(self.pii,"user:"+str(self.pk))["email"]
+    @property
+    def username(self): return reveal(self.pii,"user:"+str(self.pk)).get("username","")
+    @property
+    def login_name(self):
+        """What the person signs in with and is shown as: the username, or the email."""
+        data=reveal(self.pii,"user:"+str(self.pk))
+        return data.get("username") or data["email"]
     @property
     def mfa_ready(self): return bool(self.totp) or self.passkeys.exists()
 class Passkey(models.Model):

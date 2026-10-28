@@ -21,7 +21,7 @@ from .crypto import login_index,protect,reveal,token_hash,b64,unb64
 DUMMY=make_password(secrets.token_urlsafe(32))
 class EmailBackend(BaseBackend):
     def authenticate(self,request,email=None,password=None,**kwargs):
-        u=User.objects.filter(login_index=login_index(email or "")).first()
+        u=User.objects.by_login(email).first()  # email, or the username where the edition has them
         if not u:check_password(password or "",DUMMY);return None
         return u if u.is_active and u.check_password(password or "") else None
     def get_user(self,user_id):return User.objects.filter(pk=user_id,is_active=True).first()
@@ -63,7 +63,8 @@ def login_view(request):
         from django.contrib.auth import authenticate
         u=authenticate(request,email=email,password=request.POST.get("password","")[:1024])
         if u:
-            if u.mfa_ready:
+            # an edition without second factor (a program only its own PC reaches) signs in with the password alone
+            if u.mfa_ready and settings.MFA_ENABLED:
                 request.session.cycle_key()
                 request.session["preauth"]={"user":str(u.pk),"until":time.time()+300,"version":u.auth_version,"remember":request.POST.get("remember")=="1"}
                 return redirect("verify_mfa")
@@ -78,7 +79,7 @@ def login_view(request):
     # the address typed before an error, or the one a page hands over (?email=, "entra come titolare")
     email=(request.POST.get("email") if request.method=="POST" else request.GET.get("email","")) or ""
     return render(request,"login.html",{"error":error,"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled,
-        "email":email.strip()[:254],"login_note":settings.LOGIN_NOTE})
+        "email":email.strip()[:254],"login_note":settings.LOGIN_NOTE,"usernames":settings.LOGIN_USERNAMES,"mfa_enabled":settings.MFA_ENABLED})
 def verify_totp(u,code):
     if not u.totp or not code.isascii():return False  # compare_digest refuses non-ASCII text (a pasted "１２３")
     generator=pyotp.TOTP(reveal(u.totp,"totp:"+str(u.pk)))
@@ -125,7 +126,7 @@ def confirm_view(request):
     if not request.user.is_authenticated or not request.session.get("mfa"):return redirect("login")
     target=safe_next(request.POST.get("next") or request.GET.get("next"))
     request.session["after_confirm"]=target
-    error="";use_password=not request.user.mfa_ready
+    error="";use_password=not request.user.mfa_ready or not settings.MFA_ENABLED
     if request.method=="POST" and use_password:
         throttle(request,"mfa",10);throttle(request,"mfa-user",10,identity=str(request.user.pk))
         if request.user.check_password(request.POST.get("password","")[:1024]):
@@ -153,6 +154,7 @@ def security_view(request):
         throttle(request,"security",20)
         action=request.POST.get("action")
         try:
+            if action in ("totp_start","totp_confirm","recovery") and not settings.MFA_ENABLED:raise ValueError("Il secondo fattore non è attivo in questa installazione.")
             if action=="totp_start":
                 fresh(request)  # also the first factor: a forgotten open session must not let someone else add theirs
                 request.session["totp_pending"]=protect({"seed":pyotp.random_base32(),"until":time.time()+600},"totp-pending:"+str(u.pk))
@@ -192,12 +194,12 @@ def security_view(request):
     if request.session.get("totp_pending"):
         p=reveal(request.session["totp_pending"],"totp-pending:"+str(u.pk))
         if p["until"]>time.time():seed=p["seed"]
-    return render(request,"security.html",{"error":error,"notice":notice,"seed":seed,"codes":codes,"keys":u.passkeys.all(),"totp_enabled":bool(u.totp)})
+    return render(request,"security.html",{"error":error,"notice":notice,"seed":seed,"codes":codes,"keys":u.passkeys.all(),"totp_enabled":bool(u.totp),"mfa_enabled":settings.MFA_ENABLED})
 def qr_view(request):
     if not request.user.is_authenticated or not request.session.get("totp_pending"):raise PermissionDenied
     p=reveal(request.session["totp_pending"],"totp-pending:"+str(request.user.pk))
     if p["until"]<time.time():raise PermissionDenied
-    uri=pyotp.TOTP(p["seed"]).provisioning_uri(name=request.user.email,issuer_name="TD Booking Suite")
+    uri=pyotp.TOTP(p["seed"]).provisioning_uri(name=request.user.login_name,issuer_name="TD Booking Suite")
     image=qrcode.make(uri);buf=io.BytesIO();image.save(buf,format="PNG")
     return HttpResponse(buf.getvalue(),content_type="image/png")
 def json_body(request):
@@ -212,6 +214,7 @@ def page_origin(request):
     return urlparse(settings.PUBLIC_ORIGIN).scheme+"://"+request.get_host()
 @require_POST
 def passkey_begin(request,kind):
+    if not settings.MFA_ENABLED:raise PermissionDenied
     throttle(request,"passkey",30)
     rp=urlparse(page_origin(request)).hostname
     data=json_body(request)
@@ -220,11 +223,11 @@ def passkey_begin(request,kind):
         fresh(request)
         u=request.user
         if u.passkeys.count()>=20:return JsonResponse({"error":"Limite passkey raggiunto."},status=400)
-        opts=generate_registration_options(rp_id=rp,rp_name="TD Booking Suite",user_id=u.pk.bytes,user_name=u.email,
+        opts=generate_registration_options(rp_id=rp,rp_name="TD Booking Suite",user_id=u.pk.bytes,user_name=u.login_name,
             exclude_credentials=[PublicKeyCredentialDescriptor(id=unb64(k.credential_id)) for k in u.passkeys.all()],
             authenticator_selection=AuthenticatorSelectionCriteria(resident_key=ResidentKeyRequirement.REQUIRED,user_verification=UserVerificationRequirement.REQUIRED))
     elif kind=="login":
-        u=User.objects.filter(login_index=login_index(str(data.get("email",""))[:254]),is_active=True).first()
+        u=User.objects.by_login(str(data.get("email",""))[:254]).filter(is_active=True).first()
         opts=generate_authentication_options(rp_id=rp,user_verification=UserVerificationRequirement.REQUIRED,
             allow_credentials=[PublicKeyCredentialDescriptor(id=unb64(k.credential_id)) for k in u.passkeys.all()] if u else [])
     else:raise PermissionDenied
@@ -233,6 +236,7 @@ def passkey_begin(request,kind):
     return JsonResponse({"id":str(ceremony.pk),"options":json.loads(options_to_json(opts))})
 @require_POST
 def passkey_finish(request,kind):
+    if not settings.MFA_ENABLED:raise PermissionDenied
     throttle(request,"passkey-finish",20)
     data=json_body(request);error="Passkey non valida o richiesta scaduta."
     if data.get("id")!=request.session.pop("ceremony",None):return JsonResponse({"error":error},status=400)

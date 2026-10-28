@@ -10,11 +10,13 @@
 - **Il colore principale colora tutto il portale**: anche la voce di menu selezionata e gli sfondi tenui seguono il colore scelto in *Impostazioni generali*, non solo pulsanti e link. Con il colore di serie non cambia niente
 - **Punti di estensione per le edizioni costruite sopra al core** (`EXTRA_NAV`, `TENANT_LIMIT`, `MORE_TENANTS_HINT`, `EDITION_LABEL`, avvisi in cima alle pagine): li usa l'edizione Windows, l'installazione Docker resta identica
 - **Nomi dell'area agenzia e dei ruoli per edizione** (`AGENCY_NAMES`, `ROLE_LABELS`): l'edizione Windows chiama l'agenzia *Amministratore del programma* e l'amministratore dell'attività *Titolare*. **Nota sotto l'accesso** (`LOGIN_NOTE`), per spiegare quale account usare, e indirizzo `/login/?email=` che scrive già l'email. Con i valori di serie non cambia niente
+- **Username per le edizioni che li vogliono** (`LOGIN_USERNAMES`): ogni account nuovo ha uno username, l'email diventa facoltativa e si entra con l'uno o con l'altra. Lo username si sceglie in *Persone e permessi* e in *Clienti › Nuovo cliente*; una persona che ha già un accesso si aggiunge anche solo con l'email o con lo username. Senza email l'invito e il ripristino della password restano un link a schermo per chi gestisce l'attività, mai per l'agenzia. Indice cifrato come quello dell'email, nessun dato in chiaro (migrazione `0020`). L'installazione Docker resta con l'email
+- **Secondo fattore per edizione** (`MFA_ENABLED`, `MFA_REMINDER`): un'edizione che risponde solo sul suo PC può entrare con la sola password, senza Authenticator, passkey e avviso; un'altra può mostrare l'avviso *Proteggi il tuo account* solo all'agenzia. Di serie resta tutto com'era
 - **Edizione Private: chi gestisce il portale e lavora anche nell'attività** vede il suo ruolo e il menu dell'attività anche nelle pagine dell'agenzia, non più *solo gestione tecnica*
 - **Plugin WordPress 2.9.0**: stesso codice della 2.8.0, cambia solo il numero di versione, che segue il core
 
 ### Test
-- `tests/test_import.py` (8 test, anche lo stallo con le modifiche contemporanee sulle schede, che fallisce sul codice di prima), passkey e pagina prenotazioni con due indirizzi in `tests/test_record.py`, punti di estensione in `tests/test_access.py`. Suite completa verde su SQLite e su PostgreSQL 16 (293 test, isolamento RLS compreso)
+- `tests/test_import.py` (8 test, anche lo stallo con le modifiche contemporanee sulle schede, che fallisce sul codice di prima), passkey e pagina prenotazioni con due indirizzi in `tests/test_record.py`, punti di estensione in `tests/test_access.py`, username e secondo fattore in `tests/test_usernames.py`. Suite completa verde su SQLite e su PostgreSQL 16 (298 test, isolamento RLS compreso)
 
 ## 2.8.0 — scheda trattamenti, intolleranze, domande per tipo di attività, logo nel portale, correzioni di sicurezza
 

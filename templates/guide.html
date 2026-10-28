@@ -78,9 +78,9 @@
 <p>Il cliente riceve un'email con il link per annullare. Fino a quanto prima può farlo da solo si decide nel servizio.</p></section>
 
 <section class="card" id="persone"><h2>Dare un accesso a qualcuno</h2>
-<p>In <strong>Persone e permessi</strong> inserisci email e ruolo. Ci sono due modi per consegnare l'accesso:</p>
+<p>In <strong>Persone e permessi</strong> inserisci {% if usernames %}username, l'email se vuoi,{% else %}email{% endif %} e ruolo. Ci sono due modi per consegnare l'accesso:</p>
 <dl class="levels"><div><dt>Con un link di invito</dt><dd>Lascia vuota la password. Compare un link valido 24 ore: copialo e mandalo tu. Se l'invio email è attivo, parte anche per email</dd></div><div><dt>Con una password scelta da te</dt><dd>Apri "Oppure imposta tu la password". L'accesso è pronto subito, senza email: comunica tu la password alla persona</dd></div></dl>
-<p>In tutti e due i casi la persona entra subito. In alto vede un avviso che la invita ad aggiungere un secondo fattore, un'app come Google Authenticator oppure una passkey, finché non lo attiva. "Ripristina password" crea un nuovo link per chi l'ha dimenticata.</p></section>
+<p>In tutti e due i casi la persona entra subito.{% if mfa_enabled %} Da Account e sicurezza può aggiungere un secondo fattore, un'app come Google Authenticator oppure una passkey.{% endif %} "Ripristina password" crea un nuovo link per chi l'ha dimenticata.</p></section>
 
 <section class="card" id="clienti"><h2>Clienti, privacy e marketing</h2>
 <p>Ogni prenotazione crea o aggiorna la scheda del cliente. Nomi, email e telefoni sono cifrati. Lo stesso cliente si riconosce dall'email e dal telefono: chi hai inserito al banco con il solo numero ritrova la sua scheda quando prenota dal sito.</p>
@@ -92,8 +92,9 @@
 <p>L'agenzia non vede prenotazioni e clienti di un'attività. Quando serve un aiuto, l'amministratore dell'attività apre <strong>Accesso dell'agenzia</strong> e concede un accesso per un tempo limitato, con il motivo. Durante l'accesso ogni pagina aperta finisce nel <strong>Registro attività</strong>. Si può revocare in qualsiasi momento.</p></section>
 
 <section class="card" id="account"><h2>Il tuo account</h2>
-<p>In basso nel menu, <strong>Account e sicurezza</strong>: cambiare la password, aggiungere una passkey, rigenerare i codici di recupero. Conserva i codici di recupero nel gestore di password: servono se perdi il telefono.</p>
-<p>Le pagine che cambiano accessi o impostazioni chiedono di confermare con il codice dell'app o con la passkey, oppure con la password se non hai ancora un secondo fattore, al massimo una volta ogni 15 minuti. Dopo la conferma torni alla pagina dove eri.</p></section>
+{% if mfa_enabled %}<p>In basso nel menu, <strong>Account e sicurezza</strong>: cambiare la password, aggiungere una passkey, rigenerare i codici di recupero. Conserva i codici di recupero nel gestore di password: servono se perdi il telefono.</p>
+<p>Le pagine che cambiano accessi o impostazioni chiedono di confermare con il codice dell'app o con la passkey, oppure con la password se non hai ancora un secondo fattore, al massimo una volta ogni 15 minuti. Dopo la conferma torni alla pagina dove eri.</p>{% else %}<p>In basso nel menu, <strong>Account e sicurezza</strong>: cambiare la password.</p>
+<p>Le pagine che cambiano accessi o impostazioni chiedono di nuovo la password, al massimo una volta ogni 15 minuti. Dopo la conferma torni alla pagina dove eri.</p>{% endif %}</section>
 
 <section class="card" id="problemi"><h2>Se qualcosa non va</h2>
 <div class="table-scroll"><table><thead><tr><th>Cosa vedi</th><th>Cosa fare</th></tr></thead><tbody>
@@ -101,7 +102,7 @@
 <tr><td>La pagina prenotazioni non mostra orari</td><td>Controlla in Configura l'attività: servono almeno una sede, un orario di apertura e un servizio attivo. Guarda anche le chiusure del giorno scelto</td></tr>
 <tr><td>Il widget non compare nel sito</td><td>Il sito non è tra i siti autorizzati dell'attività, oppure nel plugin l'indirizzo breve è sbagliato</td></tr>
 <tr><td>Le email restano "in attesa"</td><td>Manca l'invio email: l'agenzia lo imposta in Impostazioni generali, oppure per la singola attività. Le prenotazioni restano valide</td></tr>
-<tr><td>Ti chiede il codice prima di aprire una pagina</td><td>È la conferma per le pagine sensibili: inserisci il codice dell'app o usa la passkey e torni alla pagina</td></tr>
+<tr><td>Ti chiede {% if mfa_enabled %}il codice{% else %}la password{% endif %} prima di aprire una pagina</td><td>È la conferma per le pagine sensibili: {% if mfa_enabled %}inserisci il codice dell'app o usa la passkey{% else %}inserisci di nuovo la password{% endif %} e torni alla pagina</td></tr>
 <tr><td>L'invito è scaduto</td><td>In Persone e permessi, Ripristina password crea un nuovo link</td></tr>
 </tbody></table></div></section>
 </div></div>{% endblock %}

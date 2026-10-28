@@ -676,6 +676,7 @@ def campaign_preview(request,slug,campaign_id):
                 messages.success(request,"Campagna accodata. Lo stato degli invii è visibile nel marketing.")
             elif action=="test":
                 if not request.tenant.marketing_enabled:raise BookingError("Marketing disabilitato.")
+                if not request.user.email:raise BookingError("Il tuo account non ha un'email: la prova non ha dove arrivare.")
                 queue(request.tenant,{"to":request.user.email,"subject":"[PROVA] "+campaign.subject,"body":campaign.body})
                 audit(request.tenant,request.user,"campaign.test",campaign.pk)
                 messages.success(request,"Prova accodata al tuo indirizzo di accesso.")

@@ -139,7 +139,7 @@
   try{
    if(!window.PublicKeyCredential||!navigator.credentials)throw Error("Questo browser non supporta le passkey. Usa Authenticator.");
    const email=$("#email")?.value.trim()||"";
-   if(kind==="login"&&!email)throw Error("Inserisci prima la tua email.");
+   if(kind==="login"&&!email)throw Error($("#email")?.dataset.empty||"Inserisci prima la tua email.");
    const begin=await request("/passkey/"+kind+"/begin/",{email});
    const remember=!!$("#remember")?.checked;
    const options=begin.options;
