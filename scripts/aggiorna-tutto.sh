@@ -20,7 +20,9 @@
 #   5. prova la versione nuova: pagina di accesso dall'host e `manage.py selftest` DENTRO il container
 #      (database, cifratura, password, loghi, Authenticator, passkey, pagine): se qualcosa non va
 #      → ROLLBACK a immagine, librerie e, se le migrazioni l'hanno cambiato, database di prima;
-#   6. email di riepilogo all'agenzia, con l'invio email del portale (Impostazioni generali);
+#   6. email di riepilogo in testo semplice all'agenzia, solo se qualcosa si è aggiornato o è
+#      fallito (cosa, librerie, cosa no e perché, comandi per tornare indietro), con l'invio email
+#      del portale (Impostazioni generali);
 #   7. pulizia di Docker che non tocca le immagini di rollback.
 #
 #   bash scripts/aggiorna-tutto.sh              → aggiornamento vero
@@ -29,7 +31,6 @@
 #
 # Variabili (nel .env oppure davanti al comando):
 #   TDBS_AGG_EMAIL=           a chi mandare il riepilogo (vuoto = email delle richieste di prova o di assistenza)
-#   TDBS_AGG_MAIL_SEMPRE=0    1 = email anche quando era già tutto aggiornato
 #   TDBS_AGG_TIENI_ROLLBACK=3 quante immagini di rollback tenere
 #   TDBS_AGG_CHIAVE=/root/tdbs-backup.key   la chiave dei backup
 #   TDBS_AGG_BACKUP=/var/backups/tdbs       dove vanno i backup fatti prima di aggiornare
@@ -38,6 +39,8 @@
 # (generati, fuori da git): docker compose li legge da solo. Per tornare a quelli del rilascio:
 #   rm compose.override.yaml requirements.auto.lock && docker compose build && docker compose up -d
 # ═════════════════════════════════════════════════════════════════════════════
+NOME="TD Booking Suite"
+
 set -uo pipefail
 cd "${TDBS_AGG_DIR:-$(dirname "$0")/..}" || exit 1
 DIR="$(pwd)"
@@ -65,7 +68,6 @@ envval() { grep -E "^[[:space:]]*$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- 
 conf() { local v="${!1:-$(envval "$1")}"; printf '%s' "${v:-$2}"; }   # $1 variabile, $2 predefinito
 
 EMAIL="$(conf TDBS_AGG_EMAIL '')"
-MAIL_SEMPRE="$(conf TDBS_AGG_MAIL_SEMPRE 0)"
 TIENI="$(conf TDBS_AGG_TIENI_ROLLBACK 3)"
 CHIAVE="$(conf TDBS_AGG_CHIAVE /root/tdbs-backup.key)"
 BACKUP_DIR="$(conf TDBS_AGG_BACKUP /var/backups/tdbs)"
@@ -88,19 +90,97 @@ if [[ -f logs/aggiorna-tutto.log ]] && (( $(stat -c %s logs/aggiorna-tutto.log) 
     cat logs/.aggiorna-tutto.taglio > logs/aggiorna-tutto.log
   rm -f logs/.aggiorna-tutto.taglio
 fi
-RIEPILOGO=""        # righe dell'email
-ESITO="nessuno"     # nessuno | ok | rollback | errore
-aggiungi() { RIEPILOGO+="$*"$'\n'; }
-peggiora() {        # l'esito finale è il peggiore incontrato
+DUMP=""
+# il backup in chiaro serve solo durante l'aggiornamento; la copia dello script si toglie alla fine
+trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"' EXIT
+
+# L'email la spedisce il portale (manage.py update_report): oggetto dall'esito, mittente e
+# destinatario dalle Impostazioni generali (o TDBS_AGG_EMAIL).
+manda_email() {   # $1 oggetto (non usato: lo fa il portale), $2 testo — stampa "a <indirizzo>"
+  local args=(python manage.py update_report --esito "$ESITO") risp a
+  [[ -n "$EMAIL" ]] && args+=(--a "$EMAIL")
+  risp=$(printf '%s' "$2" | docker compose exec -T web "${args[@]}" 2>/dev/null | tail -1)
+  [[ "$risp" == \{* ]] || risp=$(printf '%s' "$2" | docker compose run --rm -T web "${args[@]}" 2>/dev/null | tail -1)
+  a=$(printf '%s' "$risp" | sed -n 's/.*"a": *"\([^"]*\)".*/\1/p')
+  if [[ "$risp" =~ \"ok\":\ *true ]]; then echo "a ${a:-?}"; return 0; fi
+  if [[ "$risp" == \{* ]]; then echo "${a:+a $a: }$(printf '%s' "$risp" | sed -n 's/.*"msg": *"\([^"]*\)".*/\1/p')"
+  else echo "il portale non ha risposto"; fi
+  return 1
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Riepilogo ed email — blocco UGUALE in tutti gli aggiorna-tutto.sh (CRM, Tiditalk,
+# Sentinel TD, CataSync, TD Booking Suite): se lo cambi qui, cambialo anche negli altri.
+# Email di solo testo, che parte solo se qualcosa si è aggiornato o è fallito:
+#   AGGIORNATI · LIBRERIE AGGIORNATE · NON AGGIORNATI (con il perché) · PER TORNARE INDIETRO
+# La spedisce manda_email (più su), con il mittente e il destinatario di sempre.
+# ═════════════════════════════════════════════════════════════════════════════
+AGGIORNATI=""; LIBRERIE=""; NON_AGGIORNATI=""; INDIETRO=""
+ESITO="nessuno"     # nessuno | ok | rollback | errore: il peggiore incontrato
+peggiora() {
   case "$1" in
     errore)   ESITO="errore" ;;
     rollback) [[ "$ESITO" != "errore" ]] && ESITO="rollback" ;;
     ok)       [[ "$ESITO" == "nessuno" ]] && ESITO="ok" ;;
   esac
+  return 0
 }
-DUMP=""
-# il backup in chiaro serve solo durante l'aggiornamento; la copia dello script si toglie alla fine
-trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"' EXIT
+# $1 cosa, es. «db: PostgreSQL 17.5 → PostgreSQL 17.6»
+aggiornato() { AGGIORNATI+="- $1"$'\n'; peggiora ok; }
+# $1 righe «nome prima → dopo (tipo)», una per libreria
+librerie() {
+  [[ -n "${1//[[:space:]]/}" ]] || return 0
+  LIBRERIE+="$(printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | sed -E 's/^[[:space:]]*([+-][[:space:]]+)?/- /')"$'\n'
+}
+# $1 cosa e perché · $2 errore | rollback | info (info: da sola non fa partire l'email) · $3 righe di dettaglio
+non_aggiornato() {
+  local d="${3:-}"
+  NON_AGGIORNATI+="- $1"$'\n'
+  [[ -n "${d//[[:space:]]/}" ]] && NON_AGGIORNATI+="$(printf '%s\n' "$d" | grep -v '^[[:space:]]*$' | sed 's/^/    /')"$'\n'
+  [[ "$2" == info ]] || peggiora "$2"
+}
+# le librerie che erano state provate, da mettere sotto il perché di un fallimento
+provate() { [[ -n "${MODIFICHE:-}" ]] && printf '\nlibrerie provate:\n%s' "$MODIFICHE"; return 0; }
+# $1 comando da lanciare sull'host per tornare alla versione di prima
+indietro() { INDIETRO+="$1"$'\n'; }
+
+# Perché un servizio non va: stato, healthcheck, riavvii, codice di uscita e righe del log.
+# Va letto PRIMA di tornare indietro (dopo, il container nuovo non c'è più).
+diagnosi() {
+  local cid; cid=$(docker compose ps -aq "$1" 2>/dev/null | head -1)
+  if [[ -n "$cid" ]]; then
+    docker inspect -f 'stato: {{.State.Status}} · healthcheck: {{if .State.Health}}{{.State.Health.Status}}{{else}}nessuno{{end}} · riavvii: {{.RestartCount}} · codice di uscita: {{.State.ExitCode}}{{if .State.Error}} · errore: {{.State.Error}}{{end}}' "$cid" 2>/dev/null
+    docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}healthcheck ({{.ExitCode}}): {{.Output}}{{"\n"}}{{end}}{{end}}' "$cid" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -3
+  fi
+  # le righe d'errore prima di tutto: un programma che rifiuta un'opzione stampa l'errore e poi tutto
+  # l'aiuto, e in coda al log resterebbe solo l'aiuto
+  echo "righe di errore nel log:"
+  docker compose logs --no-color --tail 600 "$1" 2>&1 | tr -d '\r' | sed 's/^[^|]*| //' \
+    | grep -iE 'error|errore|unrecogn|unknown|invalid|illegal|bad |wrong|cannot|can.t|failed|fatal|denied|not permitted|abort' \
+    | awk '!visto[$0]++' | tail -8
+  echo "ultime righe del log:"
+  docker compose logs --no-color --tail 12 "$1" 2>&1 | tr -d '\r' | tail -12
+}
+
+manda_riepilogo() {
+  local testo="" oggetto risp
+  [[ $DRY_RUN == 0 && "$ESITO" != "nessuno" ]] || return 0
+  [[ -n "$AGGIORNATI" ]]     && testo+="AGGIORNATI"$'\n'"$AGGIORNATI"$'\n'
+  [[ -n "$LIBRERIE" ]]       && testo+="LIBRERIE AGGIORNATE"$'\n'"$LIBRERIE"$'\n'
+  [[ -n "$NON_AGGIORNATI" ]] && testo+="NON AGGIORNATI"$'\n'"$NON_AGGIORNATI"$'\n'
+  [[ -n "$INDIETRO" ]]       && testo+="PER TORNARE INDIETRO (sull'host $(hostname))"$'\n'"$INDIETRO"
+  case "$ESITO" in
+    ok)       oggetto="$NOME: aggiornamento notturno riuscito" ;;
+    rollback) oggetto="$NOME: aggiornamento notturno annullato, torna la versione di prima" ;;
+    *)        oggetto="$NOME: aggiornamento notturno con errori" ;;
+  esac
+  if risp=$(manda_email "$oggetto" "$testo"); then
+    log "email di riepilogo inviata $(printf '%s' "$risp" | tail -1)"
+  else
+    log "⚠ email di riepilogo non inviata: $(printf '%s' "$risp" | tail -1)"
+    log "il riepilogo che avrebbe mandato:"; printf '%s\n' "$testo" | sed 's/^/      /'
+  fi
+}
 
 log "── Aggiornamento automatico di TD Booking Suite $( [[ $DRY_RUN == 1 ]] && echo '(dry-run) ' )──"
 for c in docker curl flock python3; do
@@ -195,10 +275,8 @@ rm -rf .agg-tmp
 LIB_CAMBIATE=0
 if [[ ! -s .agg-lock-nuovo ]]; then
   log "⚠ non sono riuscito a calcolare le versioni nuove delle librerie (logs/pip-risoluzione.log): tengo quelle di adesso"
-  peggiora errore
-  aggiungi "❌ Librerie Python: controllo delle versioni nuove non riuscito, restano quelle di adesso."
-  aggiungi "   Ultime righe di logs/pip-risoluzione.log:"
-  aggiungi "$(tail -n 8 logs/pip-risoluzione.log 2>/dev/null | sed 's/^/   /')"
+  non_aggiornato "librerie Python: non sono riuscito a calcolare le versioni nuove, restano quelle di adesso (logs/pip-risoluzione.log)" errore \
+    "$(tail -n 8 logs/pip-risoluzione.log 2>/dev/null)"
 elif [[ -s .agg-modifiche.txt ]]; then
   LIB_CAMBIATE=1
   log "librerie Python da aggiornare:"; sed 's/^/      /' .agg-modifiche.txt
@@ -220,16 +298,14 @@ if [[ $SOLO_APP == 1 ]]; then
   log "PostgreSQL: non controllato (--solo-app)"
 elif [[ -z "$DB_TAG" || "${DB_TAG%%.*}" != "$(printf '%s' "${DB_ATT%@*}" | cut -d. -f1)" ]]; then
   log "⚠ il rilascio passa a $DB_TAG ma il database è ${DB_ATT%@*}: una versione maggiore di PostgreSQL si cambia a mano"
-  peggiora errore
-  aggiungi "❌ PostgreSQL: il rilascio chiede $DB_TAG, il database è ${DB_ATT%@*}. Va fatto a mano, con backup e ripristino."
+  non_aggiornato "PostgreSQL: il rilascio chiede $DB_TAG, il database è ${DB_ATT%@*}. Una versione maggiore si cambia a mano, con backup e ripristino" errore
 elif docker pull -q "$DB_TAG" > /dev/null 2>&1 && D=$(digest_di "$DB_TAG") && [[ -n "$D" ]]; then
   DB_NUOVA="$DB_TAG@$D"
   [[ "$DB_NUOVA" != "$DB_ATT" ]] && DB_CAMBIATA=1
   log "PostgreSQL $DB_TAG: $( [[ $DB_CAMBIATA == 1 ]] && echo 'NUOVO' || echo 'invariato')"
 else
   log "⚠ pull di $DB_TAG non riuscito: resta il PostgreSQL di adesso"
-  peggiora errore
-  aggiungi "❌ PostgreSQL: non sono riuscito a scaricare l'immagine nuova (resta quella di prima)."
+  non_aggiornato "PostgreSQL: non sono riuscito a scaricare l'immagine nuova ($DB_TAG), resta quella di prima" errore
 fi
 
 # ── 6. Serve ricostruire? ───────────────────────────────────────────────────
@@ -318,14 +394,24 @@ elif [[ $DRY_RUN == 1 ]]; then
   rm -f .agg-lock-nuovo .agg-modifiche.txt
 elif [[ ! -f "$CHIAVE" ]]; then
   log "❌ manca la chiave dei backup $CHIAVE: senza backup non aggiorno"
-  peggiora errore
-  aggiungi "❌ Niente aggiornato: manca la chiave dei backup $CHIAVE (INSTALLAZIONE.md, passo 9:"
-  aggiungi "   python3 $DIR/scripts/backup_crypto.py keygen $CHIAVE). Senza backup il database non si tocca."
+  non_aggiornato "niente aggiornato: manca la chiave dei backup $CHIAVE e senza backup il database non si tocca (INSTALLAZIONE.md, passo 9: python3 $DIR/scripts/backup_crypto.py keygen $CHIAVE)" errore
   rm -f .agg-lock-nuovo .agg-modifiche.txt
 else
   MODIFICHE="$(cat .agg-modifiche.txt 2>/dev/null)"
   rm -f .agg-modifiche.txt .agg-lock-prima
   [[ -f requirements.auto.lock ]] && cp requirements.auto.lock .agg-lock-prima
+  # copia di riserva di override e librerie (backups/, le ultime 10 per file): servono al comando
+  # per tornare indietro a mano che va nell'email
+  mkdir -p backups
+  RIPR="cd $DIR"
+  for f in compose.override.yaml requirements.auto.lock; do
+    if [[ -f "$f" ]]; then
+      cp "$f" "backups/$f.$STAMP.bak"; RIPR+=" && cp backups/$f.$STAMP.bak $f"
+      ls -1t "backups/$f".*.bak 2>/dev/null | tail -n +11 | xargs -r rm -f
+    else
+      RIPR+=" && rm -f $f"
+    fi
+  done
   DB_EFF="$DB_ATT"           # il PostgreSQL che gira, man mano
   ROLLBACK_TAG="tdbooking-suite:rollback-$STAMP"
   CUR_ID=$(docker image inspect -f '{{.Id}}' "$APP_IMG" 2>/dev/null || true)
@@ -353,10 +439,8 @@ else
     else
       log "❌ build non riuscita (logs/build.log): il portale che gira non è stato toccato"
       annulla_file
-      peggiora errore
-      aggiungi "❌ TD Booking Suite: la build della versione nuova non è riuscita. Il portale che gira non è stato toccato."
-      aggiungi "   Ultime righe di logs/build.log:"
-      aggiungi "$(grep -v '^[[:space:]]*$' logs/build.log | tail -n 12 | sed 's/^/   /')"
+      non_aggiornato "$NOME: la build della versione nuova non è riuscita, il portale che gira non è stato toccato (logs/build.log)" errore \
+        "$(grep -v '^[[:space:]]*$' logs/build.log | tail -n 12)$(provate)"
     fi
   fi
   rm -f .agg-lock-nuovo
@@ -368,9 +452,8 @@ else
       log "❌ backup non riuscito (logs/backup.log): non aggiorno niente, riparto come prima"
       [[ $APP_OK == 1 ]] && annulla_file
       docker compose start web worker > /dev/null 2>&1   # gli stessi container di prima
-      peggiora errore
-      aggiungi "❌ Niente aggiornato: il backup del database prima dell'aggiornamento non è riuscito."
-      aggiungi "$(tail -n 6 logs/backup.log 2>/dev/null | sed 's/^/   /')"
+      non_aggiornato "niente aggiornato: il backup del database prima dell'aggiornamento non è riuscito (logs/backup.log)" errore \
+        "$(tail -n 6 logs/backup.log 2>/dev/null)"
       APP_OK=0; DB_CAMBIATA=0
     else
       log "backup cifrato: $DUMP.enc"
@@ -388,11 +471,11 @@ else
       DB_EFF="$DB_NUOVA"
     else
       log "❌ PostgreSQL nuovo non risponde: torno a quello di prima"
+      DIAG_DB=$(diagnosi db)
       scrivi_override "$( [[ $APP_OK == 1 ]] && echo "$BASE_NUOVA" || echo "$BASE_ATT")" "$DB_ATT" "$( [[ $APP_OK == 1 ]] && echo "$LOCK_USO" || echo "$LOCK_ATT")"
       docker compose up -d db >> logs/db.log 2>&1
       db_risponde || log "⚠⚠ PostgreSQL non risponde nemmeno con l'immagine di prima: controllare a mano (docker compose logs db)"
-      peggiora rollback
-      aggiungi "⚠ PostgreSQL: l'immagine nuova non partiva. È tornato a quella di prima."
+      non_aggiornato "PostgreSQL: l'immagine nuova (${DB_NUOVA%@*}) non partiva, è tornato a quella di prima" rollback "$DIAG_DB"
       DB_CAMBIATA=0
       if [[ $APP_OK == 0 ]]; then   # non c'è altro da aggiornare: riparte il portale di prima
         docker compose start web worker > /dev/null 2>&1
@@ -416,27 +499,29 @@ else
       peggiora ok
       DOPO=$(printf '%s\n' "$PROVA" | tail -1 | sed -n 's/.*"versioni": \({.*}\)}$/\1/p')
       [[ -z "$DOPO" ]] && DOPO=$(versioni_app)
-      COSA=()
-      [[ $APP_OK == 1 ]] && COSA+=("${MOTIVI[@]}")
-      [[ $DB_CAMBIATA == 1 ]] && COSA+=("PostgreSQL")
-      aggiungi "✅ Aggiornato ($(IFS=', '; echo "${COSA[*]}")), prova automatica passata:"
+      [[ $APP_OK == 1 ]] && aggiornato "$NOME ricostruito ($(IFS=', '; echo "${MOTIVI[*]}"))"
       CAMBI=$(python3 -c '
 import json, sys
 a, b = json.loads(sys.argv[1] or "{}"), json.loads(sys.argv[2] or "{}")
 for k in b:
     if a.get(k) != b.get(k):
-        print(f"   {k}: {a.get(k) or chr(8212)} → {b.get(k)}")
+        print(f"{k}: {a.get(k) or chr(8212)} → {b.get(k)}")
 ' "$PRIMA" "$DOPO" 2>/dev/null)
-      [[ -n "$CAMBI" ]] && aggiungi "$CAMBI"
-      [[ -n "$MODIFICHE" && $APP_OK == 1 ]] && { aggiungi "   Tutte le librerie cambiate:"; aggiungi "$(printf '%s\n' "$MODIFICHE" | sed 's/^/   /')"; }
-      [[ "$DEB_N" -gt 0 && $APP_OK == 1 ]] && aggiungi "   + $DEB_N pacchetti Debian aggiornati"
-      aggiungi "   Backup del database fatto prima: $DUMP.enc"
+      while IFS= read -r riga; do [[ -n "$riga" ]] && aggiornato "$riga"; done <<< "$CAMBI"
+      [[ $DB_CAMBIATA == 1 && "$CAMBI" != *PostgreSQL:* ]] && aggiornato "PostgreSQL: immagine nuova di $DB_TAG, stessa versione"
+      [[ $APP_OK == 1 ]] && librerie "$MODIFICHE"
+      [[ $APP_OK == 1 && -n "$CUR_ID" ]] && RIPR+=" && docker tag $ROLLBACK_TAG $APP_IMG"
+      indietro "$RIPR && docker compose up -d --no-build db web worker"
+      # dopo le migrazioni il codice di prima vuole anche il database di prima (si perde quello scritto dopo l'aggiornamento)
+      [[ $MIGRA == 1 ]] && indietro "cd $DIR && python3 scripts/backup_crypto.py decrypt $DUMP.enc /root/ripristino.dump --key-file $CHIAVE && docker compose stop web worker && docker compose exec -T db pg_restore -U postgres -d tdbooking --clean --if-exists < /root/ripristino.dump && rm /root/ripristino.dump && docker compose up -d --no-build web worker"
     else
       # ── ROLLBACK ──
       MOTIVO="$( [[ $MIGRATE_OK == 0 ]] && echo 'le migrazioni del database non sono riuscite (logs/migrate.log)' || echo 'la versione nuova non passa la prova')"
       log "❌ $MOTIVO: ROLLBACK"
       printf '%s\n' "$PROVA" > "logs/selftest-$STAMP.log"
-      ERR=$(docker compose logs --tail 20 web 2>&1 | tail -20)
+      ERR=$(diagnosi web)
+      non_aggiornato "$NOME: la versione nuova non funzionava ($MOTIVO), è tornato tutto com'era" rollback \
+        "$( [[ -n "$PROVA" ]] && printf 'prove non passate:\n%s\n' "$(printf '%s\n' "$PROVA" | grep '^ERRORE')")$ERR$(provate)"
       docker compose stop web worker > /dev/null 2>&1
       if [[ $APP_OK == 1 ]]; then annulla_file; fi
       if [[ $DB_CAMBIATA == 1 ]]; then
@@ -449,21 +534,13 @@ for k in b:
         log "rimetto il database com'era prima dell'aggiornamento"
         if ! ripristina_db > logs/ripristino.log 2>&1; then
           log "⚠⚠ ripristino del database non riuscito (logs/ripristino.log): resta quello aggiornato, controllare a mano"
-          peggiora errore
-          aggiungi "❌ Il database non è stato rimesso com'era: controllare a mano. Backup: $DUMP.enc"
+          non_aggiornato "database: non è stato rimesso com'era, va controllato a mano (logs/ripristino.log; backup $DUMP.enc)" errore
         fi
       fi
       docker compose --profile tools run --rm migrate >> logs/ripristino.log 2>&1
       docker compose up -d --remove-orphans web worker >> logs/ripristino.log 2>&1
       if app_risponde; then log "tornato alla versione di prima e risponde"
       else log "⚠⚠ il portale non risponde nemmeno con la versione di prima: controllare a mano (docker compose logs web)"; fi
-      peggiora rollback
-      aggiungi "⚠ La versione nuova non funzionava: $MOTIVO. È tornato tutto com'era, funziona come ieri."
-      [[ -n "$PROVA" ]] && { aggiungi "   Prove non passate:"; aggiungi "$(printf '%s\n' "$PROVA" | grep '^ERRORE' | sed 's/^/   /')"; }
-      [[ -n "$ERR" ]] && { aggiungi "   Ultime righe del portale:"; aggiungi "$(printf '%s\n' "$ERR" | sed 's/^/   /')"; }
-      [[ -n "$MODIFICHE" ]] && { aggiungi "   Librerie che erano state provate:"; aggiungi "$(printf '%s\n' "$MODIFICHE" | sed 's/^/   /')"; }
-      aggiungi "   Domani riprova da solo; se il problema resta, una libreria va bloccata in requirements.in."
-      aggiungi "   Backup del database fatto prima: $DUMP.enc"
     fi
   fi
 fi
@@ -484,27 +561,8 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # Email di riepilogo (la manda il portale)
 # ═════════════════════════════════════════════════════════════════════════════
-DURATA=$(( $(date +%s) - START_TS ))
-log "esito: $ESITO (${DURATA}s)"
-if [[ $DRY_RUN == 0 && ( "$ESITO" != "nessuno" || "$MAIL_SEMPRE" == "1" ) ]]; then
-  [[ "$ESITO" == "nessuno" ]] && aggiungi "Era già tutto all'ultima versione."
-  aggiungi ""
-  aggiungi "Durata: $((DURATA / 60)) min $((DURATA % 60)) s · log sull'host: $DIR/logs/aggiorna-tutto.log"
-  ARGS=(python manage.py update_report --esito "$ESITO"); [[ -n "$EMAIL" ]] && ARGS+=(--a "$EMAIL")
-  RISP=$(printf '%s' "$RIEPILOGO" | docker compose exec -T web "${ARGS[@]}" 2>/dev/null | tail -1)
-  [[ "$RISP" == \{* ]] || RISP=$(printf '%s' "$RIEPILOGO" | docker compose run --rm -T web "${ARGS[@]}" 2>/dev/null | tail -1)
-  A=$(printf '%s' "$RISP" | sed -n 's/.*"a": *"\([^"]*\)".*/\1/p')
-  if [[ "$RISP" =~ \"ok\":\ *true ]]; then
-    log "email di riepilogo inviata a ${A:-?}"
-  else
-    if [[ "$RISP" == \{* ]]; then
-      log "⚠ email di riepilogo non inviata${A:+ a $A}: $(printf '%s' "$RISP" | sed -n 's/.*"msg": *"\([^"]*\)".*/\1/p')"
-    else
-      log "⚠ email di riepilogo non inviata (il portale non ha risposto)"
-    fi
-    log "il riepilogo che avrebbe mandato:"; printf '%s' "$RIEPILOGO" | sed 's/^/      /'
-  fi
-fi
+log "esito: $ESITO ($(( $(date +%s) - START_TS ))s)"
+manda_riepilogo
 log "── fine ──"
 [[ "$ESITO" == "errore" || "$ESITO" == "rollback" ]] && exit 1
 exit 0
