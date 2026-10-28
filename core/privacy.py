@@ -42,8 +42,15 @@ def _anonymize_booking(tenant,b):
     b.save(update_fields=["pii","request_fingerprint","contact","snapshot"])
     ActionToken.objects.filter(booking=b).delete()
 
-def _anonymize_contact(tenant,c):
-    c.pii=encrypt(tenant,ANON_CONTACT,"contact:"+str(c.pk))
+def _anonymize_contact(tenant,c,forget=False):
+    keys=[]
+    if forget:
+        # the person asked to be erased: the keyed indexes of their email and phone stay, so an import from
+        # the old program cannot bring them back (the indexes cannot be turned back into the email or phone)
+        from .clients import email_index,phone_index
+        d=c.data
+        keys=([email_index(tenant,d["email"])] if d.get("email") else [])+([phone_index(tenant,d["phone"])] if d.get("phone") else [])
+    c.pii=encrypt(tenant,{**ANON_CONTACT,**({"erased_keys":keys} if keys else {})},"contact:"+str(c.pk))
     c.email_index="erased:"+secrets.token_hex(24)  # the keyed email index can no longer match anyone
     c.consent="revoked";c.consent_proof="";c.suppressed=True;c.save()
     ActionToken.objects.filter(contact=c).delete()
@@ -61,7 +68,7 @@ def erase_contact(tenant,contact,actor):
         if Booking.objects.filter(contact=contact,status="confirmed",end__gt=timezone.now()).exists():
             raise BookingError("Il cliente ha prenotazioni future: annullale o completale prima della cancellazione.")
         for b in Booking.objects.filter(contact=contact):_anonymize_booking(tenant,b)
-        _anonymize_contact(tenant,contact)
+        _anonymize_contact(tenant,contact,forget=True)
         record(tenant,contact,"erased","operator",actor)
         audit(tenant,actor,"privacy.erased",contact.pk)
 

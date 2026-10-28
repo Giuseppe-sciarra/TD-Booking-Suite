@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError,transaction
 from django.http import HttpResponse
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
@@ -402,20 +402,23 @@ def contacts_import(request,slug):
         if action in ("preview","import"):mapping=[m if m in allowed else "" for m in (request.POST.get(f"col{i}","") for i in range(len(head)))]
         else:mapping=importer.guess(head,spec is not None,consent_ok)
         ask=request.POST.get("ask")=="1" and consent_ok and t.marketing_enabled and "consent" in mapping
-        checked=",".join(mapping)+(":ask" if ask else "")
+        checked=token+"|"+",".join(mapping)+(":ask" if ask else "")  # bound to this very file, not only to its columns
         # the import runs only on the columns of the preview just seen
         if action=="import" and request.POST.get("checked")!=checked:action="preview";ctx["error"]="Hai cambiato qualche colonna: controlla di nuovo l'anteprima."
         try:
             if action=="import":
                 with transaction.atomic():
-                    Tenant.objects.select_for_update().get(pk=t.pk)
-                    done=importer.apply(t,importer.plan(t,head,rows,mapping,spec is not None,consent_ok),request.user,ask=ask,batch=token)
+                    # NO KEY UPDATE: bookings wait as with every writer, while a card saved meanwhile can still
+                    # write its audit row; the cards themselves are locked by the plan
+                    Tenant.objects.select_for_update(no_key=True).get(pk=t.pk)
+                    done=importer.apply(t,importer.plan(t,head,rows,mapping,spec is not None,consent_ok,lock=True),request.user,ask=ask,batch=token)
                     audit(t,request.user,"contacts.imported",token,**{k:done[k] for k in ("rows","created","updated","treatments","consents","requested")})
                 importer.drop(token);request.session.pop(key,None)
                 messages.success(request,importer.summary(done))
                 return redirect("contacts",slug)
             if action=="preview":ctx["plan"]=importer.plan(t,head,rows,mapping,spec is not None,consent_ok)
         except BookingError as ex:ctx["error"]=str(ex)
+        except IntegrityError:ctx["error"]="Nel frattempo qualcuno ha aggiunto uno di questi clienti: premi di nuovo Importa, l'anteprima lo terrà in conto."
         ctx.update(name=stash["name"],count=len(rows),fields=choices,ask=ask,checked=checked,
             columns=[{"i":i,"head":h,"samples":importer.samples(rows,i),"field":mapping[i]} for i,h in enumerate(head)])
     return render(request,"contacts_import.html",ctx)

@@ -13,5 +13,7 @@ class Command(BaseCommand):
         with scope(tenant):report=apply_retention(tenant,apply=kw["apply"])
         if kw["apply"]:
             RateBucket.objects.filter(ends__lt=timezone.now()).delete();Ceremony.objects.filter(expires__lt=timezone.now()).delete()
+            from core import importer
+            importer.purge()  # client files of an import left halfway
         verb="Applicato" if kw["apply"] else "Simulazione"
         self.stdout.write(f"{verb}: {report['bookings']} prenotazioni, {report['contacts']} contatti, {report['treatments']} voci della scheda cliente, {report['deliveries']} email.")
