@@ -68,7 +68,7 @@ def clean_contact(post):
 def week_start(day):return day-timedelta(days=day.weekday())
 def usage(t,now=None):
     now=now or timezone.now();since=now-timedelta(days=30);before=now-timedelta(days=60)
-    first=week_start(now.date())-timedelta(weeks=WEEKS-1)
+    first=week_start(timezone.localdate(now))-timedelta(weeks=WEEKS-1)
     with scope(t):
         b=Booking.objects
         u={"bookings_30":b.filter(created__gte=since).count(),"bookings_prev":b.filter(created__gte=before,created__lt=since).count(),
@@ -91,7 +91,7 @@ def usage(t,now=None):
 
 def attention(t,u,now=None):
     """What the agency should look at, most urgent first."""
-    now=now or timezone.now();today=now.date();items=[]
+    now=now or timezone.now();today=timezone.localdate(now);items=[]  # the local day: in UTC the night after midnight is still yesterday
     if settings.EDITION!="private":
         if t.status=="suspended":items.append(("danger","Servizio sospeso"))
         elif t.status=="trial" and t.trial_until:
@@ -133,7 +133,7 @@ def dashboard(request):
     staff(request);fresh(request);now=timezone.now()
     tenants=annotate(list(Tenant.objects.order_by("name")),request.user,now)
     weeks=[sum(t.usage["weeks"][i] for t in tenants) for i in range(WEEKS)]
-    first=week_start(now.date())-timedelta(weeks=WEEKS-1)
+    first=week_start(timezone.localdate(now))-timedelta(weeks=WEEKS-1)
     total=lambda k:sum(t.usage[k] for t in tenants)
     b30,prev=total("bookings_30"),total("bookings_prev")
     totals={"clients":len(tenants),"active":sum(t.status=="active" for t in tenants),"trial":sum(t.status=="trial" for t in tenants),

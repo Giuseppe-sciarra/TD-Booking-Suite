@@ -18,6 +18,7 @@ VERSION=(BASE_DIR/"VERSION").read_text().strip()
 SOURCE_URL=env("SOURCE_URL","https://github.com/Giuseppe-sciarra/TD-Booking-Suite").strip()
 # hooks for an edition built on top of this one (the Windows edition sets them)
 EXTRA_NAV=[]  # extra links in the agency menu: [{"label":..., "url":...}]
+EXTRA_CSS=[]  # stylesheets an edition loads after app.css on its own pages (static paths), e.g. a denser desktop look
 TENANT_LIMIT=None  # most businesses the agency may create, None = no limit; Private is always 1
 MORE_TENANTS_HINT="Per più attività serve l'edizione Cloud"
 EDITION_LABEL=""  # name in the sidebar, empty = Private or Cloud

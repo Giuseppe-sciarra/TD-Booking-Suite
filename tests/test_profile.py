@@ -1,7 +1,8 @@
 """2.6.0 — business profile in one go, WordPress plugin that connects itself, Gmail and Microsoft 365
 sending, SMTP envelope, catalog forms per kind of booking, plans on one row, free months."""
 import base64,json,smtplib
-from datetime import timedelta
+from datetime import datetime,time,timedelta
+from zoneinfo import ZoneInfo
 import pytest
 from django.test import Client
 from django.utils import timezone
@@ -359,7 +360,10 @@ def test_catalog_items_can_be_removed(sample):
     with scope(t):
         taglio=Service.objects.get(name="Taglio",location__name="Centro");piega=Service.objects.get(name="Piega",location__name="Centro")
         op=Resource.objects.filter(location=taglio.location).first()
-        create_booking(t,payload(taglio,resource=str(op.pk)))
+        day=timezone.localdate()+timedelta(days=3)
+        while day.weekday() in (0,6):day+=timedelta(days=1)  # the salon is open Tuesday to Saturday: no Sunday or Monday
+        start=datetime.combine(day,time(10),ZoneInfo(t.timezone)).isoformat()
+        create_booking(t,payload(taglio,resource=str(op.pk),start=start))
     r=owner.post(f"/t/{t.slug}/catalog/services/{piega.pk}/remove/",follow=True).content.decode()
     assert "Eliminato: Piega" in r
     r=owner.post(f"/t/{t.slug}/catalog/services/{taglio.pk}/remove/",follow=True).content.decode()
