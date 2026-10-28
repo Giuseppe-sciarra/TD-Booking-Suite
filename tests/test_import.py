@@ -105,7 +105,7 @@ def test_plan_matches_merges_and_never_overwrites(sample):
         r=p["report"]
         assert (r["created"],r["updated"],r["treatments"],r["same_treatment"],r["too_old"],r["consents"])==(3,1,3,1,1,1)
         assert r["bad_email"]==1 and r["consent_no_email"]==1
-        assert dict(p["problems"])=={"codice cliente che non c'è e nessun telefono o email: importa prima l'anagrafica":[5]}
+        assert dict(p["problems"])=={"cliente da creare senza telefono né email: il codice non è di un cliente già importato":[5]}
         assert dict(p["issues"])=={"data nel futuro":[8]}  # Anna Futura comes in, her treatment does not
         assert Contact.objects.count()==1 and not Treatment.objects.exists()  # the preview writes nothing
         done=importer.apply(t,p,None,batch="prova")
@@ -206,7 +206,7 @@ def test_who_is_who_erasure_codes_family_phones_and_second_emails(sample):
         # a code that does not match is not rescued by the name: two people with one name stay two
         importer.apply(t,importer.plan(t,head,[["57","Mario","Rossi","3330000003","","","",""]],mapping,True,True,lock=True),None)
         p=importer.plan(t,head,[["102","Mario","Rossi","","",recent,"Colore",""]],mapping,True,True)
-        assert not p["treatments"] and "codice cliente che non c'è" in p["problems"][0][0]
+        assert not p["treatments"] and "il codice non è di un cliente" in p["problems"][0][0]
         p=importer.plan(t,head,[["57","","","","",recent,"Colore",""]],mapping,True,True)
         assert p["treatments"][0][0].d["first_name"]=="Mario"
 

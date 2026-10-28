@@ -344,7 +344,7 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
             c=codes.get(code)
             card=c if c and not differs(c) else None
         if not card and not email and not phone:
-            if code:problem(problems,n,"codice cliente che non c'è e nessun telefono o email: importa prima l'anagrafica");continue
+            if code:problem(problems,n,"cliente da creare senza telefono né email: il codice non è di un cliente già importato");continue
             same=[c for name_ in row_names for c in names.get(name_,[])]
             same=list(dict.fromkeys(same))
             if len(same)>1:problem(problems,n,"più clienti con questo nome e nessun telefono, email o codice per distinguerli");continue
