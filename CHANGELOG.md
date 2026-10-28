@@ -1,6 +1,15 @@
-# TD Booking Suite 2.9.0 — registro modifiche
+# TD Booking Suite 2.9.1 — registro modifiche
 
-**28 ottobre 2026 · versione 2.9.0**
+**29 ottobre 2026 · versione 2.9.1**
+
+## 2.9.1 — fogli di stile per edizione, giorno locale nella dashboard dell'agenzia
+
+- **Fogli di stile per edizione** (`EXTRA_CSS`): un'edizione costruita sopra al core aggiunge i suoi dopo `app.css`, nelle pagine di agenzia e attività, non in quelle pubbliche. L'edizione Windows li usa per pagine più compatte, da programma per PC. L'installazione Docker resta identica
+- **Giorni di prova e settimane nella dashboard dell'agenzia**: si contavano dalla data UTC, e tra mezzanotte e l'una (le due d'estate) la prova risultava di un giorno più lunga. Ora contano dal giorno locale
+- **Plugin WordPress 2.9.1**: stesso codice della 2.9.0, cambia solo il numero di versione, che segue il core
+
+### Test
+- Il test sulla rimozione dal catalogo prenotava a tre giorni da oggi, che il giovedì cade di domenica, con il salone chiuso: ora sceglie un giorno di apertura. Suite completa verde (293 test)
 
 ## 2.9.0 — importa i clienti, passkey per ogni indirizzo, tema di partenza, punti di estensione per le edizioni
 
