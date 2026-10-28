@@ -912,3 +912,8 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .client-note{display:flex;align-items:flex-start;gap:14px;margin:0 0 16px;padding:14px 18px;border-radius:var(--r);background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--brand);box-shadow:var(--shadow)}
 .client-note>div{flex:1;min-width:0}.client-note strong{display:block;font-size:14px}.client-note p{margin:4px 0 0}
 .client-note .pin{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--soft);color:var(--brand);font-size:15px}
+/* import of clients from the old program */
+.import-tips li,.import-problems li{display:block;padding:10px 0;font-size:14px;line-height:1.5}
+.import-map td{vertical-align:middle}.import-map select{min-width:240px;width:100%}
+.import-map small,.import-map td small{color:var(--muted)}
+.import-sample td strong+small{display:block;color:var(--muted)}

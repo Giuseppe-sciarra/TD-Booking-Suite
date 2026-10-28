@@ -9,7 +9,7 @@ from django.shortcuts import render,redirect
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,Tenant,audit
+from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
 from .identity import throttle,json_body
 from .booking import available,create_booking,move_booking,change_status,BookingError,choice,bounds,has_units,free_units
 from .calendar import local_datetime
@@ -198,7 +198,7 @@ def apply_action(request,obj):
             c=Contact.objects.select_for_update().get(pk=obj.contact_id)
             if obj.kind=="consent":
                 if c.suppressed or c.consent=="yes":raise BookingError("Questa conferma non è più valida.")
-                request_proof=(obj.booking.snapshot.get("consent_request") if obj.booking_id else None) or {"text":request.tenant.consent_text,"source":"unknown"}
+                request_proof=(obj.booking.snapshot.get("consent_request") if obj.booking_id else None) or {"text":request.tenant.consent_text,"source":"import" if ConsentEvent.objects.filter(contact=c,kind="imported").exists() else "unknown"}
                 c.consent="yes";c.consent_at=timezone.now()
                 # Proof is written only when the mailbox owner confirms.
                 c.consent_proof=encrypt(request.tenant,{**request_proof,"confirmed":c.consent_at.isoformat(),"booking":str(obj.booking_id or "")},"consent:"+str(c.pk))

@@ -24,7 +24,8 @@ class GuardMiddleware:
     def __call__(self,request):
         path=request.path
         try:
-            if int(request.META.get("CONTENT_LENGTH") or 0)>2200000:return HttpResponse("Richiesta troppo grande.",status=413)
+            # the client file of the old program can reach 20 MB, every other request stays small
+            if int(request.META.get("CONTENT_LENGTH") or 0)>(21000000 if path.endswith("/contacts/import/") else 2200000):return HttpResponse("Richiesta troppo grande.",status=413)
         except ValueError:return HttpResponse(status=400)
         protected=path=="/" or path.startswith(("/t/","/platform/","/security/","/guida/"))
         if request.user.is_authenticated:

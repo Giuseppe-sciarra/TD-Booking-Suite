@@ -372,6 +372,53 @@ def contacts_search(request,slug):
     from django.http import JsonResponse
     return JsonResponse({"results":[{"id":str(c.pk),"first_name":c.found.get("first_name",""),"last_name":c.found.get("last_name",""),
         "email":c.found.get("email",""),"phone":c.found.get("phone","")} for c in find(request.tenant,request.GET.get("q",""),limit=8)]})
+def contacts_import(request,slug):
+    """Clients and treatment history from the old program (CSV or Excel): file, columns, preview, import.
+    Needs what adding clients and treatments by hand needs; the marketing consents also the privacy permission."""
+    from . import importer
+    from .presets import record
+    require(request,"contacts.read","pii.read","notes.read","booking.write")
+    t=request.tenant;spec=record(t);consent_ok=can(request,"privacy.manage")
+    key="import:"+slug;token=request.session.get(key)
+    stash=importer.unstash(t,token) if token else None
+    action=request.POST.get("action") if request.method=="POST" else None
+    ctx={"spec":spec,"consent_ok":consent_ok,"error":""}
+    if action=="upload":
+        f=request.FILES.get("file")
+        try:
+            if not f:raise BookingError("Scegli il file da importare.")
+            if f.size>importer.MAX_BYTES:raise BookingError("File troppo grande: al massimo 20 MB.")
+            head,rows=importer.read(f.read())
+            importer.drop(token)
+            request.session[key]=importer.stash(t,f.name,head,rows)
+            return redirect("contacts_import",slug)
+        except BookingError as ex:ctx["error"]=str(ex)
+    elif action=="reset" or (token and not stash):
+        importer.drop(token);request.session.pop(key,None)
+        if action=="reset":return redirect("contacts_import",slug)
+    elif stash:
+        head,rows=stash["head"],stash["rows"]
+        choices=importer.fields(spec is not None,consent_ok);allowed=dict(choices)
+        if action in ("preview","import"):mapping=[m if m in allowed else "" for m in (request.POST.get(f"col{i}","") for i in range(len(head)))]
+        else:mapping=importer.guess(head,spec is not None,consent_ok)
+        ask=request.POST.get("ask")=="1" and consent_ok and t.marketing_enabled and "consent" in mapping
+        checked=",".join(mapping)+(":ask" if ask else "")
+        # the import runs only on the columns of the preview just seen
+        if action=="import" and request.POST.get("checked")!=checked:action="preview";ctx["error"]="Hai cambiato qualche colonna: controlla di nuovo l'anteprima."
+        try:
+            if action=="import":
+                with transaction.atomic():
+                    Tenant.objects.select_for_update().get(pk=t.pk)
+                    done=importer.apply(t,importer.plan(t,head,rows,mapping,spec is not None,consent_ok),request.user,ask=ask,batch=token)
+                    audit(t,request.user,"contacts.imported",token,**{k:done[k] for k in ("rows","created","updated","treatments","consents","requested")})
+                importer.drop(token);request.session.pop(key,None)
+                messages.success(request,importer.summary(done))
+                return redirect("contacts",slug)
+            if action=="preview":ctx["plan"]=importer.plan(t,head,rows,mapping,spec is not None,consent_ok)
+        except BookingError as ex:ctx["error"]=str(ex)
+        ctx.update(name=stash["name"],count=len(rows),fields=choices,ask=ask,checked=checked,
+            columns=[{"i":i,"head":h,"samples":importer.samples(rows,i),"field":mapping[i]} for i,h in enumerate(head)])
+    return render(request,"contacts_import.html",ctx)
 def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")

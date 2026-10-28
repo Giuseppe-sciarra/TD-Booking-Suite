@@ -56,6 +56,9 @@ Italian.
 - **The same client, one card**: found by email, then by phone. A client added at the desk with a
   phone number only finds their card again when they book online; two different emails stay two
   people, even with the same phone.
+- **Import from the previous program** — client list and treatment history from Excel or CSV:
+  pick what each column holds, check the preview, import. Existing cards only get the missing
+  data; marketing consents stay to be confirmed.
 
 **Booking page**
 - A page per business (`/book/<business>/`), with its logo, also on the phone.

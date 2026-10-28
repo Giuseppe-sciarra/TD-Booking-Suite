@@ -58,6 +58,7 @@ urlpatterns=[
  path("t/<slug:slug>/booking-api/submit/",public.internal_submit,name="internal_submit"),
  path("t/<slug:slug>/contacts/",portal.contacts,name="contacts"),
  path("t/<slug:slug>/contacts/search/",portal.contacts_search,name="contacts_search"),
+ path("t/<slug:slug>/contacts/import/",portal.contacts_import,name="contacts_import"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/",portal.contact_detail,name="contact_detail"),
  path("t/<slug:slug>/export/",portal.export,name="export"),
  path("t/<slug:slug>/catalog/<str:kind>/",portal.catalog,name="catalog"),

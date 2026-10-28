@@ -56,6 +56,9 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
 - **Lo stesso cliente, una scheda**: si riconosce dall'email, poi dal telefono. Chi è stato
   inserito al banco con il solo numero ritrova la sua scheda quando prenota online; due email
   diverse restano due persone, anche con lo stesso telefono.
+- **Importa dal programma di prima** — anagrafica e storico dei trattamenti da Excel o CSV:
+  si sceglie cosa contiene ogni colonna, si guarda l'anteprima, si importa. Le schede che ci sono
+  già prendono solo i dati mancanti; i consensi marketing restano da confermare.
 
 **Pagina prenotazioni**
 - Una pagina per attività (`/book/<attività>/`), con il suo logo, anche dal telefono.
