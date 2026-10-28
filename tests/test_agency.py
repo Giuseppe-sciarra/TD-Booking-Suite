@@ -330,3 +330,24 @@ def test_sender_name_rejects_header_tricks():
     from core.forms import SMTPForm
     f=SMTPForm({"host":"smtp.x.invalid","port":"587","sender":"a@x.invalid","sender_name":"Evil\r\nBcc: x@y.invalid","verified":"on"})
     assert not f.is_valid() and "sender_name" in f.errors
+
+def test_edition_hooks_limit_label_and_notices(sample,settings):
+    """An edition on top of the core caps the businesses, renames itself and adds notices."""
+    from django.core.exceptions import ValidationError
+    from core.agency import can_create
+    from core.platform import private_guard
+    n=Tenant.objects.count()
+    settings.EDITION="cloud";settings.TENANT_LIMIT=n;settings.MORE_TENANTS_HINT="Chiedi una licenza Portale";settings.EDITION_LABEL="Windows"
+    assert not can_create()
+    with pytest.raises(ValidationError,match=f"al massimo {n} attività. Chiedi una licenza Portale"):private_guard()
+    sc,su=staff_client()
+    page=sc.get("/platform/clienti/nuovo/").content.decode()
+    assert "Hai raggiunto il numero massimo di attività" in page and "Chiedi una licenza Portale" in page and "Edizione Windows" in page
+    settings.TENANT_LIMIT=n+1
+    assert can_create();private_guard()
+    settings.TENANT_LIMIT=None;settings.EDITION_LABEL=""
+    assert can_create() and "Edizione Cloud" in sc.get("/platform/").content.decode()
+    from django.test import RequestFactory
+    from core.context import presentation
+    r=RequestFactory().get("/platform/");r.user=su;r.session={"mfa":True};r.extra_notices=[{"title":"Prova","text":"mancano 3 giorni"}]
+    assert presentation(r)["extra_notices"][0]["text"]=="mancano 3 giorni"

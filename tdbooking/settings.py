@@ -16,6 +16,11 @@ EDITION=env("EDITION","cloud")
 VERSION=(BASE_DIR/"VERSION").read_text().strip()
 # AGPL-3.0: the footer links here so every user can reach the source; empty hides the link
 SOURCE_URL=env("SOURCE_URL","https://github.com/Giuseppe-sciarra/TD-Booking-Suite").strip()
+# hooks for an edition built on top of this one (the Windows edition sets them)
+EXTRA_NAV=[]  # extra links in the agency menu: [{"label":..., "url":...}]
+TENANT_LIMIT=None  # most businesses the agency may create, None = no limit; Private is always 1
+MORE_TENANTS_HINT="Per più attività serve l'edizione Cloud"
+EDITION_LABEL=""  # name in the sidebar, empty = Private or Cloud
 PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN","http://localhost:8000" if DEV else "").rstrip("/")
 if "index" not in KEYS or len(SECRET_KEY)<50 or ACTIVE_KEY not in KEYS or len(base64.urlsafe_b64decode(KEYS[ACTIVE_KEY]))!=32:
     raise RuntimeError("Configurare DJANGO_SECRET_KEY e TDBS_KEYS con chiavi casuali distinte; usare scripts/configure.py.")

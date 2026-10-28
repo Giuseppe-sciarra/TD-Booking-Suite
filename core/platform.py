@@ -36,11 +36,14 @@ def grant_access(user,password=""):
 def mail_ready(tenant):
     from .site import mail_ready as ready
     return ready(tenant)
+def tenant_limit():return 1 if settings.EDITION=="private" else settings.TENANT_LIMIT
 def private_guard():
-    if settings.EDITION=="private":
+    limit=tenant_limit()
+    if limit is not None:
         if connection.vendor=="postgresql":
             with connection.cursor() as c:c.execute("SELECT pg_advisory_xact_lock(80561239)")
-        if Tenant.objects.exists():raise ValidationError("L'edizione Private gestisce una sola attività con più utenti.")
+        if Tenant.objects.count()>=limit:
+            raise ValidationError("L'edizione Private gestisce una sola attività con più utenti." if settings.EDITION=="private" else f"Puoi gestire al massimo {limit} attività. {settings.MORE_TENANTS_HINT}")
 def seed_tenant(tenant,preset=""):
     """First configuration of a new business, from one of the activity presets."""
     from .presets import PRESETS,initial

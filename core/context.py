@@ -12,4 +12,8 @@ def presentation(request):
  if user and user.is_authenticated and user.is_staff and settings.EDITION=="cloud":
   from .trial import new_count
   trials=new_count()
- return {"trial_new":trials,"mfa_missing":missing,"site":current(request),"edition":settings.EDITION,"tenant":brand,"member":getattr(request,"member",None),"support":getattr(request,"support",None),"can":can,"mfa_ok":mfa_ok,"app_version":settings.VERSION,"source_url":settings.SOURCE_URL}
+ return {"trial_new":trials,"mfa_missing":missing,"site":current(request),"edition":settings.EDITION,"tenant":brand,"member":getattr(request,"member",None),"support":getattr(request,"support",None),"can":can,"mfa_ok":mfa_ok,"app_version":settings.VERSION,"source_url":settings.SOURCE_URL,
+         "extra_nav":settings.EXTRA_NAV if user and user.is_authenticated and user.is_staff else (),
+         "edition_label":settings.EDITION_LABEL or ("Private" if settings.EDITION=="private" else "Cloud"),
+         # warnings an edition puts on top of the pages: [{"title","text","url","action"}]
+         "extra_notices":getattr(request,"extra_notices",()) if mfa_ok else ()}

@@ -151,7 +151,10 @@ def dashboard(request):
     return render(request,"agency_dashboard.html",{"tenants":tenants,"ranking":ranking[:8],"totals":totals,"chart":bars(weeks,first),
         "trials":trials,"alerts":alerts[:6],"more_alerts":max(0,len(alerts)-6),"today":now,"can_create":can_create()})
 
-def can_create():return settings.EDITION!="private" or not Tenant.objects.exists()
+def can_create():
+    from .platform import tenant_limit
+    limit=tenant_limit()
+    return limit is None or Tenant.objects.count()<limit
 
 def clients(request):
     staff(request);fresh(request);now=timezone.now()
@@ -208,7 +211,7 @@ def client_new(request):
             form=TenantForm(request.POST,request.FILES);error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
     else:form=TenantForm(initial={**tenant_defaults(),**{k:values[k] for k in ("name","slug","status","trial_until") if k in values}})
     return render(request,"client_new.html",{"form":form,"invite_link":link,"error":error,"created":created,"presets":CHOICES[1:],"trial":trial,"values":values,
-        "mail_ready":mail_ready(),"can_create":can_create() or created is not None})
+        "mail_ready":mail_ready(),"can_create":can_create() or created is not None,"more_tenants_hint":settings.MORE_TENANTS_HINT})
 
 def client(request,slug):
     staff(request);fresh(request);t=get_object_or_404(Tenant,slug=slug);error="";now=timezone.now()
