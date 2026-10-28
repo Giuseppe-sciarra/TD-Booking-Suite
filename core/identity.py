@@ -75,7 +75,10 @@ def login_view(request):
     from .trial import available,business_types
     from .site import current
     site=current(request)
-    return render(request,"login.html",{"error":error,"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled})
+    # the address typed before an error, or the one a page hands over (?email=, "entra come titolare")
+    email=(request.POST.get("email") if request.method=="POST" else request.GET.get("email","")) or ""
+    return render(request,"login.html",{"error":error,"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled,
+        "email":email.strip()[:254],"login_note":settings.LOGIN_NOTE})
 def verify_totp(u,code):
     if not u.totp or not code.isascii():return False  # compare_digest refuses non-ASCII text (a pasted "１２３")
     generator=pyotp.TOTP(reveal(u.totp,"totp:"+str(u.pk)))

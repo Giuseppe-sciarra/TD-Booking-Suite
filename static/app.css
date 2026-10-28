@@ -917,3 +917,4 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .import-map td{vertical-align:middle}.import-map select{min-width:240px;width:100%}
 .import-map small,.import-map td small{color:var(--muted)}
 .import-sample td strong+small{display:block;color:var(--muted)}
+.login-note{margin:22px 0 0;padding:14px 16px;border-radius:var(--r-sm);background:var(--soft);font-size:13px;line-height:1.5}.login-note div+div{margin-top:8px}.login-note dt{font-weight:700}.login-note dd{margin:0;color:var(--muted)}

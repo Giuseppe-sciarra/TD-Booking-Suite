@@ -58,7 +58,7 @@ def test_role_is_always_visible(sample):
     page=c.get(f"/t/{t.slug}/").content.decode()
     assert 'class="badge">Reception<' in page and "Stai lavorando in" in page and "Area agenzia" not in page
     sc,su=staff_client();page=sc.get("/platform/").content.decode()
-    assert "Area agenzia" in page and "Amministratore dell'agenzia" in page
+    assert "Area agenzia" in page and "Amministratore dell&#x27;agenzia" in page
 
 def test_setup_lists_the_steps_in_order(sample):
     t,o,s=sample;c,u=client_as(t)
@@ -136,3 +136,10 @@ def test_business_users_never_see_agency_settings(sample):
     assert "Sito autorizzato" not in page and "Invio email" not in page and "Lo imposta" not in page
     nav=c.get(f"/t/{t.slug}/").content.decode()
     assert "Impostazioni e sito" not in nav and "Area agenzia" not in nav and "Impostazioni generali" not in nav
+
+def test_login_keeps_the_email_and_shows_the_edition_note(settings,db):
+    from django.test import Client
+    settings.LOGIN_NOTE=({"title":"Amministratore del programma","text":"configura"},)
+    page=Client().get("/login/?email=titolare@example.invalid").content.decode()
+    assert 'value="titolare@example.invalid"' in page and "Amministratore del programma" in page
+    assert 'value="&lt;b&gt;"' in Client().get("/login/?email=<b>").content.decode()  # escaped like everything else
