@@ -203,10 +203,14 @@ def json_body(request):
         if not isinstance(obj,dict):raise ValueError
         return obj
     except (ValueError,TypeError):raise ValidationError("Richiesta non valida.")
+def page_origin(request):
+    """The address the page was opened with, an allowed host: passkeys belong to it, so the same server reached
+    by its office name and by its public name keeps the passkeys of each. The scheme is the portal's."""
+    return urlparse(settings.PUBLIC_ORIGIN).scheme+"://"+request.get_host()
 @require_POST
 def passkey_begin(request,kind):
     throttle(request,"passkey",30)
-    rp=urlparse(settings.PUBLIC_ORIGIN).hostname
+    rp=urlparse(page_origin(request)).hostname
     data=json_body(request)
     if kind=="register":
         if not request.user.is_authenticated:raise PermissionDenied
@@ -236,7 +240,7 @@ def passkey_finish(request,kind):
         try:
             u=User.objects.select_for_update().get(pk=c.user_id,is_active=True)
             credential=data["credential"]
-            common={"credential":credential,"expected_challenge":unb64(c.challenge),"expected_rp_id":urlparse(settings.PUBLIC_ORIGIN).hostname,"expected_origin":settings.PUBLIC_ORIGIN,"require_user_verification":True}
+            common={"credential":credential,"expected_challenge":unb64(c.challenge),"expected_rp_id":urlparse(page_origin(request)).hostname,"expected_origin":page_origin(request),"require_user_verification":True}
             if kind=="register":
                 if not request.user.is_authenticated or request.user.pk!=u.pk:raise ValueError()
                 fresh(request)  # also the first factor: a forgotten open session must not let someone else add theirs

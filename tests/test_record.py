@@ -354,3 +354,13 @@ def test_minors_book_tattoos_in_person():
     q={x["key"]:x for x in questions("tattoo")}
     assert q["maggiorenne"]["required"] and "genitore" in q["maggiorenne"]["label"]
     assert not any("allerg" in x["label"].lower() for k in ("spa","centro_estetico","tattoo","medico") for x in questions(k))  # no health questions online
+
+def test_passkeys_follow_the_address_of_the_page(sample,settings):
+    # the same server by its office name and by its public name: each address keeps its own passkeys
+    settings.ALLOWED_HOSTS=["localhost","booking.example.com"]
+    t,o,s=sample
+    c,u=client_as(t)
+    for host in ("localhost","booking.example.com"):
+        r=c.post("/passkey/register/begin/",json.dumps({}),content_type="application/json",HTTP_HOST=host)
+        assert r.json()["options"]["rp"]["id"]==host
+    assert c.post("/passkey/register/begin/",json.dumps({}),content_type="application/json",HTTP_HOST="evil.example").status_code==400
