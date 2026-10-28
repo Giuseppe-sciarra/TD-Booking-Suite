@@ -192,7 +192,9 @@ def client_new(request):
                     preset=request.POST.get("preset","")
                     if preset in PRESETS:tenant.save(update_fields=first_settings(tenant,preset))
                     seed_tenant(tenant,preset)
-                    user,_=account_for(request.POST)
+                    user,new_account=account_for(request.POST)
+                    # an account not activated yet stays its owner's: the agency would get the link or set the password
+                    if not new_account and not user.has_usable_password():raise ValueError("Questo account non è ancora attivo: deve attivarlo dal suo invito, poi lo aggiungi.")
                     # the owner runs the business: services and opening hours included
                     Membership.objects.create(tenant=tenant,user=user,role="owner",can_schedule=True)
                     direct=bool(request.POST.get("password"))

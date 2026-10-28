@@ -33,20 +33,25 @@ def grant_access(user,password=""):
     validate_password(password,user)
     user.set_password(password);user.auth_version+=1;user.save(update_fields=["password","auth_version"])
     return ""
-def account_for(post):
+def account_for(post,tenant=None):
     """The account a form names: its email or, where the edition has them, its username with the email optional.
-    An existing one is returned as it is, a new one is created without password. Returns (user, email)."""
+    An existing one is returned as it is, a new one is created without password. Returns (user, created).
+    Found by the username alone, an account that works elsewhere (another business, the agency) is refused:
+    short usernames repeat ("cassa", "admin"), the email says who it is."""
     from .models import clean_username
     username=clean_username(post.get("username","")) if settings.LOGIN_USERNAMES else ""
     email=post.get("email","").strip().casefold()
     if not email and not username and settings.LOGIN_USERNAMES:raise ValueError("Scrivi lo username o l'email.")
     if email or not username:validate_email(email)
     by_mail=User.objects.filter(login_index=login_index(email)).first() if email else None
-    by_name=User.objects.filter(name_index=login_index(username)).first() if username else None
-    if by_mail and by_name and by_mail.pk!=by_name.pk:raise ValueError("Username ed email appartengono a due account diversi.")
-    found=by_mail or by_name
-    if not found and settings.LOGIN_USERNAMES and not username:raise ValueError("Per una persona nuova scegli lo username: l'email da sola basta per chi ha già un accesso.")
-    return (found or User.objects.create_user(email,username=username)),email
+    found=by_mail or (User.objects.filter(name_index=login_index(username)).first() if username else None)
+    if found and (username and found.username!=username or email and found.email!=email):
+        raise ValueError("Username ed email non sono dello stesso account: per una persona che ha già un accesso basta uno dei due.")
+    if found and not by_mail and elsewhere(found,tenant):
+        raise ValueError("Username già usato da un'altra persona: scegline un altro, oppure scrivi l'email di questa persona.")
+    if found:return found,False
+    if settings.LOGIN_USERNAMES and not username:raise ValueError("Per una persona nuova scegli lo username: l'email da sola basta per chi ha già un accesso.")
+    return User.objects.create_user(email,username=username),True
 def mail_ready(tenant):
     from .site import mail_ready as ready
     return ready(tenant)
@@ -117,11 +122,12 @@ def members_view(request,slug):
                     if len(only)==1:locations=[str(only[0])]
                     elif role=="operator":raise ValueError("Assegna all'operatore sede almeno una sede o una risorsa.")
                 with transaction.atomic():
-                    u,email=account_for(request.POST)
-                    email=email or u.email
-                    # an account of another business is only added, never activated or given a password from here
-                    if elsewhere(u,tenant) and (request.POST.get("password") or not u.has_usable_password()):
-                        raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
+                    u,created=account_for(request.POST,tenant)
+                    # an account that already exists is only added: activated or given a password from here only by the
+                    # business it belongs to alone, never by the agency (the link or the password would be its own)
+                    if not created and (request.POST.get("password") or not u.has_usable_password()):
+                        if elsewhere(u,tenant):raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
+                        if request.user.is_staff and not request.member:raise ValueError("Questa persona ha già un account: l'agenzia la aggiunge, ma password e invito li gestisce chi gestisce l'attività.")
                     if u.pk==request.user.pk and not request.member:raise ValueError("L'agenzia entra nei contenuti con l'accesso di assistenza concesso dall'attività, non aggiungendo se stessa.")
                     member,_=Membership.objects.get_or_create(tenant=tenant,user=u)
                     if member.user_id==request.user.id and role!="owner":raise ValueError("Non puoi togliere a te stesso il ruolo di amministratore.")
@@ -131,7 +137,7 @@ def members_view(request,slug):
                     member.save()
                     direct=bool(request.POST.get("password"))
                     link=grant_access(u,request.POST.get("password",""))
-                    if link and email:queue(tenant,{"to":email,"subject":"Invito · "+tenant.name,"body":"Attiva il tuo accesso:\n"+link})
+                    if link and u.email:queue(tenant,{"to":u.email,"subject":"Invito · "+tenant.name,"body":"Attiva il tuo accesso:\n"+link})
                     if direct:messages.success(request,u.login_name+" può già accedere con la password che hai scelto.")
                     audit(tenant,request.user,"member.invited",u.pk,role=role,locations=len(member.locations),resources=len(member.resources))
             else:

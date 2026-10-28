@@ -59,7 +59,9 @@ def login_view(request):
     if request.method=="POST":
         email=request.POST.get("email","")[:254]
         throttle(request,"login-ip",50)
-        throttle(request,"login-user",10,identity=login_index(email))
+        # one count per account, whether it is typed as username or as email
+        found=User.objects.by_login(email).values_list("pk",flat=True).first()
+        throttle(request,"login-user",10,identity=str(found) if found else login_index(email))
         from django.contrib.auth import authenticate
         u=authenticate(request,email=email,password=request.POST.get("password","")[:1024])
         if u:
