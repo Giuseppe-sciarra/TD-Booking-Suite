@@ -16,7 +16,7 @@
 - **Plugin WordPress 2.9.0**: stesso codice della 2.8.0, cambia solo il numero di versione, che segue il core
 
 ### Test
-- `tests/test_import.py` (8 test, anche lo stallo con le modifiche contemporanee sulle schede, che fallisce sul codice di prima), passkey e pagina prenotazioni con due indirizzi in `tests/test_record.py`, punti di estensione in `tests/test_access.py`, username e secondo fattore in `tests/test_usernames.py`. Suite completa verde su SQLite e su PostgreSQL 16 (298 test, isolamento RLS compreso)
+- `tests/test_import.py` (8 test, anche lo stallo con le modifiche contemporanee sulle schede, che fallisce sul codice di prima), passkey e pagina prenotazioni con due indirizzi in `tests/test_record.py`, punti di estensione in `tests/test_access.py`, username e secondo fattore in `tests/test_usernames.py`. Suite completa verde su SQLite e su PostgreSQL 16 (301 test, isolamento RLS compreso)
 
 ## 2.8.0 — scheda trattamenti, intolleranze, domande per tipo di attività, logo nel portale, correzioni di sicurezza
 
