@@ -1,14 +1,20 @@
-# TD Booking Suite 2.8.0 — registro modifiche
+# TD Booking Suite 2.9.0 — registro modifiche
 
-**27 ottobre 2026 · versione 2.8.0**
+**28 ottobre 2026 · versione 2.9.0**
 
-## In arrivo, già sul ramo principale
+## 2.9.0 — importa i clienti, passkey per ogni indirizzo, tema di partenza, punti di estensione per le edizioni
 
 - **Importa i clienti dal programma di prima**: in *Clienti › Importa* un file Excel (.xlsx) o CSV con l'anagrafica e, per chi ha la scheda trattamenti, lo storico. Si sceglie cosa contiene ogni colonna (proposte dai titoli), si guarda l'anteprima con le righe che non entrano e il motivo, poi si importa. Le schede esistenti si riconoscono da email, telefono, codice cliente o nome e prendono solo i dati mancanti; reimportare lo stesso file non raddoppia niente. Le colonne in più vanno nelle note, i trattamenti più vecchi della conservazione restano fuori. I consensi marketing del file sono registrati come *Importato* e restano da confermare, con l'email di conferma facoltativa; li importa solo l'amministratore. Chi ha chiesto la cancellazione dei dati non torna con l'import: alla cancellazione restano solo gli indici cifrati di email e telefono, che non si possono ritrasformare in email o telefono. Un telefono di famiglia si attribuisce dal nome, un codice cliente sconosciuto non si aggancia per nome. Fino a 20 MB e 20.000 righe per file, letti a righe e senza librerie nuove
 - **Le passkey valgono per l'indirizzo con cui si apre il portale**: lo stesso server raggiunto con il nome dell'ufficio e con quello pubblico tiene le passkey di ciascuno. Con un solo indirizzo, come nell'installazione Docker, non cambia niente
 - **Tema di partenza per tutti**: in *Impostazioni generali › Il portale* l'agenzia sceglie Automatico, Chiaro o Scuro per le pagine di agenzia e attività; ognuno lo cambia per sé dalla barra in alto, come prima. La pagina prenotazioni continua a seguire il dispositivo del cliente (migrazione `0019`)
 - **Il colore principale colora tutto il portale**: anche la voce di menu selezionata e gli sfondi tenui seguono il colore scelto in *Impostazioni generali*, non solo pulsanti e link. Con il colore di serie non cambia niente
 - **Punti di estensione per le edizioni costruite sopra al core** (`EXTRA_NAV`, `TENANT_LIMIT`, `MORE_TENANTS_HINT`, `EDITION_LABEL`, avvisi in cima alle pagine): li usa l'edizione Windows, l'installazione Docker resta identica
+- **Nomi dell'area agenzia e dei ruoli per edizione** (`AGENCY_NAMES`, `ROLE_LABELS`): l'edizione Windows chiama l'agenzia *Amministratore del programma* e l'amministratore dell'attività *Titolare*. **Nota sotto l'accesso** (`LOGIN_NOTE`), per spiegare quale account usare, e indirizzo `/login/?email=` che scrive già l'email. Con i valori di serie non cambia niente
+- **Edizione Private: chi gestisce il portale e lavora anche nell'attività** vede il suo ruolo e il menu dell'attività anche nelle pagine dell'agenzia, non più *solo gestione tecnica*
+- **Plugin WordPress 2.9.0**: stesso codice della 2.8.0, cambia solo il numero di versione, che segue il core
+
+### Test
+- `tests/test_import.py` (8 test, anche lo stallo con le modifiche contemporanee sulle schede, che fallisce sul codice di prima), passkey e pagina prenotazioni con due indirizzi in `tests/test_record.py`, punti di estensione in `tests/test_access.py`. Suite completa verde su SQLite e su PostgreSQL 16 (293 test, isolamento RLS compreso)
 
 ## 2.8.0 — scheda trattamenti, intolleranze, domande per tipo di attività, logo nel portale, correzioni di sicurezza
 
