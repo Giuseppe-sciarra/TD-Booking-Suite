@@ -163,3 +163,11 @@ def test_private_edition_admin_who_also_works_keeps_his_role_on_agency_pages(sam
     Membership.objects.create(tenant=t,user=u,role="owner",can_schedule=True)
     page=c.get("/platform/").content.decode()
     assert "solo gestione tecnica" not in page and f"/t/{t.slug}/contacts/" in page and f"/t/{t.slug}/bookings/" in page
+
+def test_the_agency_keeps_the_configuration_of_a_business_it_works_in(sample):
+    from tests.test_phase2 import staff_client
+    t,o,s=sample
+    c,u=staff_client()
+    Membership.objects.create(tenant=t,user=u,role="viewer")  # someone in the business lowered him to Consultazione
+    assert c.get(f"/t/{t.slug}/setup/").status_code==200
+    assert "Sei amministratore dell" in c.get(f"/t/{t.slug}/guida/").content.decode()

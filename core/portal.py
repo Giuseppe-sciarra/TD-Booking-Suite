@@ -206,7 +206,8 @@ def setup_action(request,slug):
         return redirect(reverse("setup",args=[slug])+"#wordpress")
     raise Http404
 def guide(request,slug=None):
-    role=request.member.get_role_display() if getattr(request,"member",None) else ""
+    from .permissions import role_label
+    role=role_label(request.member.role) if getattr(request,"member",None) else ""
     return render(request,"guide.html",{"role":role,"staff":request.user.is_staff})
 def home(request):
     if request.user.is_staff:return redirect("platform")

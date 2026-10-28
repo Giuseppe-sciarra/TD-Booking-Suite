@@ -48,6 +48,8 @@ def effective(request):
         perms=set(ROLES.get(m.role,("",frozenset()))[1])
         # Catalog editing stays an explicit flag, as before, for any role that writes.
         if m.can_schedule and m.role not in ("viewer","marketing"):perms.add("catalog.write")
+        # the agency configures every business, also one it works in with a lower role
+        if getattr(getattr(request,"user",None),"is_staff",False):perms.add("catalog.write")
     elif grant:perms=set(SUPPORT)
     elif getattr(getattr(request,"user",None),"is_staff",False):
         # 2.6.0: the agency configures every business (locations, hours, services): no customer data involved

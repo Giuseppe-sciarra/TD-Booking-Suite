@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}<div class="page-heading"><div><h1>Guida</h1><p>{% if staff %}Sei un amministratore dell'agenzia{% elif role %}Sei {{ role|lower }}{% if tenant %} di {{ tenant.name }}{% endif %}{% else %}Come funziona TD Booking Suite{% endif %}. Qui trovi come funziona e come si fanno le cose principali</p></div></div>
+{% extends 'base.html' %}{% block content %}<div class="page-heading"><div><h1>Guida</h1><p>{% if staff %}Sei {{ agency.admin|lower }}{% elif role %}Sei {{ role|lower }}{% if tenant %} di {{ tenant.name }}{% endif %}{% else %}Come funziona TD Booking Suite{% endif %}. Qui trovi come funziona e come si fanno le cose principali</p></div></div>
 <div class="guide">
 <nav class="card guide-toc" aria-label="Indice della guida"><h2>In questa guida</h2><ol><li><a href="#come-funziona">Come funziona</a></li><li><a href="#ruoli">Chi vede cosa</a></li>{% if staff %}<li><a href="#agenzia">Per l'agenzia</a></li>{% endif %}<li><a href="#configurare">Configurare l'attività</a></li><li><a href="#sedi">Più sedi</a></li><li><a href="#sito">Le prenotazioni dal sito</a></li><li><a href="#ogni-giorno">Il lavoro di ogni giorno</a></li><li><a href="#persone">Dare un accesso a qualcuno</a></li><li><a href="#clienti">Clienti, privacy e marketing</a></li><li><a href="#assistenza">L'accesso dell'agenzia</a></li><li><a href="#account">Il tuo account</a></li><li><a href="#problemi">Se qualcosa non va</a></li></ol></nav>
 <div class="guide-body">
@@ -16,7 +16,7 @@
 <tr><td><strong>Reception</strong></td><td>Agenda, prenotazioni e clienti, senza configurazione</td></tr>
 <tr><td><strong>Marketing</strong></td><td>Clienti e campagne email. Non vede le note delle prenotazioni</td></tr>
 <tr><td><strong>Consultazione</strong></td><td>Solo l'agenda, con i nomi abbreviati</td></tr>
-{% if staff %}<tr><td><strong>Amministratore dell'agenzia</strong></td><td>Tutte le attività, le impostazioni generali e le impostazioni tecniche di ogni attività (sito, invio email, stato). I contenuti di un'attività solo con l'accesso concesso dal suo amministratore</td></tr>{% endif %}
+{% if staff %}<tr><td><strong>{{ agency.admin }}</strong></td><td>Tutte le attività, le impostazioni generali e le impostazioni tecniche di ogni attività (sito, invio email, stato). I contenuti di un'attività solo con l'accesso concesso dal suo amministratore</td></tr>{% endif %}
 </tbody></table></div>
 <p class="muted">Servizi, orari e sedi li modifica l'amministratore. Gli altri ruoli solo se, in Persone e permessi, hai spuntato "Può modificare servizi e disponibilità".</p></section>
 
