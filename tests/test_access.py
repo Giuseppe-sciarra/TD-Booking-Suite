@@ -153,3 +153,13 @@ def test_editions_rename_the_owner_and_the_agency_access(sample,settings):
     page=c.get(f"/t/{t.slug}/").content.decode()
     assert role_label("owner")=="Titolare" and role_label("reception")=="Reception"
     assert "Titolare" in page and "Accesso dell&#x27;amministratore" in page
+
+def test_private_edition_admin_who_also_works_keeps_his_role_on_agency_pages(sample,settings):
+    settings.EDITION="private"
+    t=Tenant.objects.first()  # the one the private edition shows on the agency pages
+    c,u=staff_client()
+    page=c.get("/platform/").content.decode()
+    assert "solo gestione tecnica" in page and f"/t/{t.slug}/contacts/" not in page  # technical only, as before
+    Membership.objects.create(tenant=t,user=u,role="owner",can_schedule=True)
+    page=c.get("/platform/").content.decode()
+    assert "solo gestione tecnica" not in page and f"/t/{t.slug}/contacts/" in page and f"/t/{t.slug}/bookings/" in page
