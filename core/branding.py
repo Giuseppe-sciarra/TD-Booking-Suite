@@ -16,6 +16,10 @@ def clean_logo(upload):
 def luminance(rgb):
     values=[v/255 for v in rgb]
     return sum(w*(c/12.92 if c<=.04045 else ((c+.055)/1.055)**2.4) for c,w in zip(values,(.2126,.7152,.0722)))
+def mix(color,other,amount):
+    """color moved toward other by amount, 0 to 1: the light and dark tints of the accent."""
+    a=[int(color[i:i+2],16) for i in (1,3,5)];b=[int(other[i:i+2],16) for i in (1,3,5)]
+    return "#"+"".join(f"{round(x+(y-x)*amount):02x}" for x,y in zip(a,b))
 def contrast_color(color,dark=False):
     rgb=[int(color[i:i+2],16) for i in (1,3,5)]
     bg=.05 if dark else 1

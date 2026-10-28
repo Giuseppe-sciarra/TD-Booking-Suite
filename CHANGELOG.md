@@ -5,6 +5,7 @@
 ## In arrivo, già sul ramo principale
 
 - **Tema di partenza per tutti**: in *Impostazioni generali › Il portale* l'agenzia sceglie Automatico, Chiaro o Scuro per le pagine di agenzia e attività; ognuno lo cambia per sé dalla barra in alto, come prima. La pagina prenotazioni continua a seguire il dispositivo del cliente (migrazione `0019`)
+- **Il colore principale colora tutto il portale**: anche la voce di menu selezionata e gli sfondi tenui seguono il colore scelto in *Impostazioni generali*, non solo pulsanti e link. Con il colore di serie non cambia niente
 - **Punti di estensione per le edizioni costruite sopra al core** (`EXTRA_NAV`, `TENANT_LIMIT`, `MORE_TENANTS_HINT`, `EDITION_LABEL`, avvisi in cima alle pagine): li usa l'edizione Windows, l'installazione Docker resta identica
 
 ## 2.8.0 — scheda trattamenti, intolleranze, domande per tipo di attività, logo nel portale, correzioni di sicurezza

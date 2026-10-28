@@ -42,7 +42,10 @@ def test_default_favicon_and_colour():
     c=Client_anon()
     r=c.get("/site/favicon.png");assert r.status_code==302 and r["Location"].endswith("favicon.svg")
     SiteSettings.objects.update_or_create(pk=1,defaults={"brand_color":"#cc0000"})
-    assert "--brand:#cc0000" in c.get("/site/style.css").content.decode()
+    css=c.get("/site/style.css").content.decode()
+    assert "--brand:#cc0000" in css and "--pastel:#e88c8c" in css and "--soft:#f9e0e0" in css
+    from core.branding import mix
+    assert mix("#7a55ad","#ffffff",.55)=="#c3b2da"  # the default accent keeps its old menu highlight, #c5b4d9
 
 def test_new_businesses_start_from_the_defaults():
     SiteSettings.objects.update_or_create(pk=1,defaults={"default_privacy_text":"Informativa dell'agenzia","default_retention_days":365})

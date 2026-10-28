@@ -183,9 +183,12 @@ def favicon(request):
 def css(request):
     color=SiteSettings.current().brand_color
     light=contrast_color(color);dark=contrast_color(color,True)
-    body=(f":root,:root[data-theme=light]{{--brand:{light};--violet:{color}}}"
-          f":root[data-theme=dark]{{--brand:{dark};--violet:{color}}}"
-          f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{--brand:{dark};--violet:{color}}}}}")
+    # 2.8.1: the pale tints (menu highlight, soft backgrounds) follow the accent too, not only buttons and links
+    from .branding import mix
+    pastel=mix(color,"#ffffff",.55);soft=mix(color,"#ffffff",.88);soft_dark=mix(color,"#16111d",.8)
+    body=(f":root,:root[data-theme=light]{{--brand:{light};--violet:{color};--pastel:{pastel};--soft:{soft}}}"
+          f":root[data-theme=dark]{{--brand:{dark};--violet:{color};--pastel:{pastel};--soft:{soft_dark}}}"
+          f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{--brand:{dark};--violet:{color};--pastel:{pastel};--soft:{soft_dark}}}}}")
     r=HttpResponse(body,content_type="text/css");r["Cache-Control"]="public, max-age=86400";return r
 
 # The WordPress connector, downloadable by the agency (Cloud edition only: in Private the
