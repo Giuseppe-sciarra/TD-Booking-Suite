@@ -2,7 +2,8 @@
 (() => {
  const $=s=>document.querySelector(s);
  const choice=$("#theme-choice");
- let theme="auto";try{theme=localStorage.getItem("tdbs-theme")||"auto";}catch{}
+ // the person's own choice, otherwise the portal's default set in Impostazioni generali
+ let theme=document.documentElement.dataset.theme||"auto";try{theme=localStorage.getItem("tdbs-theme")||theme;}catch{}
  const queryTheme=new URLSearchParams(location.search).get("theme");if(document.body.classList.contains("public")&&["auto","light","dark"].includes(queryTheme))theme=queryTheme;
  const apply=()=>{document.documentElement.dataset.theme=theme;if(choice)choice.value=theme;};
  apply();

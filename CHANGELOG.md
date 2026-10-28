@@ -2,6 +2,11 @@
 
 **27 ottobre 2026 · versione 2.8.0**
 
+## In arrivo, già sul ramo principale
+
+- **Tema di partenza per tutti**: in *Impostazioni generali › Il portale* l'agenzia sceglie Automatico, Chiaro o Scuro per le pagine di agenzia e attività; ognuno lo cambia per sé dalla barra in alto, come prima. La pagina prenotazioni continua a seguire il dispositivo del cliente (migrazione `0019`)
+- **Punti di estensione per le edizioni costruite sopra al core** (`EXTRA_NAV`, `TENANT_LIMIT`, `MORE_TENANTS_HINT`, `EDITION_LABEL`, avvisi in cima alle pagine): li usa l'edizione Windows, l'installazione Docker resta identica
+
 ## 2.8.0 — scheda trattamenti, intolleranze, domande per tipo di attività, logo nel portale, correzioni di sicurezza
 
 - **Scheda trattamenti** nella scheda cliente, per chi lavora sulla persona: Trattamenti dal parrucchiere, in estetica e nella SPA, Sedute dal tatuatore, Visite e sedute nello studio medico (solo dati amministrativi, la cartella clinica resta nel suo programma), Incontri nelle consulenze, Lezioni svolte in autoscuola, Interventi in officina. Ogni voce ha data, cosa è stato fatto, con chi e i dettagli (la formula del colore, gli inchiostri e i lotti, i chilometri). Linea del tempo divisa per anno, dalla più recente; si modifica e si elimina. *Registra il trattamento* dalla scheda o dalla prenotazione passata, già compilato con giorno, servizio, variante e operatore; nella prenotazione l'operatore vede anche le volte precedenti, prima di iniziare. Scrive chi crea prenotazioni e vede le note, l'operatore sede solo sulle prenotazioni che vede. Voci cifrate con la chiave dell'attività, mai visibili al cliente, nell'export privacy, cancellate con i dati del cliente e dopo il periodo di conservazione. Tabella `core_treatment` con la separazione per attività delle altre tabelle (migrazione `0018`)

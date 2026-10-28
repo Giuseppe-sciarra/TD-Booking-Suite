@@ -326,6 +326,8 @@ class SiteSettings(models.Model):
     owner_name=models.CharField(max_length=80,default="Tastiere Digitali")
     owner_url=models.URLField(max_length=200,blank=True,default="https://www.tastieredigitali.it")
     brand_color=models.CharField(max_length=7,default="#7a55ad")
+    # 2.8.1: the theme of the agency and business pages until each person picks one from the top bar
+    default_theme=models.CharField(max_length=5,default="auto",choices=[("auto","Automatico, come il sistema"),("light","Chiaro"),("dark","Scuro")])
     logo=models.BinaryField(null=True,blank=True)
     # 2.5.0: a second logo for dark backgrounds, and the shape of each one (width / height)
     logo_dark=models.BinaryField(null=True,blank=True)

@@ -16,7 +16,7 @@ def png(color=(122,85,173),size=(80,80)):
 
 def form_data(**extra):
     s=SiteSettings.current()
-    data={f:getattr(s,f) for f in ("name","owner_name","brand_color","login_title","login_text","support_email","support_phone","default_timezone","default_brand_color","default_privacy_text","default_consent_text","default_retention_days","default_daily_limit","default_hourly_limit","trial_enabled","trial_email","trial_days")}
+    data={f:getattr(s,f) for f in ("name","owner_name","brand_color","default_theme","login_title","login_text","support_email","support_phone","default_timezone","default_brand_color","default_privacy_text","default_consent_text","default_retention_days","default_daily_limit","default_hourly_limit","trial_enabled","trial_email","trial_days")}
     if not data["trial_enabled"]:data.pop("trial_enabled")
     data.update(extra);return data
 
@@ -122,3 +122,14 @@ def test_no_plugin_page_in_the_private_edition(settings):
     settings.EDITION="private"
     c,u=staff_client()
     assert c.get("/platform/plugin/download/").status_code==404 and c.get("/platform/plugin/").status_code==404
+
+def test_portal_default_theme_until_each_person_picks_one(sample):
+    """2.8.1: the agency picks light, dark or automatic for everybody; public booking pages keep following the visitor."""
+    t,o,s=sample
+    c,u=staff_client()
+    assert c.post("/platform/settings/",form_data(default_theme="dark")).status_code==302
+    assert SiteSettings.current().default_theme=="dark"
+    assert '<html lang="it" data-theme="dark">' in c.get("/platform/").content.decode()
+    assert '<html lang="it" data-theme="dark">' in Client_anon().get("/login/").content.decode()
+    assert "Tema di partenza" in c.get("/platform/settings/").content.decode()
+    assert '<html lang="it" data-theme="auto">' in Client_anon().get(f"/book/{t.slug}/").content.decode()

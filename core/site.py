@@ -72,10 +72,10 @@ class SiteForm(forms.ModelForm):
     remove_favicon=forms.BooleanField(required=False,label="Togli l'icona e usa quella TD")
     class Meta:
         model=SiteSettings
-        fields=["name","owner_name","owner_url","brand_color","login_title","login_text","support_email","support_phone","trial_enabled","trial_email","trial_days",
+        fields=["name","owner_name","owner_url","brand_color","default_theme","login_title","login_text","support_email","support_phone","trial_enabled","trial_email","trial_days",
                 "legal_name","vat_number","legal_address","privacy_email","data_location","privacy_policy",
                 "default_timezone","default_brand_color","default_privacy_text","default_consent_text","default_retention_days","default_daily_limit","default_hourly_limit"]
-        labels={"name":"Nome del portale","owner_name":"Chi lo offre (in fondo alle pagine)","owner_url":"Sito di chi lo offre","brand_color":"Colore principale del portale","login_title":"Titolo della pagina di accesso","login_text":"Testo sotto il titolo",
+        labels={"name":"Nome del portale","owner_name":"Chi lo offre (in fondo alle pagine)","owner_url":"Sito di chi lo offre","brand_color":"Colore principale del portale","default_theme":"Tema di partenza: chi vuole lo cambia dalla barra in alto","login_title":"Titolo della pagina di accesso","login_text":"Testo sotto il titolo",
                 "support_email":"Email di assistenza","support_phone":"Telefono di assistenza",
                 "legal_name":"Ragione sociale","vat_number":"Partita IVA","legal_address":"Sede legale","privacy_email":"Email per le richieste sulla privacy",
                 "data_location":"Dove sono i server, per esempio Roma, Italia","privacy_policy":"Testo della privacy policy (vuoto: testo standard compilato con i dati qui sopra)",
@@ -125,7 +125,7 @@ class SiteForm(forms.ModelForm):
         if commit:obj.save()
         return obj
 
-GROUPS=[("Il portale",["name","owner_name","owner_url","logo_file","logo_dark_file","remove_logo","remove_logo_dark","favicon_file","remove_favicon","brand_color"]),
+GROUPS=[("Il portale",["name","owner_name","owner_url","logo_file","logo_dark_file","remove_logo","remove_logo_dark","favicon_file","remove_favicon","brand_color","default_theme"]),
         ("Pagina di accesso e assistenza",["login_title","login_text","support_email","support_phone"]),
         ("Richieste di prova",["trial_enabled","trial_email","trial_days"]),
         ("Dati dell'azienda e privacy",["legal_name","vat_number","legal_address","privacy_email","data_location","privacy_policy"]),
