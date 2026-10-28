@@ -21,7 +21,8 @@ EXTRA_NAV=[]  # extra links in the agency menu: [{"label":..., "url":...}]
 TENANT_LIMIT=None  # most businesses the agency may create, None = no limit; Private is always 1
 MORE_TENANTS_HINT="Per più attività serve l'edizione Cloud"
 EDITION_LABEL=""  # name in the sidebar, empty = Private or Cloud
-AGENCY_NAMES={"area":"Area agenzia","admin":"Amministratore dell'agenzia","who":"agenzia"}  # how the staff pages and role are called
+AGENCY_NAMES={"area":"Area agenzia","admin":"Amministratore dell'agenzia","who":"agenzia","access":"Accesso dell'agenzia"}  # how the staff pages and role are called
+ROLE_LABELS={}  # an edition can rename roles: {"owner":"Titolare"}
 LOGIN_NOTE=()  # an edition can explain its accounts under the sign-in form: ({"title","text"},...)
 PUBLIC_ORIGIN=os.environ.get("PUBLIC_ORIGIN","http://localhost:8000" if DEV else "").rstrip("/")
 if "index" not in KEYS or len(SECRET_KEY)<50 or ACTIVE_KEY not in KEYS or len(base64.urlsafe_b64decode(KEYS[ACTIVE_KEY]))!=32:

@@ -1,6 +1,10 @@
 from django import template
 register=template.Library()
 @register.filter
+def role_label(role):
+ from core.permissions import role_label as label
+ return label(role)
+@register.filter
 def status_name(v):
  return {"confirmed":"Confermata","completed":"Completata","cancelled":"Annullata","no_show":"Assente","none":"Non richiesto","pending":"In attesa","yes":"Confermato","revoked":"Revocato","draft":"Bozza","queued":"In coda","paused":"In pausa","accepted":"Accettata da SMTP","failed":"Fallita","unknown":"Esito incerto","skipped":"Esclusa","sending":"Invio in corso","active":"Attivo","trial":"Prova","suspended":"Sospeso"}.get(v,v)
 @register.filter

@@ -32,7 +32,11 @@ ROLES={
  "marketing":("Marketing",frozenset({"contacts.read","pii.read","campaign.manage","export.marketing"})),
  "viewer":("Consultazione",frozenset({"booking.read"})),
 }
-ROLE_CHOICES=[(k,v[0]) for k,v in ROLES.items()]
+def role_label(role):
+    """The role's name; an edition can rename some (ROLE_LABELS), the Windows one calls the owner Titolare."""
+    from django.conf import settings
+    return getattr(settings,"ROLE_LABELS",{}).get(role) or ROLES.get(role,(role,))[0]
+ROLE_CHOICES=[(k,role_label(k)) for k in ROLES]
 SUPPORT=frozenset({"booking.read","booking.write","booking.cancel","pii.read","notes.read","contacts.read","catalog.write","audit.read"})
 SUPPORT_MFA_SECONDS=900
 

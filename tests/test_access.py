@@ -143,3 +143,13 @@ def test_login_keeps_the_email_and_shows_the_edition_note(settings,db):
     page=Client().get("/login/?email=titolare@example.invalid").content.decode()
     assert 'value="titolare@example.invalid"' in page and "Amministratore del programma" in page
     assert 'value="&lt;b&gt;"' in Client().get("/login/?email=<b>").content.decode()  # escaped like everything else
+
+def test_editions_rename_the_owner_and_the_agency_access(sample,settings):
+    from core.permissions import role_label
+    settings.ROLE_LABELS={"owner":"Titolare"}
+    settings.AGENCY_NAMES={**settings.AGENCY_NAMES,"access":"Accesso dell'amministratore"}
+    t,o,s=sample
+    c,u=client_as(t)
+    page=c.get(f"/t/{t.slug}/").content.decode()
+    assert role_label("owner")=="Titolare" and role_label("reception")=="Reception"
+    assert "Titolare" in page and "Accesso dell&#x27;amministratore" in page
