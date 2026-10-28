@@ -364,3 +364,12 @@ def test_passkeys_follow_the_address_of_the_page(sample,settings):
         r=c.post("/passkey/register/begin/",json.dumps({}),content_type="application/json",HTTP_HOST=host)
         assert r.json()["options"]["rp"]["id"]==host
     assert c.post("/passkey/register/begin/",json.dumps({}),content_type="application/json",HTTP_HOST="evil.example").status_code==400
+
+def test_booking_form_accepts_the_address_it_was_opened_with(sample,settings):
+    settings.ALLOWED_HOSTS=["localhost","ufficio-pc"]
+    t,o,s=sample
+    c=Client()
+    # past the origin check the request stops at the missing ticket: "Pagina scaduta"
+    page=lambda origin,host:"Pagina scaduta" in c.post(f"/book/{t.slug}/api/submit/",data="{}",content_type="application/json",HTTP_ORIGIN=origin,HTTP_HOST=host).content.decode()
+    assert page("http://ufficio-pc","ufficio-pc") and page("http://localhost:8000","ufficio-pc")
+    assert not page("https://evil.invalid","ufficio-pc") and not page("http://ufficio-pc","localhost")

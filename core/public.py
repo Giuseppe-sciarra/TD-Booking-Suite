@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
-from .identity import throttle,json_body
+from .identity import throttle,json_body,page_origin
 from .booking import available,create_booking,move_booking,change_status,BookingError,choice,bounds,has_units,free_units
 from .calendar import local_datetime
 from .crypto import token_hash,encrypt
@@ -126,7 +126,8 @@ def slots_api(request,slug,booking_id=None):
 def public_submit(request,slug):
     # Anonymous capability, independent of third-party cookies in the embedded widget.
     # This endpoint NEVER inherits an authenticated user's privileges.
-    if request.headers.get("Origin")!=settings.PUBLIC_ORIGIN:raise PermissionDenied
+    # the portal's address, or the allowed one the page was opened with (the office name of the same server)
+    if request.headers.get("Origin") not in (settings.PUBLIC_ORIGIN,page_origin(request)):raise PermissionDenied
     try:
         ticket=signing.loads(request.headers.get("X-TDBS-Ticket",""),salt="public-booking",max_age=3600)
         if ticket.get("tenant")!=str(request.tenant.pk):raise PermissionDenied
