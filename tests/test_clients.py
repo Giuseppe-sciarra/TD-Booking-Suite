@@ -60,7 +60,9 @@ def test_client_card_history_notes_and_edit(sample):
         nxt,_=create_booking(t,payload(s,hour=11,request_key=secrets.token_urlsafe(24)))
         cid=past.contact_id
     page=owner.get(f"/t/{t.slug}/contacts/{cid}/").content.decode()
-    assert "<h2>Storico</h2>" in page and "2 prenotazioni" in page and "In arrivo" not in page and "Nuova prenotazione" in page
+    # 2.11.0: who the client is on the left, the tabs on the right; the overview shows what is in programme
+    assert 'role="tablist"' in page and "<h2>Prenotazioni</h2>" in page and "2 prenotazioni" in page and "In arrivo" not in page and "Nuova prenotazione" in page
+    assert "<h2>In programma</h2>" in page and 'class="next-list"' in page and "Cliente dal" in page
     assert ">1</strong><small>ultima il" in page
     owner.post(f"/t/{t.slug}/contacts/{cid}/",{"action":"notes","staff_notes":"Colore 6.3, ossigeno 20 vol"})
     page=owner.get(f"/t/{t.slug}/contacts/{cid}/").content.decode()

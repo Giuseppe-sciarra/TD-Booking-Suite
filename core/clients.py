@@ -9,6 +9,7 @@ from django.utils import timezone
 from .booking import BookingError,normalize_phone
 from .crypto import encrypt,index,tenant_key
 from .models import Contact,Booking,Treatment
+from .prices import spent
 
 ERASED="erased:"
 
@@ -73,6 +74,24 @@ def update(tenant,contact,fields=None,notes=None):
     contact.pii=encrypt(tenant,data,"contact:"+str(contact.pk));contact.save(update_fields=["pii","email_index"])
     return data
 
+def set_discount(contact,kind,value):
+    """2.11.0: the client's own discount, a percentage (up to 100) or euro off; nothing to remove it. His confirmed
+    future bookings take it at once; the past ones stay as they were paid. Returns how many bookings changed."""
+    from decimal import Decimal,InvalidOperation
+    from .prices import stamp
+    if kind not in ("","percent","amount"):raise BookingError("Tipo di sconto non valido.")
+    try:amount=Decimal(str(value or "0").strip().replace("€","").replace(" ","").replace(",",".")) if kind else Decimal(0)
+    except InvalidOperation:raise BookingError("Scrivi lo sconto con un numero, per esempio 10 o 5,50.")
+    if kind and not (Decimal("0.01")<=amount<=(Decimal(100) if kind=="percent" else Decimal(100000))):
+        raise BookingError("Lo sconto in percentuale va da 0,01 a 100." if kind=="percent" else "Lo sconto in euro va da 0,01 a 100.000.")
+    contact.discount_kind=kind;contact.discount=amount.quantize(Decimal("0.01"))
+    contact.save(update_fields=["discount_kind","discount"])
+    changed=0
+    for b in Booking.objects.filter(contact=contact,status="confirmed",start__gt=timezone.now()).select_related("service","option"):
+        before=dict(b.snapshot);b.contact=contact;stamp(b)
+        if b.snapshot!=before:b.save(update_fields=["snapshot"]);changed+=1
+    return changed
+
 def search(tenant,q,limit=10):
     """Name, surname, phone or email containing q. Up to 5000 cards are read, most recent first."""
     q=(q or "").strip().casefold()
@@ -97,7 +116,8 @@ def history(contact,visible):
     staff=Counter(b.snapshot.get("resource") for b in done if b.snapshot.get("resource"))
     stats={"visits":len(done),"last":done[0].start if done else None,"next":upcoming[0] if upcoming else None,
         "cancelled":sum(1 for b in rows if b.status=="cancelled"),"no_show":sum(1 for b in rows if b.status=="no_show"),
-        "service":services.most_common(1)[0] if services else None,"staff":staff.most_common(1)[0] if staff else None,"total":len(rows)}
+        "service":services.most_common(1)[0] if services else None,"staff":staff.most_common(1)[0] if staff else None,"total":len(rows),
+        "spent":spent(done)}
     return rows,stats
 
 def clean_treatment(data,today):

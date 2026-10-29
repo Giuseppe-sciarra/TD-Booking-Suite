@@ -249,6 +249,8 @@ def create_booking(tenant,data,actor=None):
         contact.save()
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
+        from .prices import stamp
+        stamp(booking)  # 2.11.0: price, client discount and what he pays, as at this moment
         booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save()
         token=action_token(tenant,"cancel",contact,booking,days=max(30,service.horizon_days+service.max_days+30))
         pii["cancel_token"]=token;booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
@@ -275,6 +277,8 @@ def move_booking(tenant,booking_id,data,actor):
         booking.start,booking.end,booking.busy_start,booking.busy_end,booking.party,booking.option,booking.resource,booking.occurrence=values
         booking.service=service;booking.location=service.location
         booking.snapshot.update(service=service.name,location=service.location.name,resource=booking.resource.name if booking.resource else "",option=booking.option.name if booking.option else "")
+        from .prices import stamp
+        stamp(booking)
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
         # a booking taken at the desk may have no email (2.7.0): an empty address would bounce and exclude the client from email

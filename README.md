@@ -51,8 +51,12 @@ Italian.
   previous times before starting.
 - **Note on the client** in every booking ("prefers Anna", "nickel allergy"): written once on the
   card, shown at the top of each of their bookings. The client never sees it.
-- The card counts visits, shows the next booking, the favourite service and staff member,
-  cancellations and no-shows, every intolerance ever reported.
+- The card keeps who the client is always in view (contacts, allergies, discount, notes) and puts
+  the rest in tabs: overview with money spent, visits, next appointments, favourite service and
+  staff member, cancellations and no-shows; bookings with what was paid; treatments; consents and
+  privacy.
+- **Client discount**, a percentage or a fixed amount, applied from then on, future bookings
+  included; each booking keeps its price like a receipt.
 - **The same client, one card**: found by email, then by phone. A client added at the desk with a
   phone number only finds their card again when they book online; two different emails stay two
   people, even with the same phone.
@@ -76,6 +80,11 @@ Italian.
   the form.
 
 **Business portal**
+- **Agenda by day, week and month**: a column per working staff member for the day, the week hour
+  by hour with overlapping appointments side by side, the month with how full each day is; one
+  colour per staff member everywhere.
+- **Price list kept by the business**: services and variants with their prices; the kind of
+  booking stays with the agency.
 - Dashboard, agenda, bookings at the desk, clients, CSV export, marketing campaigns with confirmed
   consent and one-click unsubscribe, notifications to staff by email and Telegram (without notes,
   answers or allergies), activity log.

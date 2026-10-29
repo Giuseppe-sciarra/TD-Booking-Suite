@@ -51,8 +51,12 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   operatore; nella prenotazione l'operatore vede le volte precedenti prima di cominciare.
 - **Nota sul cliente** in ogni prenotazione ("preferisce Anna", "allergica al nichel"): si scrive
   una volta nella scheda e compare in cima a ogni sua prenotazione. Il cliente non la vede.
-- La scheda conta le visite, mostra la prossima prenotazione, il servizio e l'operatore preferiti,
-  disdette e assenze, tutte le intolleranze mai segnalate.
+- La scheda tiene sempre in vista chi è il cliente (recapiti, allergie, sconto, note) e mette il
+  resto in schede: panoramica con quanto ha speso, visite, prossimi appuntamenti, servizio e
+  operatore preferiti, disdette e assenze; prenotazioni con quanto ha pagato; trattamenti; consensi
+  e privacy.
+- **Sconto del cliente**, in percentuale o fisso in euro, da quel momento, prenotazioni in
+  programma comprese; ogni prenotazione tiene il suo prezzo, come uno scontrino.
 - **Lo stesso cliente, una scheda**: si riconosce dall'email, poi dal telefono. Chi è stato
   inserito al banco con il solo numero ritrova la sua scheda quando prenota online; due email
   diverse restano due persone, anche con lo stesso telefono.
@@ -77,6 +81,11 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   del modulo.
 
 **Portale dell'attività**
+- **Agenda del giorno, della settimana e del mese**: nel giorno una colonna per ogni operatore che
+  lavora, la settimana ora per ora con gli appuntamenti affiancati, il mese con quanti ne ha ogni
+  giorno; ogni operatore ha il suo colore.
+- **Il listino lo tiene l'attività**: servizi e varianti con i loro prezzi; il tipo di prenotazione
+  resta dell'agenzia.
 - Dashboard, agenda, prenotazioni al banco, clienti, export CSV, campagne marketing con consenso
   confermato e disiscrizione con un clic, notifiche al personale via email e Telegram (senza note,
   risposte né allergie), registro attività.

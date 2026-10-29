@@ -10,7 +10,7 @@
  const places=new Set(config.services.map(s=>s.location)).size,names=new Set(config.services.map(s=>s.name)).size;
  if(config.services.length===1){$("service-wrap").hidden=true;select(service,config.services,"");}
  else if(names===1&&places>1){$("service-label").textContent="Sede";$("slot-status").textContent="Scegli la sede e la data.";select(service,config.services.map(s=>({id:s.id,name:s.location})),"Scegli la sede");}
- else{const word=config.service_label||"Servizio";$("service-label").textContent=word;select(service,config.services.map(s=>({id:s.id,name:places>1?s.name+" ("+s.location+")":s.name})),"Scegli un "+word.toLowerCase());}
+ else{const word=config.service_label||"Servizio";$("service-label").textContent=word;select(service,config.services.map(s=>({id:s.id,name:(places>1?s.name+" ("+s.location+")":s.name)+(s.price?" · "+s.price:"")})),"Scegli un "+word.toLowerCase());}
  const kinds=new Set(config.services.map(s=>s.kind));if(kinds.size===1){const k=[...kinds][0];$("party-label").textContent=["shift","capacity","event"].includes(k)?"Persone":k==="day"?"Ospiti":"Persone / quantità";}
  day.min=config.today;day.value=config.prefill?.date&&config.prefill.date>=config.today?config.prefill.date:config.today;departure.min=config.today;
  // until a service is chosen, the number of people shows only if some service takes more than one
@@ -41,7 +41,7 @@
   }
  }
  function changeService(){
-  const s=current();select(option,s?.options||[],"Prestazione standard");select(resource,s?.resources||[],s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile");
+  const s=current();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),"Prestazione standard"+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile");
   // 2.10.0: from the agenda, the operator of the free space clicked
   if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   $("option-wrap").hidden=!s?.options.length;$("resource-wrap").hidden=!(s?.kind==="resource"||(s?.kind==="day"&&s?.resources.length));

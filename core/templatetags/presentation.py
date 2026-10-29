@@ -22,10 +22,16 @@ def service_summary(s):
  if s.kind=="capacity" and not s.turnover:return f"{s.capacity} coperti per ogni pranzo e cena, il cliente sceglie l'ora di arrivo"
  if s.kind=="capacity":return f"A turni: {s.capacity} posti, ogni posto si libera dopo {s.duration} minuti"
  if s.kind=="shift":return f"Turni: {s.capacity} posti totali, i coperti di ogni turno sono in Turni del ristorante"
- if s.kind=="resource":return f"Appuntamento di {s.duration} minuti"+(" con "+s.resource_label.lower() if s.resource_label else "")
+ if s.kind=="resource":return f"Appuntamento di {s.duration} minuti"+(" con "+s.resource_label.lower() if s.resource_label else "")+(" · "+euro(s.price) if s.price is not None else "")
  if s.kind=="day":return f"A notti: da {s.min_days} a {s.max_days}, arrivo alle {s.checkin.strftime('%H:%M') if hasattr(s.checkin,'strftime') else s.checkin}"
  if s.kind=="event":return "Evento con date: i posti sono in Eventi con data"
  return ""
+
+@register.filter
+def euro(value):
+    """2.11.0: 25 -> 25,00 €, empty for no price."""
+    from core.prices import euro as fmt
+    return fmt(value)
 
 @register.filter
 def uses_resources(rows):
@@ -54,6 +60,7 @@ ICONS={
  "help":'<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.9.6c0 1.7-2.5 2.1-2.5 3.6"/><path d="M12 17h.01"/>',
  "home":'<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>'}
 ICONS.update({
+ "phone":'<path d="M6.6 3.5h2.6l1.4 4-2 1.3a12 12 0 0 0 6.6 6.6l1.3-2 4 1.4v2.6a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/>',
  "grid":'<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
  "users":'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M15.5 4.8a3.3 3.3 0 0 1 0 6.4M17.5 14.8c2 .7 3.4 2.4 3.9 5.2"/>',
  "badge":'<rect x="4" y="3" width="16" height="18" rx="2.5"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17.5c.8-2.2 2.4-3.3 4.5-3.3s3.7 1.1 4.5 3.3"/>',

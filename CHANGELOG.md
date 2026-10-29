@@ -1,11 +1,20 @@
-# TD Booking Suite 2.10.2 — registro modifiche
+# TD Booking Suite 2.11.0 — registro modifiche
 
-**29 ottobre 2026 · versione 2.10.2**
+**29 ottobre 2026 · versione 2.11.0**
 
-## 2.10.2 — versione dell'edizione Windows
+## 2.11.0 — settimana e mese, listino con prezzi, sconti dei clienti, scheda cliente nuova
 
-- Il core non cambia: la versione segue l'edizione Windows, dove *Ricomincia da zero* funziona anche lanciato a mano da un PowerShell di amministratore, e un da zero rimasto a metà si finisce rilanciandolo o riaprendo l'MSI, con la stessa licenza
-- **Plugin WordPress 2.10.2**: stesso codice della 2.10.0, cambia solo il numero di versione
+- **Agenda della settimana e del mese**, per tutte le attività: *Giorno · Settimana · Mese · Elenco* in alto, con le frecce, Oggi, il giorno, la sede e l'operatore
+  - la settimana mostra i sette giorni ora per ora, con gli appuntamenti affiancati quando si sovrappongono, per tutti o per un operatore solo; uno spazio libero apre la prenotazione con giorno e ora (e l'operatore, se scelto). Per ristoranti, soggiorni ed eventi elenca le prenotazioni di ogni giorno
+  - il mese mostra quanti appuntamenti ha ogni giorno e i primi tre; un clic apre il giorno
+  - ogni operatore ha il suo colore, lo stesso in giorno, settimana e mese, con la legenda
+- **Il giorno mostra chi lavora**: un operatore in ferie o di riposo, senza appuntamenti, non ha la colonna ed è scritto sopra l'agenda. Un ! arancione sull'appuntamento segnala allergie o intolleranze del cliente
+- **Il listino lo tiene l'attività**: il titolare (l'amministratore dell'attività) crea e modifica servizi e varianti; il tipo di prenotazione di un servizio resta dell'agenzia. I servizi su appuntamento hanno il **prezzo**, e ogni variante il suo, se diverso
+- **Sconto del cliente**, in percentuale o fisso in euro, dalla sua scheda: vale da subito anche sulle sue prenotazioni già in programma; le passate restano come sono state pagate. Lo mette chi tiene il listino
+- **Ogni prenotazione tiene il suo prezzo**, sconto compreso, come uno scontrino: un listino nuovo non cambia le prenotazioni già prese. Si vede nella prenotazione (prezzo pieno barrato e sconto), nella scheda del cliente e, con il prezzo del servizio, nella prenotazione fatta dallo staff. La pagina pubblica non mostra prezzi
+- **Scheda cliente nuova**: a sinistra, sempre in vista, chi è (recapiti, allergie, sconto, note, *Nuova prenotazione*); a destra *Panoramica* (speso, visite, prossima, preferenze, cosa ha in programma, ultimo trattamento), *Prenotazioni* con il prezzo, *Trattamenti* e *Consensi e privacy*. L'elenco vuoto delle prenotazioni non si schiaccia più in una colonnina
+- **Edizione Windows**: *Ricomincia da zero* funziona anche lanciato a mano da un PowerShell di amministratore, e un da zero rimasto a metà si finisce rilanciandolo o riaprendo l'MSI, con la stessa licenza
+- **Plugin WordPress 2.11.0**: stesso codice della 2.10.0, cambia solo il numero di versione
 
 ## 2.10.1 — versione dell'edizione Windows
 

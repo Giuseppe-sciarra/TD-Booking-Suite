@@ -38,9 +38,27 @@
  document.querySelectorAll("[data-agenda]").forEach(agenda=>{agenda.style.setProperty("--rows",agenda.dataset.rows);agenda.style.setProperty("--cols",agenda.dataset.cols);
   agenda.querySelectorAll("[data-row]").forEach(el=>{el.style.gridRow=el.dataset.row+" / "+(el.dataset.end||+el.dataset.row+1);el.style.gridColumn=el.dataset.col;});
   agenda.querySelectorAll(".agenda-head [data-col]").forEach(el=>{el.style.gridColumn=el.dataset.col;});
+  // 2.11.0: a day of the week puts overlapping appointments side by side, one lane each
+  agenda.querySelectorAll("[data-lanes]").forEach(el=>el.style.setProperty("--lanes",el.dataset.lanes));
   const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";
-  (now||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"center"});});
+  (now||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"nearest"});});
  document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));
+ // 2.11.0: the tabs of the client card; without the script every panel shows, one after the other. A link to
+ // something inside a panel (#nuovo-trattamento) opens that panel first
+ document.querySelectorAll("[data-tabs]").forEach(box=>{
+  const tabs=[...box.querySelectorAll("[data-tab]")];
+  const show=name=>{if(!tabs.some(t=>t.dataset.tab===name))name=box.dataset.default;
+   tabs.forEach(t=>{const on=t.dataset.tab===name,panel=document.getElementById(t.dataset.tab);t.setAttribute("aria-selected",on);t.tabIndex=on?0:-1;if(panel)panel.hidden=!on;});};
+  const fromHash=()=>{const target=location.hash.length>1?document.getElementById(decodeURIComponent(location.hash.slice(1))):null;return target?.closest(".tab-panel")?.id||box.dataset.default;};
+  show(fromHash());
+  tabs.forEach((t,i)=>{
+   t.addEventListener("click",e=>{e.preventDefault();show(t.dataset.tab);history.replaceState(null,"","#"+t.dataset.tab);});
+   t.addEventListener("keydown",e=>{const step={ArrowRight:1,ArrowLeft:-1}[e.key];if(!step)return;e.preventDefault();const next=tabs[(i+step+tabs.length)%tabs.length];next.focus();next.click();});});
+  document.querySelectorAll("[data-tab-link]").forEach(a=>a.addEventListener("click",()=>show(a.dataset.tabLink)));
+  window.addEventListener("hashchange",()=>show(fromHash()));
+ });
+ // 2.11.0: the client's discount asks how much only once a kind is chosen
+ document.querySelectorAll("[data-discount-kind]").forEach(kind=>{const value=kind.form.querySelector("[data-discount-value]");kind.addEventListener("change",()=>{value.hidden=!kind.value;if(kind.value)value.querySelector("input").focus();});});
  // 2.10.0: an operator's working days show only with Ha giorni e orari suoi
  document.querySelectorAll("[data-own-hours]").forEach(box=>{const on=box.querySelector("[name=own_hours]"),grid=box.querySelector(".hours-grid");
   const sync=()=>{grid.hidden=!on.checked;};on.addEventListener("change",sync);sync();});

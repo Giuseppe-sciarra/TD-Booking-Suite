@@ -92,20 +92,23 @@ def test_more_than_five_locations(sample):
     assert "Le sedi vanno da 1 a 50" in r
 
 def test_the_administrator_sets_up_the_business_and_the_owner_runs_it(sample,settings):
-    # 2.10.0, every edition: type, locations, services and the technical side are the agency's (the program's
-    # administrator); the owner keeps opening hours, closing days and staff up to date
+    # 2.10.0, every edition: type, locations and the technical side are the agency's (the program's administrator);
+    # the owner keeps opening hours, closing days and staff up to date, and since 2.11.0 services and prices too
     settings.EDITION="private"
     t,o,s=sample
     owner,_=client_as(t,role="owner")
     page=owner.get(f"/t/{t.slug}/setup/").content.decode()
     assert 'name="business_type"' not in page and "li imposta l&#x27;agenzia" in page or "li imposta l'agenzia" in page
-    assert "<h2>Orari di apertura</h2>" in page and "<h2>Servizi</h2>" not in page and "<h2>Sedi</h2>" not in page
+    assert "<h2>Orari di apertura</h2>" in page and "<h2>Servizi</h2>" in page and "<h2>Sedi</h2>" not in page
     assert owner.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"}).status_code==403
-    for kind in ("services","locations","options","turns","occurrences"):
+    for kind in ("locations","turns","occurrences"):
         assert owner.get(f"/t/{t.slug}/catalog/{kind}/").status_code==403 and owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==403
-    for kind in ("schedules","exceptions","resources"):assert owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==200
+    for kind in ("schedules","exceptions","resources","services","options"):assert owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==200
     tabs=owner.get(f"/t/{t.slug}/catalog/schedules/").content.decode()
-    assert ">Chiusure e giorni speciali</a>" in tabs and ">Servizi</a>" not in tabs and ">Sedi</a>" not in tabs
+    assert ">Chiusure e giorni speciali</a>" in tabs and ">Servizi</a>" in tabs and ">Sedi</a>" not in tabs
+    # the kind of booking of a service stays the agency's: the owner's form has no such field
+    form=owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
+    assert 'name="kind"' not in form and 'name="name"' in form
     admin,_=client_as(t,staff=True)
     r=admin.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"},follow=True)
     assert "Studio medico / Fisioterapia" in r.content.decode()
@@ -287,8 +290,9 @@ def test_service_form_follows_the_kind(sample):
     t,o,s=sample
     owner,_=client_as(t,role="owner")
     Tenant.objects.filter(pk=t.pk).update(business_type="ristorante")
-    # 2.10.0: services are set up by the agency only
-    assert owner.get(f"/t/{t.slug}/catalog/services/new/").status_code==403
+    # 2.11.0: the owner keeps his services, without choosing their kind; a restaurant's table has no price
+    form=owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
+    assert 'name="kind"' not in form and 'name="price"' not in form and 'name="capacity"' in form
     c,_=staff_client()
     # the agency's form has every kind's fields, shown by the kind chosen; it starts from the restaurant's
     form=c.get(f"/t/{t.slug}/catalog/services/new/").content.decode()

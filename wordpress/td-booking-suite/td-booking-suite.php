@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite (Cloud o Private). Si collega al portale con un codice e si configura da solo. Nessun dato personale nel database WordPress.
- * Version: 2.10.2
+ * Version: 2.11.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.10.2';
+const TDBS_VERSION='2.11.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());

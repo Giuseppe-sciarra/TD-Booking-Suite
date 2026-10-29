@@ -183,6 +183,8 @@ class Service(Scoped):
     resource_label=models.CharField(max_length=60,blank=True)  # "Operatore", "Stanza", "Campo"...
     fields=models.JSONField(default=list,blank=True)
     active=models.BooleanField(default=True)
+    # 2.11.0: the price list, kept by the business itself; empty = no price shown
+    price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
     def __str__(self):return self.name
 class ServiceResource(Scoped):
     service=models.ForeignKey(Service,on_delete=models.CASCADE,related_name="resource_links")
@@ -193,6 +195,7 @@ class Option(Scoped):
     name=models.CharField(max_length=100)
     duration=models.PositiveIntegerField(default=60)
     active=models.BooleanField(default=True)
+    price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)  # 2.11.0: empty = the service's
     def __str__(self):return self.name
 class Schedule(Scoped):
     location=models.ForeignKey(Location,null=True,blank=True,on_delete=models.PROTECT)
@@ -239,6 +242,9 @@ class Contact(Scoped):
     consent_at=models.DateTimeField(null=True)
     consent_proof=models.TextField(blank=True)
     suppressed=models.BooleanField(default=False)
+    # 2.11.0: the client's own discount, on every booking from when it is set: a percentage or euro off the price
+    discount_kind=models.CharField(max_length=8,blank=True,choices=[("","Nessuno"),("percent","Percentuale"),("amount","Importo fisso")])
+    discount=models.DecimalField(max_digits=8,decimal_places=2,default=0)
     created=models.DateTimeField(auto_now_add=True)
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant","email_index"],name="contact_email_unique")]
     @property

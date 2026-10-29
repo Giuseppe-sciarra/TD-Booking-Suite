@@ -11,7 +11,7 @@ LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nom
  "checkin":"Ora di arrivo (check-in)","checkout":"Ora di partenza (check-out)","min_days":"Notti minime","max_days":"Notti massime",
  "cancel_cutoff_minutes":"Annullamento online fino a (minuti prima)","resource_label":"Come si chiamano le risorse",
  "service":"Servizio","resource":"Risorsa","purpose":"A cosa si applica","weekday":"Giorno","start":"Inizio","end":"Fine","valid_from":"Valido dal","valid_until":"Valido fino al",
- "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato"}
+ "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato","price":"Prezzo (€)"}
 # 2.6.0: one plain line under every field, with an example
 HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 19:00, 19:30",
  "buffer_before":"Minuti tenuti liberi prima di ogni prenotazione, per esempio per preparare la cabina. Di solito 0",
@@ -23,13 +23,14 @@ HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 1
  "description":"Facoltativa: compare sotto il nome nella pagina prenotazioni",
  "min_days":"Per esempio 2 se non accetti soggiorni di una notte sola","max_days":"Il soggiorno più lungo prenotabile online",
  "checkin":"Da che ora arriva il cliente","checkout":"Entro che ora libera la camera o riconsegna",
- "address":"Compare nelle email di conferma","phone":"Compare nelle email di conferma"}
+ "address":"Compare nelle email di conferma","phone":"Compare nelle email di conferma",
+ "price":"Facoltativo, per esempio 25 o 25,50. Compare in agenda, nelle prenotazioni e nella scheda del cliente, con il suo sconto se ne ha uno"}
 SERVICE_KINDS=[("capacity","Posti per fascia oraria: ristorante, sala, lezione di gruppo"),("shift","Turni fissi, per esempio pranzo e cena, con i coperti di ciascuno"),
  ("resource","Appuntamento con una persona o una risorsa: parrucchiere, studio, campo"),("day","A notti o giorni: camere, appartamenti, noleggio"),("event","Evento o corso in date precise")]
 # which fields each kind of booking uses; the others are not shown at all
 FIELD_KINDS={"duration":{"resource","capacity"},"interval":{"resource","capacity"},"capacity":{"capacity","shift","day"},"max_party":{"capacity","shift","event","day"},
  "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
- "resource_label":{"resource","day"},"resources":{"resource","day"}}
+ "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"}}
 KIND_LABELS={"duration":{"capacity":"Quanto resta occupato il posto (minuti)","resource":"Durata dell'appuntamento (minuti)"},
  "capacity":{"capacity":"Posti (coperti)","shift":"Posti totali del locale","day":"Unità disponibili"},
  "max_party":{"capacity":"Persone massime per prenotazione","shift":"Persone massime per prenotazione","event":"Posti massimi per prenotazione","day":"Ospiti massimi per prenotazione"}}
@@ -150,7 +151,7 @@ class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Service
-        fields=["name","location","kind","description","capacity","max_party","turnover","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
+        fields=["name","location","kind","description","price","capacity","max_party","turnover","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
         widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2})}
@@ -201,6 +202,7 @@ class ServiceForm(ScopedForm):
     def clean(self):
         d=super().clean()
         kind=d.get("kind") or self.kind
+        if d.get("price") is not None and not 0<=d["price"]<=100000:self.add_error("price","Prezzo tra 0 e 100.000 €.")
         bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(1,366),"cancel_cutoff_minutes":(0,525600)}
         for key,(low,high) in bounds.items():
             if key in d and d[key] is not None and not low<=d[key]<=high:self.add_error(key,f"Valore tra {low} e {high}.")
@@ -218,15 +220,19 @@ class ServiceForm(ScopedForm):
         return service
 class OptionForm(ScopedForm):
     class Meta:
-        model=Option;fields=["service","name","duration","active"]
+        model=Option;fields=["service","name","duration","price","active"]
         labels={"name":"Nome della variante","active":"Attiva"}
-        help_texts={"name":"Per esempio Taglio corto o Taglio lungo","duration":"La durata di questa variante, al posto di quella del servizio"}
+        help_texts={"name":"Per esempio Taglio corto o Taglio lungo","duration":"La durata di questa variante, al posto di quella del servizio","price":"Facoltativo: vuoto vuol dire il prezzo del servizio"}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
         only_one(self.fields["service"],Service.objects.filter(active=True).order_by("name"))
     def clean_duration(self):
         val=self.cleaned_data["duration"]
         if not 5<=val<=1440:raise ValidationError("Durata tra 5 e 1440 minuti.")
+        return val
+    def clean_price(self):
+        val=self.cleaned_data.get("price")
+        if val is not None and not 0<=val<=100000:raise ValidationError("Prezzo tra 0 e 100.000 €.")
         return val
 class CalendarForm(ScopedForm):
     confirm_conflicts=forms.BooleanField(required=False,label="Confermo la modifica anche se esistono prenotazioni da ricontattare")

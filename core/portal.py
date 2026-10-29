@@ -52,9 +52,10 @@ EDIT_HELP={
  "turns":"Un turno che si ripete ogni settimana, per esempio la cena del venerdì dalle 19:30 alle 23:00, con i suoi coperti",
  "occurrences":"Una data dell'evento o del corso, con i posti disponibili",
 }
-# 2.10.0, every edition: the agency (the program's administrator) sets up type, locations, services and the technical
-# side; the business runs the day and keeps its opening hours, closing days and staff (operators, rooms) up to date
-OWNER_CATALOG={"schedules","exceptions","resources"}
+# 2.10.0, every edition: the agency (the program's administrator) sets up type, locations and the technical side;
+# the business runs the day and keeps its opening hours, closing days and staff (operators, rooms) up to date.
+# 2.11.0: also its services with their variants and prices; the kind of booking of a service stays the agency's
+OWNER_CATALOG={"schedules","exceptions","resources","services","options"}
 def catalog_allowed(request,kind):return request.user.is_staff or kind in OWNER_CATALOG
 def catalog_kinds(tenant=None):
     """Pages appear only when a service actually uses them, with the names the business uses: a restaurant
@@ -295,9 +296,12 @@ def period(request,default_days=7):
 def bookings(request,slug):
     require(request,"booking.read")
     # 2.10.0: appointments open on the day, one column for each operator; the list stays with ?vista=elenco
-    from .agenda import fits,day_view
-    agenda=fits(request)
-    if agenda and request.GET.get("vista")!="elenco" and "from" not in request.GET and "to" not in request.GET:return day_view(request)
+    # 2.11.0: the week and the month too, for every business
+    from .agenda import fits,day_view,week_view,month_view
+    agenda=fits(request);view=request.GET.get("vista","")
+    if view=="settimana":return week_view(request)
+    if view=="mese":return month_view(request)
+    if agenda and view!="elenco" and "from" not in request.GET and "to" not in request.GET:return day_view(request)
     try:a,b=period(request)
     except ValidationError as ex:return render(request,"message.html",{"title":"Filtro non valido","text":str(ex)},status=400)
     rows=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).select_related("service","resource").order_by("start")
@@ -450,7 +454,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -473,6 +477,17 @@ def contact_detail(request,slug,contact_id):
         try:messages.success(request,record_action(request,contact))
         except BookingError as ex:messages.error(request,str(ex))
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#scheda")
+    if request.method=="POST" and request.POST.get("action")=="discount":
+        # 2.11.0: a price decision, like the price list: who edits services
+        require(request,"catalog.write")
+        from .clients import set_discount
+        try:
+            with transaction.atomic():
+                changed=set_discount(contact,request.POST.get("discount_kind",""),request.POST.get("discount",""))
+                audit(request.tenant,request.user,"contact.discount",contact.pk,kind=contact.discount_kind,value=str(contact.discount),bookings=changed)
+            messages.success(request,("Sconto salvato." if contact.discount_kind else "Sconto tolto.")+((f" Aggiornata {changed} prenotazione in programma." if changed==1 else f" Aggiornate {changed} prenotazioni in programma.") if changed else ""))
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#sconto")
     if request.method=="POST" and request.POST.get("action") in ("notes","card"):
         require(request,"booking.write",*(("notes.read",) if request.POST["action"]=="notes" else ("pii.read",)))
         try:
@@ -488,7 +503,12 @@ def contact_detail(request,slug,contact_id):
     for b in page:b.shown=shown(request,b.data)
     raw=contact.data
     notes_ok=can(request,"notes.read")
+    # 2.11.0: the overview shows the next appointments; the client's discount sits on the card
+    from .prices import discount_label
+    upcoming=sorted((b for b in rows if b.start>timezone.now() and b.status=="confirmed"),key=lambda b:b.start)[:3]
+    for b in upcoming:b.shown=shown(request,b.data)
     ctx={"contact":contact,"data":shown(request,raw),"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
+        "upcoming":upcoming,"discount":discount_label(contact),
         "notes":raw.get("staff_notes","") if notes_ok else None,"spec":spec if notes_ok else None,
         # 2.8.0: every allergy or intolerance the client ever ticked, newest bookings first
         "allergies":list(dict.fromkeys(a for b in rows for a in b.data.get("allergies",[]))) if notes_ok else []}
