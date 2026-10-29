@@ -30,9 +30,10 @@ class GuardMiddleware:
         protected=path=="/" or path.startswith(("/t/","/platform/","/security/","/guida/"))
         if request.user.is_authenticated:
             from django.conf import settings
-            # 2.6.0: a remembered device stays signed in for SESSION_REMEMBER_DAYS of inactivity, the others for 30 minutes
+            # 2.6.0: a remembered device stays signed in for SESSION_REMEMBER_DAYS of inactivity (2.13.0: 0 means until
+            # Esci), the others for 30 minutes
             idle=settings.SESSION_REMEMBER_DAYS*86400 if request.session.get("remember") else 1800
-            if request.session.get("auth_version")!=request.user.auth_version or time.time()-request.session.get("last_seen",time.time())>idle:
+            if request.session.get("auth_version")!=request.user.auth_version or idle and time.time()-request.session.get("last_seen",time.time())>idle:
                 logout(request)
             else:request.session["last_seen"]=time.time()
         if protected:

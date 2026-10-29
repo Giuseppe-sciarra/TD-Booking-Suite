@@ -1301,3 +1301,14 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .tenant-mark{flex:none;display:grid;place-items:center;width:42px;height:42px;padding:4px;border-radius:12px;background:#fff}
 .tenant-mark img{display:block;max-width:100%;max-height:100%;object-fit:contain}
 .tenant-mark.wide{width:auto;height:46px;max-width:210px;padding:6px 10px;border-radius:10px}.tenant-mark.wide img{height:34px;width:auto}
+
+/* 2.13.0: Entra senza password, on the program's PC and the registered workstations */
+.quick-login{display:grid;gap:8px;margin:6px 0 4px}
+.quick-login form{margin:0}
+.quick-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.quick-account{display:flex;align-items:center;gap:12px;width:100%;margin:0;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper);color:var(--ink);text-align:left;box-shadow:none;transition:border-color .2s,background-color .2s,transform .15s}
+.quick-account:hover{border-color:var(--brand);background:var(--soft)}.quick-account:active{transform:scale(.99)}
+.quick-account strong{display:block;font-weight:700}.quick-account small{display:block;color:var(--muted);font-weight:500}
+.quick-account>span:nth-child(2){flex:1;min-width:0}
+.quick-avatar{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--brand);color:var(--brand-ink,#fff);font:700 16px/1 var(--head)}
+.quick-go{font-size:22px;color:var(--brand)}

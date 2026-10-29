@@ -37,6 +37,8 @@ class User(AbstractBaseUser,PermissionsMixin):
     totp=models.TextField(blank=True)
     last_totp=models.BigIntegerField(default=-1)
     recovery=models.JSONField(default=list)
+    # 2.13.0: an owner the agency lets in without password, only from a device the edition trusts (quick.py)
+    quick_login=models.BooleanField(default=False)
     USERNAME_FIELD="login_index"
     objects=UserManager()
     @property

@@ -333,6 +333,7 @@ def test_company_name_links_to_its_site():
 def test_remember_keeps_the_device_signed_in(settings):
     import time
     from core.models import User
+    settings.SESSION_REMEMBER_DAYS=30  # a limit chosen in .env
     u=User.objects.create_user("gestore@example.invalid","A-test-password-12345")
     c=Client()
     c.post("/login/",{"email":"gestore@example.invalid","password":"A-test-password-12345","remember":"1"})
@@ -348,6 +349,19 @@ def test_remember_keeps_the_device_signed_in(settings):
     assert not s["remember"] and s.get_expire_at_browser_close()
     s["last_seen"]=time.time()-3600;s.save()
     other.get("/");assert "_auth_user_id" not in other.session
+
+def test_remember_without_a_limit_lasts_until_logout(settings):
+    """2.13.0: the default: a remembered device never leaves by itself."""
+    import time
+    from core.models import User
+    settings.SESSION_REMEMBER_DAYS=0
+    User.objects.create_user("cassa@example.invalid","A-test-password-12345")
+    c=Client()
+    c.post("/login/",{"email":"cassa@example.invalid","password":"A-test-password-12345","remember":"1"})
+    s=c.session
+    assert s.get_expiry_age()==400*86400 and not s.get_expire_at_browser_close()
+    s["last_seen"]=time.time()-3*365*86400;s.save()  # three years away
+    c.get("/");assert "_auth_user_id" in c.session
     assert 'name="remember" value="1" id="remember" checked' in Client().get("/login/").content.decode()
 
 def test_password_managers_stay_out_of_the_portal(sample):

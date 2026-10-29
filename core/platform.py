@@ -148,7 +148,15 @@ def members_view(request,slug):
             else:
                 member=get_object_or_404(Membership,tenant=tenant,pk=request.POST.get("member"))
                 u=member.user
-                if action=="remove":
+                if action in ("quick_on","quick_off"):
+                    # 2.13.0: one click from the program's PC and the registered workstations, for an owner only
+                    from .quick import available
+                    if not available():raise ValueError("Questa edizione non ha postazioni registrate: si entra con la password.")
+                    if member.role!="owner" or u.is_staff:raise ValueError("Senza password entra solo un titolare.")
+                    u.quick_login=action=="quick_on";u.save(update_fields=["quick_login"])
+                    audit(tenant,request.user,"member.quick_login",u.pk,on=u.quick_login)
+                    messages.success(request,(u.login_name+" entra senza password dal PC del programma e dalle postazioni registrate.") if u.quick_login else (u.login_name+" entra di nuovo con la password."))
+                elif action=="remove":
                     with transaction.atomic():
                         owners=list(Membership.objects.select_for_update().filter(tenant=tenant,role="owner"))
                         if member.role=="owner" and len(owners)==1:raise ValueError("L'attività deve avere almeno un amministratore.")
@@ -171,7 +179,8 @@ def members_view(request,slug):
     names={str(x.pk):x.name for x in list(Location.objects.all())+list(Resource.objects.all())}
     members=list(Membership.objects.filter(tenant=tenant).select_related("user"))
     for m in members:m.scope_names=[names.get(x,"?") for x in m.locations+m.resources]
-    return render(request,"members.html",{"members":members,"invite_link":link,"error":error,"roles":ROLE_CHOICES,"mail_ready":mail_ready(tenant),
+    from .quick import available
+    return render(request,"members.html",{"members":members,"invite_link":link,"error":error,"quick_available":available(),"roles":ROLE_CHOICES,"mail_ready":mail_ready(tenant),
         "locations":Location.objects.order_by("name"),"resources":Resource.objects.order_by("name")})
 def support_view(request,slug):
     """The owner grants time-boxed content access to one platform staff user."""

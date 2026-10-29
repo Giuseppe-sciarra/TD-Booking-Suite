@@ -7,6 +7,7 @@ urlpatterns=[
  path("brand/<slug:slug>/foto/<uuid:resource_id>.jpg",branding.resource_photo,name="resource_photo"),
  path("",portal.home,name="home"),
  path("login/",identity.login_view,name="login"),
+ path("login/senza-password/",identity.quick_login_view,name="quick_login"),
  path("verify/",identity.verify_view,name="verify_mfa"),
  path("verify/confirm/",identity.confirm_view,name="confirm"),
  path("logout/",identity.logout_view,name="logout"),

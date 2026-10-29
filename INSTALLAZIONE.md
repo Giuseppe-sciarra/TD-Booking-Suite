@@ -234,7 +234,7 @@ docker compose --profile tools run --rm migrate
 docker compose up -d --remove-orphans
 ```
 
-`.env` resta com'è: lo zip non lo contiene. Valori facoltativi da aggiungere quando servono, poi `docker compose up -d`: `TDBS_SESSION_REMEMBER_DAYS=30`, i giorni per cui un dispositivo con *Resta collegato* rimane dentro dall'ultima visita (predefinito 30). Per tornare indietro, ripeti gli stessi comandi con lo zip della versione precedente e ripristina il backup fatto all'inizio.
+`.env` resta com'è: lo zip non lo contiene. Valori facoltativi da aggiungere quando servono, poi `docker compose up -d`: `TDBS_SESSION_REMEMBER_DAYS=30`, i giorni per cui un dispositivo con *Resta collegato* rimane dentro dall'ultima visita (predefinito 0: finché non preme *Esci*). Per tornare indietro, ripeti gli stessi comandi con lo zip della versione precedente e ripristina il backup fatto all'inizio.
 
 ## 12. Cambiare edizione: da Cloud a Private e ritorno
 

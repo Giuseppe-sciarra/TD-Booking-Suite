@@ -67,8 +67,9 @@ SESSION_COOKIE_HTTPONLY=True
 SESSION_COOKIE_SAMESITE="Lax"
 SESSION_COOKIE_AGE=3600*8
 SESSION_EXPIRE_AT_BROWSER_CLOSE=True
-# 2.6.0: "Resta collegato" on the login page keeps a device signed in this many days since the last visit
-SESSION_REMEMBER_DAYS=max(1,min(365,int(env("SESSION_REMEMBER_DAYS") or 30)))
+# 2.6.0: "Resta collegato" on the login page keeps a device signed in this many days since the last visit;
+# 2.13.0: 0, the default, until Esci (remember_age in identity.py)
+SESSION_REMEMBER_DAYS=max(0,min(3650,int(env("SESSION_REMEMBER_DAYS") or 0)))
 CSRF_COOKIE_SECURE=not DEV
 CSRF_COOKIE_HTTPONLY=True
 CSRF_COOKIE_SAMESITE="Lax"

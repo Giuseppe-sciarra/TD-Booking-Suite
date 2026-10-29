@@ -41,13 +41,17 @@ def throttle(request,label,limit=30,seconds=900,identity=None):
         if bucket.ends<=now:bucket.count=0;bucket.ends=now+timedelta(seconds=seconds)
         if bucket.count>=limit:raise PermissionDenied("Troppi tentativi. Riprova più tardi.")
         bucket.count+=1;bucket.save()
+def remember_age():
+    """How long the cookie of a remembered device lasts, renewed at every visit. Without a limit, 400 days: the most a
+    browser keeps a cookie, so in practice until Esci for a device used at least once in that time."""
+    return (settings.SESSION_REMEMBER_DAYS or 400)*86400
 def finish_login(request,user,remember=None):
     """remember: stay signed in on this device (2.6.0). None keeps the choice made at the password step."""
     if remember is None:remember=request.session.get("preauth",{}).get("remember",request.session.get("remember",False))
     sign_in(request,user,backend="core.identity.EmailBackend")
     request.session["remember"]=bool(remember)
     # remembered: a cookie that lasts and slides with every visit; otherwise it ends with the browser
-    request.session.set_expiry(settings.SESSION_REMEMBER_DAYS*86400 if remember else 0)
+    request.session.set_expiry(remember_age() if remember else 0)
     request.session["mfa"]=True
     request.session["auth_version"]=user.auth_version
     request.session["verified_at"]=time.time()
@@ -80,8 +84,30 @@ def login_view(request):
     site=current(request)
     # the address typed before an error, or the one a page hands over (?email=, "entra come titolare")
     email=(request.POST.get("email") if request.method=="POST" else request.GET.get("email","")) or ""
-    return render(request,"login.html",{"error":error,"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled,
+    from .quick import accounts
+    return render(request,"login.html",{"error":error,"quick":accounts(request),"trial_available":available(),"business_types":business_types(),"pricing_on":settings.EDITION=="cloud" and site.pricing_enabled,"why_on":settings.EDITION=="cloud" and site.why_enabled,
         "email":email.strip()[:254],"login_note":settings.LOGIN_NOTE,"usernames":settings.LOGIN_USERNAMES,"mfa_enabled":settings.MFA_ENABLED})
+@require_POST
+def quick_login_view(request):
+    """2.13.0: one click, no password, for an owner the agency allows, from a trusted device only. A second factor,
+    where the account has one, is still asked. The device stays signed in until Esci."""
+    from .quick import trusted,owners
+    throttle(request,"login-ip",50)
+    if not trusted(request):raise PermissionDenied("Senza password si entra solo dal PC del programma e dalle postazioni registrate.")
+    try:u=owners().filter(pk=request.POST.get("user","")).first()
+    except ValidationError:u=None
+    if not u:return redirect("login")
+    from .models import Membership,audit
+    from .tenancy import scope
+    # in the Registro attività of each business of this owner
+    for m in Membership.objects.filter(user=u,role="owner").select_related("tenant"):
+        with scope(m.tenant):audit(m.tenant,u,"login.quick",u.pk)
+    if u.mfa_ready and settings.MFA_ENABLED:
+        request.session.cycle_key()
+        request.session["preauth"]={"user":str(u.pk),"until":time.time()+300,"version":u.auth_version,"remember":True}
+        return redirect("verify_mfa")
+    finish_login(request,u,remember=True)
+    return redirect("home")
 def verify_totp(u,code):
     if not u.totp or not code.isascii():return False  # compare_digest refuses non-ASCII text (a pasted "１２３")
     generator=pyotp.TOTP(reveal(u.totp,"totp:"+str(u.pk)))
@@ -129,6 +155,12 @@ def confirm_view(request):
     target=safe_next(request.POST.get("next") or request.GET.get("next"))
     request.session["after_confirm"]=target
     error="";use_password=not request.user.mfa_ready or not settings.MFA_ENABLED
+    # 2.13.0: who entered without password confirms with one click, on the same trusted device
+    from .quick import trusted,owners
+    quick=use_password and trusted(request) and owners().filter(pk=request.user.pk).exists()
+    if request.method=="POST" and quick:
+        request.session["verified_at"]=time.time();request.session.pop("after_confirm",None)
+        return redirect(target)
     if request.method=="POST" and use_password:
         throttle(request,"mfa",10);throttle(request,"mfa-user",10,identity=str(request.user.pk))
         if request.user.check_password(request.POST.get("password","")[:1024]):
@@ -147,7 +179,7 @@ def confirm_view(request):
             request.session["verified_at"]=time.time();request.session.pop("after_confirm",None)
             return redirect(target)
         error="Codice non valido, scaduto o già utilizzato."
-    return render(request,"confirm.html",{"error":error,"next":target,"use_password":use_password,"has_passkey":request.user.passkeys.exists(),"has_totp":bool(request.user.totp)})
+    return render(request,"confirm.html",{"error":error,"next":target,"use_password":use_password,"quick":quick,"has_passkey":request.user.passkeys.exists(),"has_totp":bool(request.user.totp)})
 def security_view(request):
     if not request.user.is_authenticated:return redirect("login")
     error="";notice=""
