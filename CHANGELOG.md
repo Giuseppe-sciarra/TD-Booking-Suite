@@ -1,6 +1,11 @@
-# TD Booking Suite 2.10.0 — registro modifiche
+# TD Booking Suite 2.10.1 — registro modifiche
 
-**29 ottobre 2026 · versione 2.10.0**
+**29 ottobre 2026 · versione 2.10.1**
+
+## 2.10.1 — versione dell'edizione Windows
+
+- Il core non cambia: la versione segue l'edizione Windows, dove la finestra con Un PC solo apre sempre il programma di quel PC e, mentre si avvia, aspetta con una sua pagina
+- **Plugin WordPress 2.10.1**: stesso codice della 2.10.0, cambia solo il numero di versione
 
 ## 2.10.0 — agenda per operatore, operatori veri, chi configura e chi lavora, menu a gruppi, pagine compatte
 

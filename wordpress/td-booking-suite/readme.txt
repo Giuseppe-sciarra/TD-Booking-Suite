@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.10.0
+Stable tag: 2.10.1
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
