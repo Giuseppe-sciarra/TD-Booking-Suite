@@ -57,20 +57,30 @@ def level_windows(tenant,day,purpose,selector,inherit=False):
                 if end>b:clipped.append((b,end))
         spans=clipped
     return spans
-def windows(tenant,day,service=None,resource=None,purpose="service"):
+def windows(tenant,day,service=None,resource=None,purpose="service",memo=None):
+    """memo (2.12.0): a dict kept for one page, so the levels shared by many operators and services (the business,
+    the location) are read once a day instead of once each: the week of an agenda stays fast."""
     current=None
     for i,selector in enumerate(level_filters(service,resource)):
-        selected=purpose
-        exists=Schedule.objects.filter(purpose=selected,**selector).exists() or ExceptionDay.objects.filter(purpose=selected,**selector).exists()
-        # Resolve each relevant level, never let another service change this fallback.
-        if not exists and purpose in ("arrival","departure"):
-            selected="service"
-            exists=Schedule.objects.filter(purpose=selected,**selector).exists() or ExceptionDay.objects.filter(purpose=selected,**selector).exists()
-        if not exists and i>0:continue
-        weekly=Schedule.objects.filter(purpose=selected,**selector).exists()
-        spans=level_windows(tenant,day,selected,selector,inherit=i>0 and not weekly)
+        key=(day,purpose,tuple(sorted(selector.items())))
+        if memo is not None and key in memo:spans=memo[key]
+        else:
+            spans=level(tenant,day,purpose,selector,i)
+            if memo is not None:memo[key]=spans
+        if spans is None:continue
         current=spans if current is None else intersection(current,spans)
     return current or []
+def level(tenant,day,purpose,selector,i):
+    """The windows of one level, None when that level says nothing (only the first level always counts)."""
+    selected=purpose
+    exists=Schedule.objects.filter(purpose=selected,**selector).exists() or ExceptionDay.objects.filter(purpose=selected,**selector).exists()
+    # Resolve each relevant level, never let another service change this fallback.
+    if not exists and purpose in ("arrival","departure"):
+        selected="service"
+        exists=Schedule.objects.filter(purpose=selected,**selector).exists() or ExceptionDay.objects.filter(purpose=selected,**selector).exists()
+    if not exists and i>0:return None
+    weekly=Schedule.objects.filter(purpose=selected,**selector).exists()
+    return level_windows(tenant,day,selected,selector,inherit=i>0 and not weekly)
 def fits(tenant,start,end,service=None,resource=None,purpose="service"):
     day=start.astimezone(ZoneInfo(tenant.timezone)).date()
     return any(a<=start and end<=b for a,b in windows(tenant,day,service,resource,purpose))

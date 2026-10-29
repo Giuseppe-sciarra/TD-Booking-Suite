@@ -87,7 +87,7 @@ def set_discount(contact,kind,value):
     contact.discount_kind=kind;contact.discount=amount.quantize(Decimal("0.01"))
     contact.save(update_fields=["discount_kind","discount"])
     changed=0
-    for b in Booking.objects.filter(contact=contact,status="confirmed",start__gt=timezone.now()).select_related("service","option"):
+    for b in Booking.objects.filter(contact=contact,status="confirmed",start__gt=timezone.now()).select_related("service","option","resource"):
         before=dict(b.snapshot);b.contact=contact;stamp(b)
         if b.snapshot!=before:b.save(update_fields=["snapshot"]);changed+=1
     return changed
@@ -108,7 +108,7 @@ def search(tenant,q,limit=10):
 
 def history(contact,visible):
     """All the bookings of a client the user may see, newest first, and the numbers of the card."""
-    rows=list(visible.filter(contact=contact).select_related("service","resource","option","location").order_by("-start"))
+    rows=list(visible.filter(contact=contact).select_related("service","resource","option","location","tenant").order_by("-start"))
     now=timezone.now()
     done=[b for b in rows if b.start<=now and b.status in ("completed","confirmed")]
     upcoming=sorted([b for b in rows if b.start>now and b.status=="confirmed"],key=lambda b:b.start)

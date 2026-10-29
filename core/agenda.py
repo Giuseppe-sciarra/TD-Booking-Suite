@@ -31,12 +31,20 @@ def operators(request,location):
     if m and m.resources:rows=rows.filter(pk__in=m.resources)
     return list(rows)
 
-def open_spans(tenant,day,op):
-    """When an operator can be booked that day: the union of what each of his services allows."""
+def open_spans(tenant,day,op,memo=None,services=None):
+    """When an operator can be booked that day: the union of what each of his services allows. memo and services
+    are kept by the page across days and operators (2.12.0): the same levels and services are read once."""
+    if services is None:services=list(Service.objects.filter(active=True,kind="resource",id__in=ServiceResource.objects.filter(resource=op).values("service_id")))
     spans=[]
-    for s in Service.objects.filter(active=True,kind="resource",id__in=ServiceResource.objects.filter(resource=op).values("service_id")):
-        spans+=windows(tenant,day,s,op)
+    for s in services:spans+=windows(tenant,day,s,op,memo=memo)
     return merge(spans)
+
+def services_of(ops):
+    """The appointment services of each operator, in one query."""
+    out={op.pk:[] for op in ops}
+    for link in ServiceResource.objects.filter(resource__in=ops,service__active=True,service__kind="resource").select_related("service"):
+        out[link.resource_id].append(link.service)
+    return out
 
 def chosen_day(request,today):
     try:return date.fromisoformat(request.GET.get("data",""))
@@ -78,11 +86,17 @@ def day_view(request):
     today=timezone.now().astimezone(tz).date()
     day=chosen_day(request,today)
     places,location=place(request,True)
-    ops=operators(request,location) if location else []
-    color=colors(ops)
+    everyone=operators(request,location) if location else []
+    color=colors(everyone)
+    # 2.12.0: the day of one operator only, chosen above the agenda
+    chosen=next((o for o in everyone if str(o.pk)==request.GET.get("operatore")),None)
+    ops=[chosen] if chosen else everyone
     start=datetime.combine(day,time.min,tz);end=start+timedelta(days=1)
-    rows=list(visible_bookings(request,Booking.objects.filter(location=location,start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource").order_by("start")) if location else []
-    spans={op.pk:open_spans(t,day,op) for op in ops}
+    rows=visible_bookings(request,Booking.objects.filter(location=location,start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
+    if chosen:rows=rows.filter(resource=chosen)
+    rows=list(rows) if location else []
+    memo={};mine=services_of(ops)
+    spans={op.pk:open_spans(t,day,op,memo,mine[op.pk]) for op in ops}
     # 2.11.0: like the salon programs, the day shows who works: an operator off that day, with nothing booked,
     # leaves his column and is named above the agenda. On a day nobody works every column stays, greyed
     works=lambda op:any(b>start and a<end for a,b in spans[op.pk])  # windows() also looks at the nights around
@@ -127,7 +141,7 @@ def day_view(request):
     now_row=None
     if day==today and frame_a<=now.astimezone(tz)<frame_b:
         now_row=(now.astimezone(tz)-frame_a).total_seconds()/60/STEP
-    ctx=common(request,"giorno",day,today,places,location,ops)
+    ctx=common(request,"giorno",day,today,places,location,everyone,chosen)
     ctx.update({"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":day,
         "columns":columns,"hours":hours,"count":count,"now_row":now_row,"legend":[],"off":[o.name for o in off],
         "closed_day":bool(ops) and not any(works(o) for o in ops),"total":len(rows),"writer":writer,"end_row":count+1})
@@ -157,7 +171,7 @@ def week_view(request):
     color=colors(ops)
     chosen=next((o for o in ops if str(o.pk)==request.GET.get("operatore")),None)
     start=datetime.combine(monday,time.min,tz);end=datetime.combine(monday+timedelta(days=7),time.min,tz)
-    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource").order_by("start")
+    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
     if location:rows=rows.filter(location=location)
     if chosen:rows=rows.filter(resource=chosen)
     rows=list(rows) if location else []
@@ -176,7 +190,8 @@ def week_view(request):
         return render(request,"agenda_week.html",ctx)
     # the hours of the week: from the first opening or booking of any day to the last, in whole hours
     shown_ops=[chosen] if chosen else ops
-    spans={(d,op.pk):open_spans(t,d,op) for d in days for op in shown_ops}
+    memo={};mine=services_of(shown_ops)
+    spans={(d,op.pk):open_spans(t,d,op,memo,mine[op.pk]) for d in days for op in shown_ops}
     minutes=lambda moment,d:(moment.astimezone(tz)-datetime.combine(d,time.min,tz)).total_seconds()/60
     edges=[(minutes(a,d),minutes(b,d)) for (d,_),s in spans.items() for a,b in s]+[(minutes(x["start"],c["day"]),minutes(x["end"],c["day"])) for c in columns for x in c["items"]]
     edges=[(max(0,a),min(1440,b)) for a,b in edges if b>0 and a<1440]
@@ -215,7 +230,7 @@ def month_view(request):
     color=colors(ops)
     chosen=next((o for o in ops if str(o.pk)==request.GET.get("operatore")),None)
     start=datetime.combine(grid_a,time.min,tz);end=datetime.combine(grid_b+timedelta(days=1),time.min,tz)
-    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource").order_by("start")
+    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
     if location:rows=rows.filter(location=location)
     if chosen:rows=rows.filter(resource=chosen)
     by_day={}

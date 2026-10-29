@@ -4,6 +4,7 @@ from core import identity,platform,portal,public,branding,site,agency,trial,page
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
+ path("brand/<slug:slug>/foto/<uuid:resource_id>.jpg",branding.resource_photo,name="resource_photo"),
  path("",portal.home,name="home"),
  path("login/",identity.login_view,name="login"),
  path("verify/",identity.verify_view,name="verify_mfa"),

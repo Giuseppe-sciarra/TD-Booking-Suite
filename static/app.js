@@ -57,6 +57,37 @@
   document.querySelectorAll("[data-tab-link]").forEach(a=>a.addEventListener("click",()=>show(a.dataset.tabLink)));
   window.addEventListener("hashchange",()=>show(fromHash()));
  });
+ // 2.12.0: a field's suggestions (a datalist) in the program's own list instead of the browser's black box:
+ // what is typed filters them, arrows and Enter choose, Esc closes
+ document.querySelectorAll("input[list]").forEach((input,n)=>{
+  const source=document.getElementById(input.getAttribute("list"));if(!source)return;
+  const values=[...new Set([...source.options].map(o=>o.value).filter(Boolean))];
+  input.removeAttribute("list");input.autocomplete="off";
+  const box=document.createElement("ul"),wrap=document.createElement("div");
+  box.className="suggest";box.id="suggest-"+n;box.setAttribute("role","listbox");box.hidden=true;wrap.className="suggest-wrap";
+  input.setAttribute("role","combobox");input.setAttribute("aria-autocomplete","list");input.setAttribute("aria-expanded","false");input.setAttribute("aria-controls",box.id);
+  input.before(wrap);wrap.append(input,box);
+  let active=-1;
+  const close=()=>{box.hidden=true;input.setAttribute("aria-expanded","false");input.removeAttribute("aria-activedescendant");active=-1;};
+  const pick=value=>{input.value=value;close();input.dispatchEvent(new Event("change",{bubbles:true}));};
+  const mark=i=>{const items=[...box.children];active=i;items.forEach((li,j)=>li.setAttribute("aria-selected",String(j===i)));
+   if(items[i]){input.setAttribute("aria-activedescendant",items[i].id);items[i].scrollIntoView({block:"nearest"});}};
+  const open=()=>{
+   const q=input.value.trim().toLocaleLowerCase("it");
+   const found=values.filter(v=>{const t=v.toLocaleLowerCase("it");return t!==q&&(!q||t.includes(q));}).slice(0,8);
+   box.replaceChildren(...found.map((v,j)=>{const li=document.createElement("li"),at=q?v.toLocaleLowerCase("it").indexOf(q):-1;
+    li.id=box.id+"-"+j;li.setAttribute("role","option");
+    if(at>=0){const strong=document.createElement("mark");strong.textContent=v.slice(at,at+q.length);li.append(v.slice(0,at),strong,v.slice(at+q.length));}else li.textContent=v;
+    li.addEventListener("mousedown",e=>{e.preventDefault();pick(v);});return li;}));
+   box.hidden=!found.length;input.setAttribute("aria-expanded",String(found.length>0));active=-1;};
+  input.addEventListener("input",open);input.addEventListener("focus",open);input.addEventListener("blur",close);
+  input.addEventListener("keydown",e=>{
+   if(box.hidden){if(e.key==="ArrowDown"){e.preventDefault();open();}return;}
+   const count=box.children.length;
+   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();mark((active+(e.key==="ArrowDown"?1:-1)+count)%count);}
+   else if(e.key==="Enter"&&active>=0){e.preventDefault();pick(box.children[active].textContent);}
+   else if(e.key==="Escape"){e.preventDefault();close();}});
+ });
  // 2.11.0: the client's discount asks how much only once a kind is chosen
  document.querySelectorAll("[data-discount-kind]").forEach(kind=>{const value=kind.form.querySelector("[data-discount-value]");kind.addEventListener("change",()=>{value.hidden=!kind.value;if(kind.value)value.querySelector("input").focus();});});
  // 2.10.0: an operator's working days show only with Ha giorni e orari suoi

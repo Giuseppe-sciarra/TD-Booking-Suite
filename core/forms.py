@@ -81,26 +81,53 @@ class LocationForm(ScopedForm):
 WEEKDAYS=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
 def hour_field():return forms.TimeField(required=False,widget=forms.TimeInput(attrs={"type":"time"},format="%H:%M"))
 class ResourceForm(ScopedForm):
-    """An operator, a cabin, a room: what it does, and for people their own working days. A person takes one client
-    at a time, so places only appear for rooms and vehicles (stays)."""
+    """An operator, a cabin, a room: its photo, what it does (2.11.0: with its own duration and price for each
+    service, as the days with their hours), and for people their own working days. A person takes one client at a
+    time, so places only appear for rooms and vehicles (stays)."""
+    photo_file=forms.FileField(required=False,label="Foto",help_text="PNG, JPEG o WebP fino a 5 MB: compare in agenda e quando il cliente sceglie con chi prenotare")
+    photo_remove=forms.BooleanField(required=False,label="Togli la foto")
     services=forms.ModelMultipleChoiceField(queryset=Service.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     own_hours=forms.BooleanField(required=False,label="Ha giorni e orari suoi",help_text="Spento: lavora negli orari di apertura dell'attività. Le ferie e i giorni liberi si segnano in Chiusure e giorni speciali")
     class Meta:
         model=Resource;fields=["name","location","capacity","description","photo_url","active"]
-        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Foto (indirizzo HTTPS)","active":"Attiva"}
+        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva"}
         help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno"}
         widgets={"description":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
-        from .presets import units
+        from .presets import units,service_word
+        from .prices import euro
+        self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active"])
+        new=self.is_new=self.instance._state.adding
+        slug=getattr(self.tenant,"slug","")
+        self.photo_preview=self.instance.photo_link(slug) if not new and self.instance.photo_at else ""
+        if not self.photo_preview:del self.fields["photo_remove"]
         bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
         f=self.fields["services"];f.queryset=bookable
         many=Location.objects.filter(active=True).count()>1
         f.label_from_instance=lambda s:f"{s.name} ({s.location.name})" if many else s.name
         one=units(getattr(self.tenant,"business_type",""))[0].lower()
-        f.label="Cosa fa";f.help_text=f"Si prenota solo per i servizi spuntati. Un {one} nuovo parte con tutti"
-        new=self.is_new=self.instance._state.adding
-        self.initial["services"]=[s.pk for s in bookable] if new else list(ServiceResource.objects.filter(resource=self.instance).values_list("service_id",flat=True))
+        word=service_word(getattr(self.tenant,"business_type","")).lower()
+        f.label="Cosa fa";f.in_grid=True
+        self.treatments_help=(f"Si prenota solo per quelli spuntati: un {one} nuovo parte con tutti. Durata e prezzo vuoti vogliono dire quelli del {word}; "
+            "con una variante valgono quelli della variante")
+        links={} if new else {l.service_id:l for l in ServiceResource.objects.filter(resource=self.instance)}
+        self.initial["services"]=[s.pk for s in bookable] if new else list(links)
+        self.rows=[]
+        for s in bookable:
+            row={"service":s}
+            if s.kind=="resource":
+                dur,price=f"dur_{s.pk}",f"price_{s.pk}"
+                self.fields[dur]=forms.IntegerField(required=False,min_value=5,max_value=1440,label=f"Durata di {s.name}",
+                    widget=forms.NumberInput(attrs={"placeholder":str(s.duration),"inputmode":"numeric","step":"5"}))
+                # written as in Italy, 35,50: the same as the price list shows it
+                self.fields[price]=forms.DecimalField(required=False,min_value=0,max_value=100000,max_digits=8,decimal_places=2,label=f"Prezzo di {s.name}",localize=True,
+                    widget=forms.TextInput(attrs={"placeholder":euro(s.price).replace(" €","") if s.price is not None else "—","inputmode":"decimal","maxlength":"10"}))
+                for name in (dur,price):self.fields[name].in_grid=True
+                link=links.get(s.pk)
+                if link:self.initial[dur]=link.duration;self.initial[price]=link.price
+                row.update(dur=dur,price=price)
+            self.rows.append(row)
         if not Service.objects.filter(kind="day").exists():del self.fields["capacity"]
         # working days: one span a day here; with two spans a day (a lunch break) they stay in Orari di apertura
         rows=[] if new else list(Schedule.objects.filter(resource=self.instance,purpose="service"))
@@ -119,10 +146,21 @@ class ResourceForm(ScopedForm):
             if self.split_hours:self.fields[name].disabled=True
     @property
     def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"]} for d in range(7)]
+    @property
+    def treatment_rows(self):
+        """One row a service, as the week grid: the tick, and for appointments the operator's duration and price."""
+        boxes={str(w.data["value"]):w for w in self["services"].subwidgets}
+        return [{"box":boxes.get(str(r["service"].pk)),"name":self.fields["services"].label_from_instance(r["service"]),
+            "dur":self[r["dur"]] if "dur" in r else None,"price":self[r["price"]] if "price" in r else None} for r in self.rows]
     def clean_photo_url(self):
         value=self.cleaned_data.get("photo_url","")
         if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
         return value
+    def clean_photo_file(self):
+        upload=self.cleaned_data.get("photo_file")
+        if not upload:return None
+        from .branding import clean_photo
+        return clean_photo(upload)
     def clean(self):
         d=super().clean()
         loc=d.get("location")
@@ -136,8 +174,21 @@ class ResourceForm(ScopedForm):
     def save(self,commit=True):
         obj=super().save(commit)
         d=self.cleaned_data
+        # the links are kept, with their own duration and price: only the unticked go, the ticked are added
         ServiceResource.objects.filter(resource=obj).exclude(service__in=d.get("services",[])).delete()
-        for s in d.get("services",[]):ServiceResource.objects.get_or_create(tenant=self.tenant,service=s,resource=obj)
+        for s in d.get("services",[]):
+            link,_=ServiceResource.objects.get_or_create(tenant=self.tenant,service=s,resource=obj)
+            if s.kind=="resource":
+                link.duration=d.get(f"dur_{s.pk}");link.price=d.get(f"price_{s.pk}")
+                link.save(update_fields=["duration","price"])
+        if d.get("photo_remove") or d.get("photo_file"):
+            from django.utils import timezone
+            from .models import ResourcePhoto
+            if d.get("photo_file"):
+                ResourcePhoto.objects.update_or_create(resource=obj,defaults={"tenant":self.tenant,"data":d["photo_file"]});obj.photo_at=timezone.now()
+            else:
+                ResourcePhoto.objects.filter(resource=obj).delete();obj.photo_at=None
+            obj.save(update_fields=["photo_at"])
         if not self.split_hours:
             Schedule.objects.filter(resource=obj,purpose="service").delete()
             if d.get("own_hours"):
@@ -154,6 +205,7 @@ class ServiceForm(ScopedForm):
         fields=["name","location","kind","description","price","capacity","max_party","turnover","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
+        localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
         widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2})}
     def __init__(self,*a,agency=False,**kw):
         super().__init__(*a,**kw)
@@ -214,13 +266,14 @@ class ServiceForm(ScopedForm):
     def save(self,commit=True):
         service=super().save(commit)
         if commit and "resources" in self.fields:
-            ServiceResource.objects.filter(service=service).delete()
-            if service.kind in ("resource","day"):  # day: the linked resources are the named units
-                for r in self.cleaned_data["resources"]:ServiceResource.objects.create(tenant=self.tenant,service=service,resource=r)
+            # 2.11.0: an operator ticked again keeps his own duration and price for this service
+            chosen=self.cleaned_data["resources"] if service.kind in ("resource","day") else []  # day: the named units
+            ServiceResource.objects.filter(service=service).exclude(resource__in=chosen).delete()
+            for r in chosen:ServiceResource.objects.get_or_create(tenant=self.tenant,service=service,resource=r)
         return service
 class OptionForm(ScopedForm):
     class Meta:
-        model=Option;fields=["service","name","duration","price","active"]
+        model=Option;fields=["service","name","duration","price","active"];localized_fields=["price"]
         labels={"name":"Nome della variante","active":"Attiva"}
         help_texts={"name":"Per esempio Taglio corto o Taglio lungo","duration":"La durata di questa variante, al posto di quella del servizio","price":"Facoltativo: vuoto vuol dire il prezzo del servizio"}
     def __init__(self,*a,**kw):

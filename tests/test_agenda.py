@@ -122,3 +122,11 @@ def test_the_day_shows_who_works_and_the_allergies(sample):
     # Bruno is on holiday with nothing booked: no column, named above; Anna's client ticked an allergy
     assert ">Anna</strong>" in page and ">Bruno</strong>" not in page and "Non lavora oggi: Bruno" in page
     assert 'class="agenda-alert"' in page and "Ha segnalato: Nichel" in page
+
+def test_the_agenda_does_not_float():
+    """2.12.0: the sign-in page's moving mock-up once shared the class of the real agenda, whose whole grid then
+    moved up and down for ever: in the window the week and the month froze."""
+    import re
+    from pathlib import Path
+    css=(Path(__file__).resolve().parents[1]/"static"/"app.css").read_text("utf-8")
+    assert not [r for r in re.findall(r"\.agenda\{[^}]*\}",css) if "animation" in r]

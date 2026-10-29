@@ -28,6 +28,11 @@ def service_summary(s):
  return ""
 
 @register.filter
+def photo_link(resource,slug):
+    """2.12.0: an operator's photo, uploaded or by address; empty without one."""
+    return resource.photo_link(slug) if resource else ""
+
+@register.filter
 def euro(value):
     """2.11.0: 25 -> 25,00 €, empty for no price."""
     from core.prices import euro as fmt

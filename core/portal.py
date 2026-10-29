@@ -304,7 +304,7 @@ def bookings(request,slug):
     if agenda and view!="elenco" and "from" not in request.GET and "to" not in request.GET:return day_view(request)
     try:a,b=period(request)
     except ValidationError as ex:return render(request,"message.html",{"title":"Filtro non valido","text":str(ex)},status=400)
-    rows=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).select_related("service","resource").order_by("start")
+    rows=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).select_related("service","resource","tenant").order_by("start")
     if request.GET.get("status"):rows=rows.filter(status=request.GET["status"])
     page=Paginator(rows,50).get_page(request.GET.get("page"))
     for row in page:row.shown=shown(request,row.data)
@@ -634,7 +634,7 @@ def catalog_edit(request,slug,kind,item_id=None):
     if kind in ("schedules","exceptions") and not instance and request.GET.get("resource"):
         res=Resource.objects.filter(pk=request.GET["resource"]).first() if re.fullmatch(r"[0-9a-f-]{36}",request.GET["resource"]) else None
         if res:extra["initial"]={"resource":res.pk,"location":res.location_id}
-    form=formclass(request.POST or None,instance=instance,tenant=request.tenant,**extra)
+    form=formclass(request.POST or None,request.FILES or None,instance=instance,tenant=request.tenant,**extra)
     if kind=="services" and not instance:form.instance.preset=preset if preset in PRESETS else ""
     if request.method=="POST" and form.is_valid():
         try:

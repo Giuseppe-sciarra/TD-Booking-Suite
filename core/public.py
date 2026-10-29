@@ -47,7 +47,7 @@ def widget_data(request,booking=None):
     for s in rows:
         services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"fields":s.fields,"price":cost(s.price),
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration,"price":cost(o.price)} for o in Option.objects.filter(service=s,active=True)],
-            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_url} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if mine is None or str(r.pk) in mine]})
+            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if mine is None or str(r.pk) in mine]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     from .presets import service_word
     result={"service_label":service_word(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
@@ -124,7 +124,7 @@ def slots_api(request,slug,booking_id=None):
                 units=free_units(request.tenant,service,bs,be,party,unit,exclude)
                 tz=ZoneInfo(request.tenant.timezone)
                 slots=[{"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(u.pk),"resource_name":u.name,
-                    "description":u.description,"photo":u.photo_url,"capacity":u.capacity,"occurrence":""} for u in units]
+                    "description":u.description,"photo":u.photo_link(request.tenant.slug),"capacity":u.capacity,"occurrence":""} for u in units]
             else:
                 start,end,*_=bounds(request.tenant,service,data,exclude=exclude)
                 slots=[{"start":start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),"end":end.isoformat(),"resource":"","resource_name":"","occurrence":""}]

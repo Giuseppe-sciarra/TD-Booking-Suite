@@ -1,6 +1,17 @@
-# TD Booking Suite 2.11.0 — registro modifiche
+# TD Booking Suite 2.12.0 — registro modifiche
 
-**29 ottobre 2026 · versione 2.11.0**
+**29 ottobre 2026 · versione 2.12.0**
+
+## 2.12.0 — foto degli operatori, cosa fa ognuno con durata e prezzo suoi, agenda per operatore, settimana e mese veloci
+
+- **Foto degli operatori**: si carica dalla scheda dell'operatore (PNG, JPEG o WebP fino a 5 MB, ridotta e raddrizzata da sola) e si toglie con una spunta. Compare nell'elenco, in testa alla sua colonna dell'agenda con il suo colore intorno e nella prenotazione, dove si sceglie con chi con un clic sulla faccia; anche la pagina pubblica la mostra
+- **Cosa fa ogni operatore, come i giorni e gli orari**: una riga per trattamento con la spunta e, se diversi, la sua durata e il suo prezzo (Giulia fa il colore in 75 minuti, a 50 €). Gli orari liberi seguono la sua durata e la prenotazione prende il suo prezzo; vuoti valgono quelli del trattamento, con una variante quelli della variante. Vale per tutte le attività ad appuntamento: parrucchiere, estetica, SPA, tatuatore, studi, palestre. Salvare di nuovo un servizio non cancella più queste scelte
+- **Agenda di un operatore solo**: la scelta in alto vale anche per il giorno, e resta passando a settimana e mese
+- **Settimana e mese non si bloccano più**: il riquadro animato della pagina di accesso usava lo stesso nome dell'agenda, che così si muoveva su e giù senza fermarsi e nella finestra di Windows rallentava tutto. Le pagine dell'agenda chiedono anche molto meno al database: in prova la settimana da 723 a 167 richieste, il mese da 175 a 19
+- **Elenchi a discesa nello stile del programma**, anche aperti, nella finestra di Windows e nei browser recenti; i suggerimenti dei campi (cosa è stato fatto, con chi) in un elenco suo, con le frecce, Invio ed Esc, al posto del riquadro nero del browser
+- **Pulsanti a scelta con una forma sola**: Giorno · Settimana · Mese · Elenco e gli altri gruppi hanno lo stesso angolo dentro e fuori
+- Prezzi scritti all'italiana, 25,50, nel listino, nelle varianti e negli operatori; il campo per scegliere un file ha il pulsante come gli altri
+- **Plugin WordPress 2.12.0**: stesso codice della 2.10.0, cambia solo il numero di versione
 
 ## 2.11.0 — settimana e mese, listino con prezzi, sconti dei clienti, scheda cliente nuova
 

@@ -157,7 +157,17 @@ class Resource(Scoped):
     description=models.TextField(blank=True)
     photo_url=models.URLField(max_length=500,blank=True)
     active=models.BooleanField(default=True)
+    # 2.11.0: when its uploaded photo (ResourcePhoto) last changed, also the version in its address
+    photo_at=models.DateTimeField(null=True,blank=True)
     def __str__(self):return self.name
+    def photo_link(self,slug):
+        """The uploaded photo, served by the program itself; otherwise the HTTPS address typed in, if any."""
+        if self.photo_at:return f"/brand/{slug}/foto/{self.pk}.jpg?v={int(self.photo_at.timestamp())}"
+        return self.photo_url
+class ResourcePhoto(Scoped):
+    """2.11.0: the photo of an operator, a room or a court, kept apart so that lists of resources do not load it."""
+    resource=models.OneToOneField(Resource,on_delete=models.CASCADE,related_name="photo")
+    data=models.BinaryField()
 class Service(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
     name=models.CharField(max_length=120)
@@ -189,6 +199,9 @@ class Service(Scoped):
 class ServiceResource(Scoped):
     service=models.ForeignKey(Service,on_delete=models.CASCADE,related_name="resource_links")
     resource=models.ForeignKey(Resource,on_delete=models.PROTECT)
+    # 2.11.0: what this operator takes and asks for this service; empty = the service's. A variant keeps its own
+    duration=models.PositiveIntegerField(null=True,blank=True)
+    price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
     class Meta: constraints=[models.UniqueConstraint(fields=["service","resource"],name="service_resource_unique")]
 class Option(Scoped):
     service=models.ForeignKey(Service,on_delete=models.PROTECT)

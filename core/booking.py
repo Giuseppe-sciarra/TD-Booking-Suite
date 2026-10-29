@@ -27,8 +27,15 @@ def details(service,option_id=None,resource_id=None):
     resource=choice(Resource,resource_id,active=True,location=service.location) if resource_id else None
     if resource and not ServiceResource.objects.filter(service=service,resource=resource).exists():raise BookingError("La risorsa non appartiene al servizio.")
     if service.kind not in ("resource","day") and resource:raise BookingError("Risorsa non prevista.")
-    duration=option.duration if option else service.duration
-    return option,resource,duration
+    return option,resource,length(service,option,resource)
+def length(service,option=None,resource=None):
+    """Minutes of an appointment: the variant's; otherwise the operator's own for this service (2.11.0, Giulia does
+    the colour in 75 minutes); otherwise the service's."""
+    if option:return option.duration
+    if resource is not None and service.kind=="resource":
+        own=ServiceResource.objects.filter(service=service,resource=resource).values_list("duration",flat=True).first()
+        if own:return own
+    return service.duration
 def capacity_available(service,start,end,party,resource=None,occurrence=None,exclude=None):
     rows=Booking.objects.filter(status__in=["confirmed","completed","no_show"],busy_start__lt=end,busy_end__gt=start)
     if exclude:rows=rows.exclude(pk=exclude)
@@ -55,7 +62,7 @@ def free_units(tenant,service,bs,be,party,resource=None,exclude=None):
         and not blocked_stay(tenant,bs,be,service,u)]
 def candidates(tenant,service,day,option=None,resource=None):
     now=timezone.now()
-    duration=timedelta(minutes=option.duration if option else service.duration)
+    duration=timedelta(minutes=length(service,option,resource))
     before=timedelta(minutes=service.buffer_before);after=timedelta(minutes=service.buffer_after)
     lead=now+timedelta(minutes=service.lead_minutes)
     horizon=now+timedelta(days=service.horizon_days)
