@@ -142,8 +142,8 @@ details{margin:20px 0}summary{cursor:pointer;font-size:15px;font-weight:600}
 /* 2.10.0: an operator's own working days, one row a day */
 .own-hours{border:0;border-top:1px solid var(--line);margin:24px 0 0;padding:16px 0 0}.own-hours legend{float:left;width:100%;font-weight:600;font-family:var(--head);font-size:17px;padding:0;margin-bottom:6px}.own-hours legend+*{clear:left}
 .own-hours>.check small{display:block;color:var(--muted);font-weight:400}
-.hours-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:6px 24px;margin:10px 0 4px}
-.hours-row{display:grid;grid-template-columns:130px 1fr auto 1fr;align-items:center;gap:8px}.hours-row .check{margin:0}
+.hours-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:6px 28px;margin:10px 0 4px}
+.hours-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}.hours-row .check{margin:0}.hours-row input[type=time]{width:100%;min-width:0}
 .hours-row input[type=time]{min-height:38px}.hours-row:has(input[type=checkbox]:not(:checked)) input[type=time]{opacity:.4}
 .custom-row{background:var(--bg);padding:14px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:12px}
 
