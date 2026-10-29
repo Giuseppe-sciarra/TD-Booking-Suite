@@ -88,8 +88,13 @@ Italian.
 - Dashboard, agenda, bookings at the desk, clients, CSV export, marketing campaigns with confirmed
   consent and one-click unsubscribe, notifications to staff by email and Telegram (without notes,
   answers or allergies), activity log.
-- People and roles: administrator, location manager, reception, location operator (only their own
-  agenda and locations), marketing, read-only.
+- **Client emails with reminders**: confirmation, change and cancellation go by themselves; once the
+  agency allows it the business picks which ones go, adds the reminder (2 hours to 3 days before)
+  and writes them, with a preview. The client chooses whether to get them.
+- **Logo and look** kept by the business, with a preview; the dashboard shows who comes today and in
+  the next 7 days. Campaigns and the subscribers' CSV are switched on by the agency.
+- People and roles, given by the agency: administrator, location manager, reception, location
+  operator (only their own agenda and locations), marketing, read-only.
 - Mail through the business's own SMTP, Gmail or Microsoft 365, or the agency's; an outbox with
   retries.
 

@@ -264,14 +264,13 @@ def test_owner_cannot_take_over_an_account_of_another_business(sample):
     victim=User.objects.create_user("vittima@example.invalid")  # invited by the other business, not yet active
     Membership.objects.create(tenant=o,user=victim,role="owner")
     owner,_=client_as(t)
-    r=owner.post(f"/t/{t.slug}/members/",{"action":"invite","email":"vittima@example.invalid","role":"reception","password":"Una-password-lunga-2026!"}).content.decode()
+    data={"action":"invite","email":"vittima@example.invalid","role":"reception","password":"Una-password-lunga-2026!"}
+    assert owner.post(f"/t/{t.slug}/members/",data).status_code==403  # 2.13.0: people and permissions are the agency's
+    agency,_=client_as(t,staff=True)
+    r=agency.post(f"/t/{t.slug}/members/",data).content.decode()
+    # not even from here: the account is activated from its own invitation
     assert "altra attività" in r and not Membership.objects.filter(tenant=t,user=victim).exists()
-    victim.set_password("La-sua-password-2026!");victim.save()
-    owner.post(f"/t/{t.slug}/members/",{"action":"invite","email":"vittima@example.invalid","role":"reception"})
-    m=Membership.objects.get(tenant=t,user=victim)  # an active account is only added
-    r=owner.post(f"/t/{t.slug}/members/",{"action":"reset","member":m.pk}).content.decode()
-    victim.refresh_from_db()
-    assert "lo fa l&#x27;agenzia" in r and victim.has_usable_password() and "/invite/" not in r
+    victim.refresh_from_db();assert not victim.has_usable_password()
 
 def test_agency_needs_a_grant_not_a_membership(sample):
     t,o,s=sample

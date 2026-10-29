@@ -90,6 +90,11 @@ class Tenant(models.Model):
     telegram=models.TextField(blank=True)  # encrypted {"token","chat"}
     marketing_enabled=models.BooleanField(default=False)
     marketing_requested=models.BooleanField(default=False)
+    # 2.13.0: the agency turns on the CSV of the subscribers apart from the campaigns; with neither, no Marketing
+    export_enabled=models.BooleanField(default=False)
+    # 2.13.0: the agency lets the business choose which emails go to its clients and write them (client_mails.py)
+    client_mails_enabled=models.BooleanField(default=False)
+    client_mails=models.JSONField(default=dict,blank=True)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -258,6 +263,8 @@ class Contact(Scoped):
     # 2.11.0: the client's own discount, on every booking from when it is set: a percentage or euro off the price
     discount_kind=models.CharField(max_length=8,blank=True,choices=[("","Nessuno"),("percent","Percentuale"),("amount","Importo fisso")])
     discount=models.DecimalField(max_digits=8,decimal_places=2,default=0)
+    # 2.13.0: the client wants the emails about his bookings (confirmation, reminder, changes)
+    notices=models.BooleanField(default=True)
     created=models.DateTimeField(auto_now_add=True)
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant","email_index"],name="contact_email_unique")]
     @property

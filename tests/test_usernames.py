@@ -33,7 +33,7 @@ def test_username_or_email_signs_in(settings):
 
 def test_people_with_a_username_and_no_email(sample,settings):
     settings.LOGIN_USERNAMES=True
-    t,o,s=sample;c,owner=client_as(t)
+    t,o,s=sample;c,owner=client_as(t,staff=True)  # 2.13.0: the agency gives the access
     url=f"/t/{t.slug}/members/"
     page=c.post(url,{"action":"invite","email":"nuova@example.invalid","role":"reception"}).content.decode()
     assert "scegli lo username" in page and not User.objects.filter(name_index__isnull=False).exists()
@@ -45,19 +45,20 @@ def test_people_with_a_username_and_no_email(sample,settings):
     # someone already in: the username alone adds them, the email of another account with it is refused
     page=c.post(url,{"action":"invite","username":"cassa","email":owner.email,"role":"reception"}).content.decode()
     assert "non sono dello stesso account" in page
-    # the owner resets the password of a person without email: the link is on screen, nothing is mailed
+    # the password of a person without email: the link is on screen, nothing is mailed
     m=Membership.objects.get(tenant=t,user=cassa)
     assert "/invite/" in c.post(url,{"action":"reset","member":m.pk}).content.decode()
 
-def test_the_agency_never_shows_a_reset_link_for_an_account_without_email(sample,settings):
+def test_the_agency_hands_over_the_reset_link_of_an_account_without_email(sample,settings):
+    """2.13.0: only the agency manages the people, so the link of someone without email is on its screen."""
     settings.LOGIN_USERNAMES=True
     t,o,s=sample
     cassa=User.objects.create_user("",PASSWORD,username="cassa")
     m=Membership.objects.create(tenant=t,user=cassa,role="reception")
     staff,_=staff_client()
     page=staff.post(f"/t/{t.slug}/members/",{"action":"reset","member":m.pk}).content.decode()
-    assert "non ha un&#x27;email" in page and "/invite/" not in page
-    cassa.refresh_from_db();assert cassa.check_password(PASSWORD)  # nothing was reset
+    assert "/invite/" in page
+    cassa.refresh_from_db();assert not cassa.has_usable_password()
 
 def test_edition_without_second_factor(sample,settings):
     settings.MFA_ENABLED=False
@@ -91,7 +92,7 @@ def test_a_username_never_takes_someone_elses_account(sample,settings):
     other=User.objects.create_user("",PASSWORD,username="cassa");Membership.objects.create(tenant=o,user=other,role="reception")
     luca=User.objects.create_user("vero@example.invalid",username="luca")  # never activated
     old=User.objects.create_user("vecchio@example.invalid",PASSWORD)     # made before usernames
-    c,owner=client_as(t);url=f"/t/{t.slug}/members/"
+    c,owner=client_as(t,staff=True);url=f"/t/{t.slug}/members/"
     # "cassa" works in another business: the username alone does not add her here
     assert "Username già usato" in c.post(url,{"action":"invite","username":"cassa","role":"reception"}).content.decode()
     assert not Membership.objects.filter(tenant=t,user=other).exists()
@@ -104,12 +105,14 @@ def test_a_username_never_takes_someone_elses_account(sample,settings):
     assert "non sono dello stesso account" in c.post(url,{"action":"invite","username":"luca","email":"altro@example.invalid","role":"reception"}).content.decode()
     assert "non sono dello stesso account" in c.post(url,{"action":"invite","username":"nuovo.nome","email":"vecchio@example.invalid","role":"reception"}).content.decode()
     assert not Membership.objects.filter(tenant=t,user__in=[luca,old]).exists()
-    # the agency adds an existing account, but never gets its link or sets its password
+    # 2.13.0: the agency gives the access: a never activated account of no business gets its link here, an active
+    # account keeps its password
     page=staff.post(url,{"action":"invite","username":"luca","role":"reception"}).content.decode()
-    assert "l&#x27;agenzia la aggiunge" in page and "/invite/" not in page
+    assert "/invite/" in page and Membership.objects.filter(tenant=t,user=luca).exists()
     page=staff.post(url,{"action":"invite","username":"","email":"vecchio@example.invalid","role":"reception","password":PASSWORD+"x"}).content.decode()
-    assert "l&#x27;agenzia la aggiunge" in page
+    assert "ha già un accesso" in page
     old.refresh_from_db();assert old.check_password(PASSWORD)
+    Membership.objects.filter(tenant=t,user=luca).delete()
     page=staff.post("/platform/clienti/nuovo/",{"name":"Bar Nuovo","slug":"bar-nuovo","timezone":"Europe/Rome","status":"active","smtp_daily_limit":200,"smtp_hourly_limit":50,
         "brand_color":"#7a55ad","retention_days":730,"privacy_text":"x","consent_text":"x","username":"luca","email":"vero@example.invalid","password":PASSWORD},follow=True).content.decode()
     assert "non è ancora attivo" in page and not luca.membership_set.exists()

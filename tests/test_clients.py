@@ -35,7 +35,7 @@ def test_phone_finds_the_client_who_booked_online(sample):
     owner,u=client_as(t,role="owner")
     with scope(t):
         online,_=create_booking(t,payload(s,phone="+393331234567"))
-        desk,_=create_booking(t,staff_payload(s,hour=12,phone="333 123 4567"),actor=u)
+        desk,_=create_booking(t,staff_payload(s,hour=12,first_name="Mario",phone="333 123 4567"),actor=u)
         assert desk.contact_id==online.contact_id
 
 def test_booking_from_the_client_card(sample):
@@ -92,3 +92,21 @@ def test_clients_added_by_hand_and_search(sample):
     op,_=member(t,"operator")
     assert op.get(f"/t/{t.slug}/contacts/search/?q=giu").status_code==403
     assert "client-search" not in op.get(f"/t/{t.slug}/bookings/new/").content.decode()
+
+def test_same_phone_another_name_is_another_client(sample):
+    """2.13.0: a booking from the calendar for a new person on a phone already known gets its own card."""
+    t,o,s=sample
+    owner,u=client_as(t,role="owner")
+    with scope(t):
+        mother,_=create_booking(t,staff_payload(s,first_name="Anna",last_name="Rossi"),actor=u)
+        daughter,_=create_booking(t,staff_payload(s,hour=11,first_name="Giulia",last_name="Rossi"),actor=u)
+        assert daughter.contact_id!=mother.contact_id and Contact.objects.count()==2
+        again,_=create_booking(t,staff_payload(s,hour=12,first_name="Giulia",last_name="Rossi"),actor=u)
+        assert again.contact_id==daughter.contact_id
+        surname,_=create_booking(t,staff_payload(s,hour=13,first_name="Anna",last_name=""),actor=u)
+        assert surname.contact_id==mother.contact_id
+        from core.clients import update
+        update(t,Contact.objects.get(pk=daughter.contact_id),fields={"first_name":"Giulia","last_name":"Rossi","email":"","phone":"333 444 5555"},notes="tinta")
+        assert Contact.objects.count()==2
+    page=owner.get(f"/t/{t.slug}/contacts/").content.decode()
+    assert "Giulia" in page and "Anna" in page

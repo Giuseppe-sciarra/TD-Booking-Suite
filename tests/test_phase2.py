@@ -145,10 +145,10 @@ def test_owner_grants_and_revokes_support(two_rooms):
     op,_=member(t,"operator",resources=[str(res.pk)])
     assert op.get(f"/t/{t.slug}/support/").status_code==403
 
-# Owner manages the team; guard rails on roles and scope
+# 2.13.0: the agency manages the team (an agency user who is also the owner here); guard rails on roles and scope
 def test_owner_manages_team(two_rooms):
     t,svc,res,other,mine,theirs=two_rooms
-    c,owner=client_as(t,role="owner")
+    c,owner=client_as(t,staff=True,role="owner")
     with scope(t):Location.objects.create(tenant=t,name="Seconda sede")  # with two locations the scope is mandatory
     r=c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"op@example.invalid","role":"operator"})
     assert "almeno una sede o una risorsa" in r.content.decode()
@@ -165,7 +165,7 @@ def test_foreign_scope_ids_are_dropped(two_rooms):
     t,svc,res,other,mine,theirs=two_rooms
     o=Tenant.objects.get(slug="altro")
     with scope(o):foreign=Location.objects.create(tenant=o,name="Estranea")
-    c,owner=client_as(t,role="owner")
+    c,owner=client_as(t,staff=True,role="owner")
     c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"rec@example.invalid","role":"reception","locations":[str(foreign.pk)]})
     m=Membership.objects.filter(tenant=t,role="reception").first()
     assert m.locations==[]

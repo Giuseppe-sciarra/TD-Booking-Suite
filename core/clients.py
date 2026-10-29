@@ -37,7 +37,20 @@ def clean(data,require_contact=True):
     if require_contact and not out["email"] and not out["phone"]:raise BookingError("Serve almeno il telefono o l'email del cliente.")
     return out
 
-def key_for(tenant,d):return email_index(tenant,d["email"]) if d.get("email") else phone_index(tenant,d["phone"])
+def key_for(tenant,d,shared=False):
+    """The card's key: its email, otherwise its phone; a phone already on another person's card (2.13.0: a mother
+    and her daughter) is told apart by the name."""
+    if d.get("email"):return email_index(tenant,d["email"])
+    if shared:return index("tel:"+d["phone"]+"|"+full_name(d),tenant_key(tenant),"email")
+    return phone_index(tenant,d["phone"])
+
+def full_name(d):return " ".join((d.get("first_name","")+" "+d.get("last_name","")).casefold().split())
+
+def same_person(card,d):
+    """2.13.0: the card found by phone is this client only if one name holds the other ("Maria" and "Maria Rossi");
+    a new name on a known phone is another person (a mother and her daughter), with a card of their own."""
+    short,long=sorted((full_name(card.data).split(),full_name(d).split()),key=len)
+    return all(w in long for w in short)
 
 def by_phone(tenant,phone,without_email=False):
     """The card of a phone number: keyed by it (added at the desk without email) or with it among its data
@@ -55,9 +68,14 @@ def by_phone(tenant,phone,without_email=False):
 def find_or_create(tenant,d):
     """The contact of a manual booking or of a client added by hand: by email, then by phone."""
     c=Contact.objects.filter(email_index=email_index(tenant,d["email"])).first() if d.get("email") else None
-    c=c or by_phone(tenant,d.get("phone"))
     if c:return c,False
-    c=Contact(tenant=tenant,email_index=key_for(tenant,d))
+    known=by_phone(tenant,d.get("phone"))
+    if known and same_person(known,d):return known,False
+    # the same phone with another name, already with its own card: that one
+    if known and not d.get("email"):
+        mine=Contact.objects.filter(email_index=key_for(tenant,d,shared=True)).first()
+        if mine:return mine,False
+    c=Contact(tenant=tenant,email_index=key_for(tenant,d,shared=bool(known)))
     c.pii=encrypt(tenant,{k:d.get(k,"") for k in ("first_name","last_name","email","phone")},"contact:"+str(c.pk));c.save()
     return c,True
 
@@ -67,7 +85,10 @@ def update(tenant,contact,fields=None,notes=None):
     if fields is not None:
         d=clean(fields)
         new_key=key_for(tenant,d)
-        if new_key!=contact.email_index and Contact.objects.filter(email_index=new_key).exclude(pk=contact.pk).exists():
+        taken=lambda key:Contact.objects.filter(email_index=key).exclude(pk=contact.pk).exists()
+        # a phone shared with another person keeps both cards, told apart by the name
+        if not d.get("email") and new_key!=contact.email_index and taken(new_key):new_key=key_for(tenant,d,shared=True)
+        if new_key!=contact.email_index and taken(new_key):
             raise BookingError("Un altro cliente ha già questa email o questo telefono.")
         data.update(d);contact.email_index=new_key
     if notes is not None:data["staff_notes"]=str(notes)[:4000]

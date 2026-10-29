@@ -1,6 +1,25 @@
-# TD Booking Suite 2.12.0 — registro modifiche
+# TD Booking Suite 2.13.0 — registro modifiche
 
-**29 ottobre 2026 · versione 2.12.0**
+**29 ottobre 2026 · versione 2.13.0**
+
+## 2.13.0 — email ai clienti con promemoria, logo dell'attività, dashboard che mostra chi viene, persone e marketing all'amministratore
+
+- **Email ai clienti**: conferma, modifica e annullamento partono da sole, con il testo di sempre. Se l'amministratore lo attiva (*Impostazioni e sito*), il titolare in *Notifiche* sceglie quali partono, aggiunge il **promemoria** (da 2 ore a 3 giorni prima) e scrive oggetto e testo, con i campi da inserire con un clic (nome, servizio, giorno e ora, sede, operatore, link per gestire o annullare) e l'**anteprima** su una prenotazione d'esempio. Il promemoria non parte a chi prenota quando ormai mancano meno ore, e riparte se la prenotazione viene spostata
+- **Il cliente sceglie**: nel modulo di prenotazione c'è la spunta per ricevere conferma, promemoria e avvisi per email (già spuntata); dalla scheda del cliente, in *Consensi e privacy*, lo staff le accende o le spegne. Un "no" dato online vale per quella prenotazione e, per un cliente nuovo, per la sua scheda
+- **Logo e aspetto** in *Configura l'attività*, per il titolare: il logo (anche orizzontale), il colore, la frase sotto il nome e il sito, con l'anteprima del menu e della pagina prenotazioni che cambia mentre scegli. Nell'edizione Windows il logo prende il posto di "TD" in alto nel menu, accanto al nome dell'attività
+- **Dashboard**: *Oggi* e *Prossimi 7 giorni*, nei riquadri in alto e sopra l'elenco, mostrano chi viene e a che ora, giorno per giorno; una colonna del grafico dei prossimi giorni porta a quel giorno
+- **Persone e permessi solo all'amministratore**: il titolare non vede più la voce; l'amministratore la trova in *Gestione tecnica*, aggiunge le persone, cambia i ruoli e ripristina le password, anche di chi non ha l'email (il link compare sullo schermo da consegnare)
+- **Marketing acceso dall'amministratore**, in due interruttori: le campagne email e il CSV degli iscritti (Brevo, Mailchimp, fogli). Con nessuno dei due la voce non compare nel menu; chi aveva già le campagne tiene anche il CSV
+- **Edizione Windows: scaricare un CSV non si ripete all'infinito.** Il download chiudeva la pagina come "non riuscita" e la finestra la ricaricava, riscaricandolo; ora la finestra riconosce il download e resta sulla pagina
+- **Prenotazione dal calendario con un cliente nuovo**: con un telefono già nella scheda di un'altra persona (una madre e la figlia) finiva nella scheda di quella persona e non compariva tra i clienti. Ora un nome diverso sullo stesso numero ha la sua scheda; lo stesso nome, o il nome senza cognome, ritrova la sua
+- **Controllo di tutti i tipi di attività** (parrucchiere, estetica, ristorante, hotel, B&B, campi, eventi e gli altri): ogni pagina si apre per titolare e amministratore, e quello che non tornava è sistemato
+  - i soggiorni compaiono in ogni giorno di settimana e mese, con arrivo, "in casa" e partenza, e il mese li conta una volta sola
+  - la prenotazione di un soggiorno dice dal, arrivo, al, partenza e quante notti, e "Camera" invece di "Con"; "1 persona" non si scrive più dove si prenota sempre per uno
+  - prezzi, speso e sconto compaiono solo dove ci sono prezzi (attività ad appuntamento); per hotel e B&B la scheda del cliente conta i soggiorni
+  - la scheda di una camera o di un campo non chiede orari che non usa, dice "Si prenota per" e "Persone massime (0 = nessun limite)" e porta ai giorni in cui non si prenota
+  - nel modulo di prenotazione compare la descrizione della camera o dell'operatore scelto; nel mese dei ristoranti accanto alle prenotazioni ci sono i coperti
+- Nella pagina *Configura l'attività* il menu a sinistra perdeva il nome di due voci (*Accesso dell'amministratore* e *Configurazione del programma*): ora ci sono
+- **Plugin WordPress 2.13.0**: stesso codice della 2.10.0, cambia solo il numero di versione
 
 ## 2.12.0 — foto degli operatori, cosa fa ognuno con durata e prezzo suoi, agenda per operatore, settimana e mese veloci
 

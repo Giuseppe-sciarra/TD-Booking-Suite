@@ -89,8 +89,13 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
 - Dashboard, agenda, prenotazioni al banco, clienti, export CSV, campagne marketing con consenso
   confermato e disiscrizione con un clic, notifiche al personale via email e Telegram (senza note,
   risposte né allergie), registro attività.
-- Persone e ruoli: amministratore, amministratore sede, reception, operatore sede (solo la sua
-  agenda e le sue sedi), marketing, consultazione.
+- **Email ai clienti con promemoria**: conferma, modifica e annullamento partono da sole; quando
+  l'agenzia lo attiva l'attività sceglie quali inviare, aggiunge il promemoria (da 2 ore a 3 giorni
+  prima) e ne scrive il testo, con l'anteprima. Il cliente sceglie se riceverle.
+- **Logo e aspetto** tenuti dall'attività, con l'anteprima; la dashboard mostra chi viene oggi e nei
+  prossimi 7 giorni. Campagne e CSV degli iscritti li accende l'agenzia.
+- Persone e ruoli, dati dall'agenzia: amministratore, amministratore sede, reception, operatore
+  sede (solo la sua agenda e le sue sedi), marketing, consultazione.
 - Email con l'SMTP dell'attività, Gmail o Microsoft 365, oppure quello dell'agenzia; coda di
   invio con nuovi tentativi.
 

@@ -36,19 +36,19 @@ def test_weak_password_creates_nothing():
     assert not Tenant.objects.filter(slug="pizzeria-nuova").exists()
 
 def test_team_member_with_password(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"reception@example.invalid","role":"reception","password":PASSWORD})
     m=Membership.objects.get(tenant=t,user__login_index=login_index("reception@example.invalid"))
     assert m.user.check_password(PASSWORD) and m.role=="reception" and not m.can_schedule
 
 def test_password_never_overwrites_an_existing_account(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     r=c.post(f"/t/{t.slug}/members/",{"action":"invite","email":u.email,"role":"owner","password":PASSWORD})
     assert "già un accesso" in r.content.decode()
     u.refresh_from_db();assert not u.check_password(PASSWORD) and u.check_password("A-test-password-12345")
 
 def test_owner_always_manages_the_catalog(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"socio@example.invalid","role":"owner"})
     assert Membership.objects.get(tenant=t,user__login_index=login_index("socio@example.invalid")).can_schedule
 
@@ -110,7 +110,7 @@ def test_location_operator_sees_only_his_location(sample):
         other=Location.objects.create(tenant=t,name="Mare")
         svc2=Service.objects.create(tenant=t,location=other,name="Servizio mare",kind="capacity",capacity=2,max_party=2,lead_minutes=0)
         here,_=create_booking(t,payload(s,hour=10));there,_=create_booking(t,payload(svc2,hour=11,email="anna@example.invalid"))
-    c,u=client_as(t)
+    c,u=client_as(t,staff=True)  # 2.13.0: people are the agency's
     c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"op@example.invalid","role":"operator","locations":[str(s.location_id)]})
     m=Membership.objects.get(tenant=t,role="operator");m.can_schedule=False;m.save()
     from django.test import Client
@@ -126,9 +126,18 @@ def test_location_operator_sees_only_his_location(sample):
     assert "Sposta prenotazione" in detail and ">Annulla<" not in detail
 
 def test_single_location_is_implicit_for_location_roles(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     c.post(f"/t/{t.slug}/members/",{"action":"invite","email":"sede@example.invalid","role":"manager"})
     assert Membership.objects.get(tenant=t,role="manager").locations==[str(s.location_id)]
+
+def test_people_and_permissions_are_the_agencys(sample):
+    """2.13.0: the owner does not see Persone e permessi; the agency does, from Gestione tecnica."""
+    t,o,s=sample;c,u=client_as(t)
+    assert c.get(f"/t/{t.slug}/members/").status_code==403
+    assert "Persone e permessi" not in c.get(f"/t/{t.slug}/").content.decode()
+    assert "Persone e permessi" not in c.get(f"/t/{t.slug}/setup/").content.decode()
+    sc,su=staff_client()
+    assert sc.get(f"/t/{t.slug}/members/").status_code==200
 
 def test_business_users_never_see_agency_settings(sample):
     t,o,s=sample;c,u=client_as(t)

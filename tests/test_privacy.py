@@ -125,6 +125,8 @@ def test_n15_vendor_profiles_only_for_eligible_recipients(sample):
         cb=Contact.objects.get(pk=b.contact_id);cb.consent="revoked";cb.save()
     c,_=client_as(t,role="owner")
     assert c.get(f"/t/{t.slug}/export/?kind=contacts&profile=brevo").status_code==400
+    assert c.get(f"/t/{t.slug}/export/?kind=marketing&profile=brevo").status_code==403  # 2.13.0: until the agency turns it on
+    t.export_enabled=True;t.save()
     r=c.get(f"/t/{t.slug}/export/?kind=marketing&profile=brevo")
     body=r.content.decode("utf-8-sig")
     assert r.status_code==200 and "mario@example.invalid" in body and "revocato@" not in body

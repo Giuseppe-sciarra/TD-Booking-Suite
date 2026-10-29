@@ -144,6 +144,7 @@ def test_export_available_when_suspended(sample):
     assert c.get(f"/t/{t.slug}/export/").status_code==200
 def test_pages_render_and_no_script_injection(sample):
     t,o,s=sample;c,u=client_as(t,staff=True)
+    t.export_enabled=t.client_mails_enabled=True;t.save()  # 2.13.0: Marketing and the emails to the clients, switched on by the agency
     with scope(t):
         b,_=create_booking(t,payload(s,first_name='<img src=x onerror="alert(1)">'))
     paths=["/platform/","/platform/clienti/",f"/platform/clienti/{t.slug}/","/security/",f"/t/{t.slug}/",f"/t/{t.slug}/bookings/",f"/t/{t.slug}/contacts/",f"/t/{t.slug}/marketing/",f"/t/{t.slug}/settings/",f"/t/{t.slug}/smtp/",f"/t/{t.slug}/members/",f"/t/{t.slug}/audit/",f"/t/{t.slug}/catalog/services/",f"/t/{t.slug}/catalog/services/new/",f"/t/{t.slug}/catalog/turns/new/",f"/t/{t.slug}/bookings/{b.pk}/",f"/book/{t.slug}/"]

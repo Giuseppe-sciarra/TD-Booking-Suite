@@ -6,6 +6,7 @@ from django.core.validators import validate_email
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction,connection
 from django.shortcuts import render,redirect,get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.contrib import messages
 from .models import Tenant,User,Membership,Invitation,Location,Resource,Service,ServiceResource,Schedule,audit
@@ -14,7 +15,7 @@ from .identity import fresh
 from .crypto import login_index,token_hash,encrypt,decrypt
 from .tenancy import scope
 from .mail import public_addresses
-from .booking import queue
+from .booking import queue,BookingError
 from .permissions import can,ROLES,ROLE_CHOICES,active_grant
 from .site import tenant_defaults,mail_ready as site_mail_ready
 
@@ -101,8 +102,9 @@ def smtp_view(request,slug):
     staff(request);tenant=request.tenant
     return page(request,Target(tenant),"Invio email","La casella da cui partono le conferme delle prenotazioni, le notifiche e gli inviti di "+tenant.name+": Gmail, Microsoft 365 o l'email del suo dominio. Se il marketing è attivo, serve anche per le campagne. Senza, si usa l'invio dell'agenzia. Le credenziali restano cifrate e gli utenti dell'attività non le vedono")
 def team_admin(request):
-    """Platform staff (onboarding) or the tenant's own user manager."""
-    if not (request.user.is_staff and not request.member) and not can(request,"users.manage"):raise PermissionDenied
+    """2.13.0: who has access to a business and with which role is the agency's, like its type and locations:
+    the owner does not even see the page."""
+    if not request.user.is_staff:raise PermissionDenied
 def scope_values(request,tenant):
     locations=[str(x) for x in Location.objects.filter(pk__in=request.POST.getlist("locations")).values_list("pk",flat=True)]
     resources=[str(x) for x in Resource.objects.filter(pk__in=request.POST.getlist("resources")).values_list("pk",flat=True)]
@@ -131,7 +133,6 @@ def members_view(request,slug):
                     # business it belongs to alone, never by the agency (the link or the password would be its own)
                     if not created and (request.POST.get("password") or not u.has_usable_password()):
                         if elsewhere(u,tenant):raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
-                        if request.user.is_staff and not request.member:raise ValueError("Questa persona ha già un account: l'agenzia la aggiunge, ma password e invito li gestisce chi gestisce l'attività.")
                     if u.pk==request.user.pk and not request.member:raise ValueError("L'agenzia entra nei contenuti con l'accesso di assistenza concesso dall'attività, non aggiungendo se stessa.")
                     member,_=Membership.objects.get_or_create(tenant=tenant,user=u)
                     if member.user_id==request.user.id and role!="owner":raise ValueError("Non puoi togliere a te stesso il ruolo di amministratore.")
@@ -157,13 +158,13 @@ def members_view(request,slug):
                     # the reset link opens the person's account in every business: only the agency resets someone who works elsewhere too
                     if elsewhere(u,tenant) and not request.user.is_staff:raise ValueError("Questa persona lavora anche in un'altra attività: il ripristino della password lo fa l'agenzia.")
                     agency=request.user.is_staff and not request.member
-                    if agency and not u.email:raise ValueError("Questo account non ha un'email a cui mandare il link: la password la ripristina chi gestisce l'attività, da Persone e permessi.")
                     u.auth_version+=1;u.set_unusable_password();u.save(update_fields=["auth_version","password"])
                     link=invitation(u)
                     if u.email:queue(tenant,{"to":u.email,"subject":"Ripristino accesso · "+tenant.name,"body":"Imposta una nuova password:\n"+link+"\nIl metodo MFA rimane attivo."})
                     audit(tenant,request.user,"member.password_reset",u.pk)
-                    if agency:
-                        # the agency enters the contents only with a support grant: the link goes to the person, not on this screen
+                    if agency and u.email:
+                        # the agency enters the contents only with a support grant: the link goes to the person, not on this
+                        # screen; without an email the agency hands it over, since only the agency manages the people (2.13.0)
                         link="";messages.success(request,"Link per la nuova password inviato a "+u.email+".")
                 else:raise ValueError("Operazione non valida.")
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
@@ -230,6 +231,18 @@ def notifications_view(request,slug):
                     t.save(update_fields=["notify_email","telegram"])
                     audit(t,request.user,"notifications.saved",telegram=bool(token),email=bool(email))
                 messages.success(request,"Notifiche salvate.")
+            elif action=="client_mails":
+                # 2.13.0: which emails reach the clients and with which words, once the agency allows it
+                from .client_mails import clean
+                if not tenant.client_mails_enabled:raise PermissionDenied
+                try:mails=clean(request.POST)
+                except BookingError as ex:raise ValueError(str(ex))
+                with transaction.atomic():
+                    t=Tenant.objects.select_for_update().get(pk=tenant.pk)
+                    t.client_mails=mails;t.save(update_fields=["client_mails"])
+                    audit(t,request.user,"client_mails.saved",on=[k for k,v in mails.items() if v["on"]])
+                messages.success(request,"Email ai clienti salvate.")
+                return redirect(reverse("notifications",args=[slug])+"#clienti")
             elif action=="test":
                 if not (tenant.notify_email or tenant.telegram):raise ValueError("Configura prima un indirizzo email o Telegram.")
                 text="Prova notifiche · "+tenant.name+"\nSe leggi questo messaggio, le notifiche funzionano."
@@ -239,4 +252,8 @@ def notifications_view(request,slug):
                 messages.success(request,"Prova accodata: arriva al prossimo giro di invii.")
             return redirect("notifications",slug)
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
-    return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error})
+    from . import client_mails as cm
+    now=cm.current(tenant)
+    mails=[{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k]} for k,label,help in cm.KINDS]
+    return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
+        "mails":mails,"mail_fields":cm.FIELDS,"hours":cm.HOURS,"sample":cm.sample(tenant)})

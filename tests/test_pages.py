@@ -58,7 +58,7 @@ def test_every_page_for_every_role(world,role):
     c,u=client_as(t,role=role)
     if role=="operator":
         m=Membership.objects.get(tenant=t,user=u);m.resources=[str(res.pk)];m.save()
-    t.marketing_enabled=True;t.save()
+    t.marketing_enabled=t.export_enabled=t.client_mails_enabled=True;t.save()
     seen={}
     for path in pages(t,ids):
         r=c.get(path)
@@ -69,9 +69,10 @@ def test_every_page_for_every_role(world,role):
     if role=="owner":
         # 2.10.0: the owner keeps hours, closing days and staff, 2.11.0 services and prices too; type and locations are the agency's
         agency_only=lambda x:any(f"{p}/catalog/{k}/" in x for k in ("locations","turns","occurrences"))
-        must=[x for x in pages(t,ids) if not x.startswith("/platform/") and x not in (f"{p}/settings/",f"{p}/smtp/") and not agency_only(x)]
+        # 2.13.0: people and permissions too
+        must=[x for x in pages(t,ids) if not x.startswith("/platform/") and x not in (f"{p}/settings/",f"{p}/smtp/",f"{p}/members/") and not agency_only(x)]
         assert all(seen[x] in (200,302) for x in must),{x:seen[x] for x in must if seen[x] not in (200,302)}
-        assert all(seen[x]==403 for x in pages(t,ids) if agency_only(x) and x in seen)
+        assert all(seen[x]==403 for x in pages(t,ids) if agency_only(x) and x in seen) and seen[f"{p}/members/"]==403
     if role=="marketing":assert seen[f"{p}/bookings/"]==403 and seen[f"{p}/contacts/"]==200
     if role=="viewer":assert seen[f"{p}/bookings/"]==200 and seen[f"{p}/members/"]==403
 

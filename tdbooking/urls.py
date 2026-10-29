@@ -41,6 +41,7 @@ urlpatterns=[
  path("t/<slug:slug>/",portal.dashboard,name="dashboard"),
  path("t/<slug:slug>/setup/",portal.setup,name="setup"),
  path("t/<slug:slug>/setup/apply/",portal.setup_action,name="setup_action"),
+ path("t/<slug:slug>/setup/aspetto/",portal.setup_brand,name="setup_brand"),
  path("t/<slug:slug>/setup/allergie/",portal.allergens_view,name="allergens"),
  path("t/<slug:slug>/setup/consigliati/",portal.recommended_view,name="recommended"),
  path("t/<slug:slug>/guida/",portal.guide,name="tenant_guide"),

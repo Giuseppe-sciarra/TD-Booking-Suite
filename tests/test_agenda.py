@@ -104,7 +104,7 @@ def test_week_and_month_of_a_restaurant_list_the_days(sample):
     week=owner.get(f"/t/{t.slug}/bookings/?vista=settimana&data={day.isoformat()}").content.decode()
     assert 'class="week-list"' in week and "Mario Rossi" in week and "2 persone" in week and "data-agenda" not in week and "?vista=giorno" not in week
     month=owner.get(f"/t/{t.slug}/bookings/?vista=mese&data={day.isoformat()}").content.decode()
-    assert '<span class="month-count">1</span>' in month and f"?vista=elenco&amp;from={day.isoformat()}&amp;to={day.isoformat()}" in month
+    assert '<span class="month-count">1 · 2 pers.</span>' in month and f"?vista=elenco&amp;from={day.isoformat()}&amp;to={day.isoformat()}" in month
 
 
 def test_the_day_shows_who_works_and_the_allergies(sample):

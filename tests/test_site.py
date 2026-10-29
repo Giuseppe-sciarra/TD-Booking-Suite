@@ -78,7 +78,7 @@ def test_confirmation_never_redirects_elsewhere():
     assert r["Location"]=="/"
 
 def test_members_page_asks_before_the_form(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     sess=c.session;sess["verified_at"]=wall.time()-3600;sess.save()
     r=c.get(f"/t/{t.slug}/members/");assert r.status_code==302 and "/verify/confirm/" in r["Location"]
 

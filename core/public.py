@@ -80,7 +80,8 @@ def first_step(widget):
 INTRO={"none":"Scegli giorno e orario","location":"Scegli la sede, poi giorno e orario","service":"Scegli il servizio, poi giorno e orario"}
 def booking_page(request,slug):
     widget=widget_data(request)
-    return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)]})
+    from .client_mails import current
+    return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)],"reminder":current(request.tenant)["reminder"]["on"]})
 def manual_booking(request,slug):
     require_role(request,write=True)
     widget=widget_data(request)

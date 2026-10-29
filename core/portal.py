@@ -93,7 +93,7 @@ def setup(request,slug):
     if "event" in kinds:steps.append(step(key="occurrences",title="Eventi con data",done=Occurrence.objects.filter(start__gte=timezone.now()).exists(),count=Occurrence.objects.count(),text=f"{Occurrence.objects.filter(start__gte=timezone.now()).count()} date in programma",hint=CATALOG_HELP["occurrences"]))
     members=Membership.objects.filter(tenant=t).count()
     agency=[
-     {"title":"Persone e permessi","done":members>1,"text":f"{members} person{'a' if members==1 else 'e'} con accesso","link":"members" if can(request,"users.manage") else ""},
+     {"title":"Persone e permessi","done":members>1,"text":f"{members} person{'a' if members==1 else 'e'} con accesso","link":"members" if request.user.is_staff else ""},
      # 2.6.0: the WordPress site has its own card below, with the connection code
      {"title":"Invio email","done":mail_ready(t),"text":"Invio proprio dell'attività" if t.smtp else ("Invio dell'agenzia" if mail_ready() else "Nessun invio configurato: le email restano in attesa"),"link":"smtp" if request.user.is_staff else ""},
     ]
@@ -106,13 +106,32 @@ def setup(request,slug):
     profile=describe(t)
     shown=max(5,len(profile["locations"]))
     names=[l.name for l in profile["locations"]]+[default_name(i) for i in range(len(profile["locations"]),shown)]
-    return render(request,"setup.html",{"steps":steps,"agency":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
+    # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
+    return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
         "counts":range(1,6),"max_locations":MAX_LOCATIONS,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # questions and allergies shape the services: the agency's, like the services themselves (2.10.0)
-        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":can_profile(request) and (t.business_type=="ristorante" or t.allergens_on)})
+        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":can_profile(request) and (t.business_type=="ristorante" or t.allergens_on),
+        # 2.13.0: ready colours of Logo e aspetto, the same in app.css
+        "swatches":["#7a55ad","#be185d","#b91c1c","#c2410c","#a16207","#15803d","#0f766e","#1d4ed8","#334155"]})
+
+def setup_brand(request,slug):
+    """2.13.0: Logo e aspetto, in Configura l'attività: the business's own logo (the menu, the portal, the booking page),
+    its colour, the line under its name and its site."""
+    from django.http import Http404
+    from .forms import BrandForm
+    if request.method!="POST":raise Http404
+    require(request,"catalog.write")
+    form=BrandForm(request.POST,request.FILES,instance=Tenant.objects.get(pk=request.tenant.pk))
+    if form.is_valid():
+        with transaction.atomic():
+            Tenant.objects.select_for_update().get(pk=request.tenant.pk)
+            t=form.save();audit(t,request.user,"tenant.brand",t.pk,logo=bool(t.logo))
+        messages.success(request,"Logo e aspetto salvati: li vedi già nel menu a sinistra.")
+    else:messages.error(request," ".join(e for errors in form.errors.values() for e in errors))
+    return redirect(reverse("setup",args=[slug])+"#aspetto")
 
 def recommended(tenant):
     """2.8.0: the usual questions of this kind of business that some active service does not ask yet."""
@@ -277,13 +296,22 @@ def dashboard(request,slug):
             if 0<=i<7:days[i]+=1
         next_days=bars(days,today,width=300,height=170)
         names=["Oggi","Domani"]+[(today+timedelta(days=i)).strftime("%d/%m") for i in range(2,7)]
-        for i,b in enumerate(next_days["bars"]):b["label"]=names[i];b["show"]=True
+        for i,b in enumerate(next_days["bars"]):
+            b["label"]=names[i];b["show"]=True
+            if b["v"]:b["href"]="#giorno-"+(today+timedelta(days=i)).isoformat()  # 2.13.0: the bar opens that day in the list
         next_days["daily"]=True
         stats={"outcome":outcome_rows(counts,total),"outcome_total":total,"weekly":bars(weekly,first,width=440,height=170),"next_days":next_days,
             "services":[{"name":s["snapshot__service"] or "Servizio","n":s["n"],"share":round(100*s["n"]/top)} for s in services]}
-    shown_rows=list(rows[:50])
+    shown_rows=list(rows.select_related("tenant")[:50])
     for row in shown_rows:row.shown=shown(request,row.data)
-    return render(request,"dashboard.html",{"rows":shown_rows,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count()})
+    # 2.13.0: the next 7 days too, day by day, who and at what time (the list behind "Prossimi 7 giorni")
+    # shortcut: at most 300 bookings in the list, the agenda has all of them
+    week=[]
+    for row in mine(Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=7)).exclude(status="cancelled")).select_related("service","resource","tenant").order_by("start")[:300]:
+        row.shown=shown(request,row.data);day=row.start.astimezone(tz).date()
+        if not week or week[-1]["day"]!=day:week.append({"day":day,"iso":day.isoformat(),"name":{0:"Oggi",1:"Domani"}.get((day-today).days,""),"rows":[]})
+        week[-1]["rows"].append(row)
+    return render(request,"dashboard.html",{"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count()})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
     today=timezone.now().astimezone(tz).date()
@@ -334,7 +362,9 @@ def booking_detail(request,slug,booking_id):
     answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":"Sì" if v is True else v} for k,v in data.get("answers",{}).items() if v not in ("",None,False)]
     ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,"back_day":booking.start.astimezone(ZoneInfo(request.tenant.timezone)).date().isoformat(),
         # 2.8.0: the note kept on the client card shows on every booking, as the main booking software do
-        "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else ""}
+        "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else "",
+        # 2.12.0: a room is not "with": it has its own word, Camera, Alloggio, Mezzo
+        "unit":__import__("core.presets",fromlist=["units"]).units(request.tenant.business_type)[0]}
     if spec and can(request,"notes.read"):
         from .clients import treatments,from_booking
         entries=treatments(booking.contact);prefill=from_booking(booking,ZoneInfo(request.tenant.timezone))
@@ -454,7 +484,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -488,6 +518,13 @@ def contact_detail(request,slug,contact_id):
             messages.success(request,("Sconto salvato." if contact.discount_kind else "Sconto tolto.")+((f" Aggiornata {changed} prenotazione in programma." if changed==1 else f" Aggiornate {changed} prenotazioni in programma.") if changed else ""))
         except BookingError as ex:messages.error(request,str(ex))
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#sconto")
+    if request.method=="POST" and request.POST.get("action")=="notices":
+        # 2.13.0: what the client said at the desk or on the phone: emails about his bookings yes or no
+        require(request,"booking.write")
+        contact.notices=request.POST.get("notices")=="on";contact.save(update_fields=["notices"])
+        audit(request.tenant,request.user,"contact.notices",contact.pk,on=contact.notices)
+        messages.success(request,"Il cliente riceve le email delle sue prenotazioni." if contact.notices else "Il cliente non riceve più le email delle sue prenotazioni.")
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#privacy")
     if request.method=="POST" and request.POST.get("action") in ("notes","card"):
         require(request,"booking.write",*(("notes.read",) if request.POST["action"]=="notes" else ("pii.read",)))
         try:
@@ -509,6 +546,9 @@ def contact_detail(request,slug,contact_id):
     for b in upcoming:b.shown=shown(request,b.data)
     ctx={"contact":contact,"data":shown(request,raw),"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
         "upcoming":upcoming,"discount":discount_label(contact),
+        # 2.12.0: prices (and so what was spent and the discount) exist only for appointments; a hotel counts stays
+        "priced":Service.objects.filter(kind="resource").exists(),
+        "visits_word":"Soggiorni" if set(Service.objects.filter(active=True).values_list("kind",flat=True))=={"day"} else "Visite",
         "notes":raw.get("staff_notes","") if notes_ok else None,"spec":spec if notes_ok else None,
         # 2.8.0: every allergy or intolerance the client ever ticked, newest bookings first
         "allergies":list(dict.fromkeys(a for b in rows for a in b.data.get("allergies",[]))) if notes_ok else []}
@@ -532,6 +572,7 @@ def export(request,slug):
     require(request,"export.operational" if kind=="bookings" else "export.marketing")
     if profile not in ("sheet","generic","brevo","mailchimp"):return HttpResponse("Formato non valido.",status=400)
     # Vendor files are only for eligible recipients: never a full address book with a "consent" column.
+    if kind=="marketing" and not request.tenant.export_enabled:raise PermissionDenied("L'esportazione degli iscritti la attiva l'amministratore.")
     if profile in ("brevo","mailchimp") and kind!="marketing":return HttpResponse("I formati Brevo e Mailchimp esportano solo i destinatari con consenso confermato (kind=marketing).",status=400)
     rows=[];header=[]
     if kind=="bookings":
@@ -700,7 +741,9 @@ def calendar_remove(request,slug,kind,item_id):
     return redirect("catalog",slug,kind)
 def marketing(request,slug):
     require(request,"campaign.manage")
-    if request.method=="POST":
+    # 2.13.0: the agency turns it on, the campaigns, the CSV of the subscribers or both
+    if not (request.tenant.marketing_enabled or request.tenant.export_enabled):raise PermissionDenied("Il marketing lo attiva l'amministratore.")
+    if request.method=="POST" and not request.tenant.marketing_enabled:
         request.tenant.marketing_requested=True;request.tenant.save(update_fields=["marketing_requested"])
         audit(request.tenant,request.user,"marketing.requested")
         messages.success(request,"Richiesta registrata per l'amministratore.")

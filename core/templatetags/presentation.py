@@ -28,6 +28,13 @@ def service_summary(s):
  return ""
 
 @register.filter
+def nights(booking):
+    """2.12.0: how long a stay is, "3 notti" or "1 notte", counted in the business's time zone."""
+    from django.utils import timezone
+    n=(timezone.localtime(booking.end).date()-timezone.localtime(booking.start).date()).days
+    return f"{n} nott{'e' if n==1 else 'i'}"
+
+@register.filter
 def photo_link(resource,slug):
     """2.12.0: an operator's photo, uploaded or by address; empty without one."""
     return resource.photo_link(slug) if resource else ""

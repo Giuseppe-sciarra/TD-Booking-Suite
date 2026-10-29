@@ -253,17 +253,21 @@ def create_booking(tenant,data,actor=None):
         consent_requested=(data.get("marketing") is True and contact.consent!="yes" and not contact.suppressed and not known_by_phone
             and not ActionToken.objects.filter(contact_id=contact.pk,kind="consent",used=False,expires__gt=timezone.now()).exists())
         if consent_requested and new_contact:contact.consent="pending"
+        # 2.13.0: the box "send me the emails about this booking"; missing (older forms, the plugin) means yes
+        notices=data.get("notices") is not False
+        if new_contact:contact.notices=notices
         contact.save()
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
+        if not notices:booking.snapshot["notices"]=False
         from .prices import stamp
         stamp(booking)  # 2.11.0: price, client discount and what he pays, as at this moment
         booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save()
         token=action_token(tenant,"cancel",contact,booking,days=max(30,service.horizon_days+service.max_days+30))
         pii["cancel_token"]=token;booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
         from django.conf import settings
-        cancel=f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/"
-        if pii.get("email"):queue(tenant,{"to":pii["email"],"subject":"Prenotazione confermata · "+tenant.name,"body":f"La prenotazione è confermata.\n{service.name}\n{start.astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}\nGestisci o annulla: {cancel}"},contact)
+        from .client_mails import send
+        send(tenant,booking,"confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
             booking.snapshot["consent_request"]={"text":tenant.consent_text,"requested":timezone.now().isoformat(),"source":"booking"}
@@ -286,10 +290,11 @@ def move_booking(tenant,booking_id,data,actor):
         booking.snapshot.update(service=service.name,location=service.location.name,resource=booking.resource.name if booking.resource else "",option=booking.option.name if booking.option else "")
         from .prices import stamp
         stamp(booking)
+        booking.snapshot.pop("reminded",None)  # 2.13.0: the new day gets its own reminder
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
-        # a booking taken at the desk may have no email (2.7.0): an empty address would bounce and exclude the client from email
-        if booking.data.get("email"):queue(tenant,{"to":booking.data["email"],"subject":"Prenotazione aggiornata · "+tenant.name,"body":f"Nuovo orario: {booking.start.astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}.\nContatta l'attività per informazioni."},booking.contact)
+        from .client_mails import send
+        send(tenant,booking,"moved")
         from .notify import notify_staff
         notify_staff(tenant,booking,"moved")
         audit(tenant,actor,"booking.moved",booking.pk)
@@ -303,7 +308,8 @@ def change_status(tenant,booking,status,actor=None):
         if status in ("completed","no_show") and booking.start>timezone.now():raise BookingError("L'appuntamento non è ancora iniziato.")
         booking.status=status;booking.save(update_fields=["status"])
         if status=="cancelled":
-            if booking.data.get("email"):queue(tenant,{"to":booking.data["email"],"subject":"Prenotazione annullata · "+tenant.name,"body":"La prenotazione è stata annullata. Contatta l'attività per prenotare nuovamente."},booking.contact)
+            from .client_mails import send
+            send(tenant,booking,"cancelled")
             from .notify import notify_staff
             notify_staff(tenant,booking,"cancelled")
         audit(tenant,actor,"booking."+status,booking.pk)

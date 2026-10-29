@@ -108,9 +108,15 @@ class ResourceForm(ScopedForm):
         f.label_from_instance=lambda s:f"{s.name} ({s.location.name})" if many else s.name
         one=units(getattr(self.tenant,"business_type",""))[0].lower()
         word=service_word(getattr(self.tenant,"business_type","")).lower()
-        f.label="Cosa fa";f.in_grid=True
-        self.treatments_help=(f"Si prenota solo per quelli spuntati: un {one} nuovo parte con tutti. Durata e prezzo vuoti vogliono dire quelli del {word}; "
-            "con una variante valgono quelli della variante")
+        # 2.12.0: an operator does things and works hours; a room, a flat, a bike is booked for something and
+        # follows the arrivals and departures of its service, so it shows neither hours nor durations
+        self.appointments=any(s.kind=="resource" for s in bookable)
+        f.label="Cosa fa" if self.appointments else "Si prenota per";f.in_grid=True
+        # said without "un/una nuovo/a", as the word changes gender with the business (operatore, camera, cabina)
+        self.treatments_help="Si prenota solo per quelli spuntati; all'inizio sono spuntati tutti."+(
+            f" Durata e prezzo vuoti vogliono dire quelli del {word}; con una variante valgono quelli della variante." if self.appointments else "")
+        if not self.appointments:self.fields["photo_file"].help_text="PNG, JPEG o WebP fino a 5 MB: compare nell'elenco e nella prenotazione"
+        if "capacity" in self.fields:self.fields["capacity"].label="Persone massime (0 = nessun limite)"
         links={} if new else {l.service_id:l for l in ServiceResource.objects.filter(resource=self.instance)}
         self.initial["services"]=[s.pk for s in bookable] if new else list(links)
         self.rows=[]
@@ -132,6 +138,8 @@ class ResourceForm(ScopedForm):
         # working days: one span a day here; with two spans a day (a lunch break) they stay in Orari di apertura
         rows=[] if new else list(Schedule.objects.filter(resource=self.instance,purpose="service"))
         self.split_hours=len({r.weekday for r in rows})<len(rows)
+        # working days only where someone works; hours already set stay visible, never deleted unseen
+        self.hours=self.appointments or bool(rows)
         self.grid_fields=["own_hours"]
         for d in range(7):
             mine=[r for r in rows if r.weekday==d]
@@ -145,7 +153,7 @@ class ResourceForm(ScopedForm):
             self.fields[name].in_grid=True  # drawn as a week grid, not in the field list
             if self.split_hours:self.fields[name].disabled=True
     @property
-    def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"]} for d in range(7)]
+    def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"]} for d in range(7)] if self.hours else []
     @property
     def treatment_rows(self):
         """One row a service, as the week grid: the tick, and for appointments the operator's duration and price."""
@@ -165,7 +173,7 @@ class ResourceForm(ScopedForm):
         d=super().clean()
         loc=d.get("location")
         if loc and any(s.location_id!=loc.pk for s in d.get("services",[])):raise ValidationError("Spunta solo servizi della sua sede.")
-        if d.get("own_hours") and not self.split_hours:
+        if d.get("own_hours") and self.hours and not self.split_hours:
             days=[n for n in range(7) if d.get(f"day_{n}")]
             if not days:raise ValidationError("Spunta almeno un giorno di lavoro, o spegni Ha giorni e orari suoi.")
             for n in days:
@@ -189,7 +197,7 @@ class ResourceForm(ScopedForm):
             else:
                 ResourcePhoto.objects.filter(resource=obj).delete();obj.photo_at=None
             obj.save(update_fields=["photo_at"])
-        if not self.split_hours:
+        if self.hours and not self.split_hours:
             Schedule.objects.filter(resource=obj,purpose="service").delete()
             if d.get("own_hours"):
                 for n in range(7):
@@ -339,13 +347,31 @@ class CampaignForm(ScopedForm):
         value=self.cleaned_data["body"]
         if len(value)>20000:raise ValidationError("Messaggio troppo lungo.")
         return value
+class BrandForm(forms.ModelForm):
+    """2.13.0: the look the business sets itself, in Configura l'attività: logo, colour, the line under the name, site."""
+    logo_file=forms.FileField(required=False)
+    logo_remove=forms.BooleanField(required=False)
+    class Meta:
+        model=Tenant
+        fields=["brand_color","tagline","website"]
+    def clean_brand_color(self):return TenantForm.clean_brand_color(self)
+    def clean_logo_file(self):
+        f=self.cleaned_data.get("logo_file")
+        if not f:return None
+        from .site import clean_brand
+        return clean_brand(f)
+    def save(self):
+        t=super().save(commit=False)
+        if self.cleaned_data.get("logo_file"):t.logo,t.logo_ratio=self.cleaned_data["logo_file"]
+        elif self.cleaned_data.get("logo_remove"):t.logo=None;t.logo_ratio=1
+        t.save(update_fields=["brand_color","tagline","website","logo","logo_ratio"]);return t
 class TenantForm(forms.ModelForm):
     logo_file=forms.FileField(required=False,label="Logo PNG trasparente, JPEG o WebP, massimo 1 MB, anche orizzontale")
     embed_origins_text=forms.CharField(required=False,label="Siti autorizzati a mostrare il widget (una origine HTTPS per riga)",widget=forms.Textarea(attrs={"rows":3}))
     class Meta:
         model=Tenant
-        fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","consent_text","retention_days","receive_schedule"]
-        labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Abilita marketing email","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
+        fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","export_enabled","client_mails_enabled","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","consent_text","retention_days","receive_schedule"]
+        labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Marketing: l'attività invia campagne email ai clienti iscritti","export_enabled":"Marketing: l'attività scarica il CSV dei clienti iscritti (Brevo, Mailchimp, fogli)","client_mails_enabled":"Email ai clienti: l'attività sceglie quali inviare, aggiunge il promemoria e ne scrive il testo (in Notifiche)","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
         widgets={"trial_until":forms.DateInput(attrs={"type":"date"}),"brand_color":forms.TextInput(attrs={"type":"color"}),"privacy_text":forms.Textarea(attrs={"rows":4}),"consent_text":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         kw.setdefault("label_suffix","")

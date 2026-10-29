@@ -72,6 +72,22 @@ def item(request,r,tz,color):
         # 2.11.0: allergies or intolerances the client ticked show on the appointment itself, as the salon programs do
         "alert":list(data.get("allergies") or [])}
 
+PHASE_ORDER={"partenza":0,"in casa":1,"arrivo":2,"":3}
+def days_of(request,r,tz,color,first,last):
+    """The days a booking shows on, between first and last: its own day, and for a stay (a room, a flat, a
+    rented bike: 2.12.0) every day from arrival to departure, each saying which of the three it is."""
+    x=item(request,r,tz,color)
+    a,b=x["start"].date(),x["end"].date()
+    if r.service.kind!="day" or a==b:
+        return [(a,x)] if first<=a<=last else []
+    out=[]
+    d=max(a,first)
+    while d<=min(b,last):
+        phase="arrivo" if d==a else "partenza" if d==b else "in casa"
+        y=dict(x,phase=phase,phase_label={"arrivo":"Arrivo "+x["from"],"partenza":"Partenza "+x["to"],"in casa":"In casa"}[phase])
+        out.append((d,y));d+=timedelta(days=1)
+    return out
+
 def common(request,view,day,today,places,location,ops,chosen=None):
     """What the bar above every view needs: the views, the day, the location and the operator chosen."""
     one,many,_=units(request.tenant.business_type)
@@ -179,14 +195,13 @@ def week_view(request):
     now=timezone.now()
     columns=[{"day":d,"col":i,"today":d==today,"items":[],"closed":[],"cells":[]} for i,d in enumerate(days,start=2)]
     for r in rows:
-        d=r.start.astimezone(tz).date()
-        if monday<=d<monday+timedelta(days=7):columns[(d-monday).days]["items"].append(item(request,r,tz,color))
+        for d,x in days_of(request,r,tz,color,monday,monday+timedelta(days=6)):columns[(d-monday).days]["items"].append(x)
     ctx=common(request,"settimana",day,today,places,location,ops,chosen)
     sunday=monday+timedelta(days=6)
     title=f"{monday.day}–{sunday.day} {MONTHS[sunday.month-1]} {sunday.year}" if monday.month==sunday.month else f"{monday.day} {MONTHS[monday.month-1]} – {sunday.day} {MONTHS[sunday.month-1]} {sunday.year}"
     ctx.update({"prev":monday-timedelta(days=7),"next":monday+timedelta(days=7),"title_text":title,"columns":columns,"total":len(rows),"grid":appointments and bool(ops)})
     if not ctx["grid"]:
-        for c in columns:c["items"].sort(key=lambda x:x["start"])
+        for c in columns:c["items"].sort(key=lambda x:(PHASE_ORDER[x.get("phase","")],x["start"]))
         return render(request,"agenda_week.html",ctx)
     # the hours of the week: from the first opening or booking of any day to the last, in whole hours
     shown_ops=[chosen] if chosen else ops
@@ -234,7 +249,9 @@ def month_view(request):
     if location:rows=rows.filter(location=location)
     if chosen:rows=rows.filter(resource=chosen)
     by_day={}
-    for r in (rows if location else []):by_day.setdefault(r.start.astimezone(tz).date(),[]).append(item(request,r,tz,color))
+    for r in (rows if location else []):
+        for d,x in days_of(request,r,tz,color,grid_a,grid_b):by_day.setdefault(d,[]).append(x)
+    for items in by_day.values():items.sort(key=lambda x:(PHASE_ORDER[x.get("phase","")],x["start"]))
     weeks=[];d=grid_a
     while d<=grid_b:
         week=[]
@@ -246,5 +263,6 @@ def month_view(request):
         weeks.append(week)
     ctx=common(request,"mese",day,today,places,location,ops,chosen)
     ctx.update({"prev":(first-timedelta(days=1)).replace(day=1),"next":last+timedelta(days=1),"title_text":f"{MONTHS[first.month-1].capitalize()} {first.year}",
-        "weeks":weeks,"total":sum(c["count"] for w in weeks for c in w if c["inside"]),"names":["Lun","Mar","Mer","Gio","Ven","Sab","Dom"]})
+        # a stay is on several days, counted once
+        "weeks":weeks,"total":len({x["booking"].pk for w in weeks for c in w if c["inside"] for x in by_day.get(c["day"],[])}),"names":["Lun","Mar","Mer","Gio","Ven","Sab","Dom"]})
     return render(request,"agenda_month.html",ctx)

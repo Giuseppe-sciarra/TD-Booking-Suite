@@ -1217,3 +1217,87 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .suggest mark{background:none;color:inherit;font-weight:700}
 @keyframes suggest-in{from{opacity:0;translate:0 -4px}to{opacity:1;translate:0 0}}
 .client-results{border-radius:12px;box-shadow:0 18px 40px -16px color-mix(in srgb,var(--ink) 35%,transparent)}
+/* 2.12.0: a stay on each of its days: arrival and departure marked, the nights in between quieter */
+.week-col li a.in-casa strong,.month-day li.in-casa b{color:var(--muted);font-weight:600}
+.week-col li a.partenza strong{color:var(--warn)}.month-day li.partenza b{color:var(--warn)}
+.month-day li.in-casa{opacity:.75}
+#resource-description{display:block;margin-top:6px;font-size:13px}
+
+/* 2.13.0: a checkbox drawn as a switch (the client's emails, the emails to the clients) */
+.switch{display:inline-flex;align-items:center;gap:12px;margin:0;cursor:pointer;font-weight:600;color:var(--ink)}
+.switch input[type=checkbox]{appearance:none;position:relative;flex:none;width:46px;height:26px;min-height:26px;margin:0;padding:0;border:0;border-radius:999px;background:var(--line);cursor:pointer;transition:background-color .25s}
+.switch input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--paper);box-shadow:0 1px 3px #2b223640;transition:transform .25s cubic-bezier(.3,1.4,.6,1)}
+.switch input[type=checkbox]:checked{background:var(--ok)}.switch input[type=checkbox]:checked::after{transform:translateX(20px)}
+.switch input[type=checkbox]:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+
+/* 2.13.0: the emails to the clients, each with its preview */
+.client-mails{margin-top:34px}
+.mail-kinds{display:grid;gap:16px}
+.mail-kind{padding:0;overflow:hidden}
+.mail-kind-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--line)}
+.mail-kind-head h3{margin:0;font-size:17px}.mail-kind-head p{margin:3px 0 0}
+.mail-kind-body{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;padding:18px 22px 22px;transition:opacity .2s}
+.mail-kind:not(.is-on) .mail-kind-body{opacity:.55}
+.mail-edit .field{margin-bottom:12px}.mail-edit .field small{display:block;margin-top:4px}
+.mail-fields{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 12px}.mail-fields>span{font-size:13px;margin-right:2px}
+.chip-button{min-height:0;margin:0;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--brand);font-size:13px;font-weight:600;box-shadow:none}
+.chip-button:hover{border-color:var(--brand);background:var(--soft)}
+.mail-preview{margin:0;display:grid;gap:8px;align-content:start}
+.mail-preview figcaption{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mail-sheet{padding:16px 18px;border-radius:var(--r-sm);background:var(--bg);border:1px solid var(--line)}
+.mail-from{margin:0 0 6px;font-size:13px;color:var(--muted)}.mail-from span{font-weight:600;margin-right:4px}
+.mail-subject{margin:0 0 12px;font-weight:700;color:var(--ink);overflow-wrap:anywhere}
+.mail-text{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.mail-save{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.mail-save button{margin-top:0}
+@media(max-width:850px){.mail-kind-body{grid-template-columns:1fr}}
+
+/* 2.13.0: the dashboard: Oggi and Prossimi 7 giorni open their list, day by day */
+.metric-link{display:block;color:inherit;text-decoration:none;cursor:pointer;transition:background-color .2s}
+.metric-link:hover{background:var(--soft);text-decoration:none}
+.metric-link.is-current{background:var(--soft)}.metric-link.is-current strong{color:var(--brand)}
+.metric-link span::after{content:" ›";opacity:0;transition:opacity .2s}.metric-link:hover span::after,.metric-link.is-current span::after{opacity:1}
+.dash-list .section-heading{align-items:center}
+.segmented a[aria-selected=true]{background:var(--brand);color:var(--brand-ink,#fff)}
+.list-day{display:flex;align-items:baseline;gap:8px;margin:18px 0 6px;font-size:14px;font-weight:700;color:var(--ink);scroll-margin-top:80px}
+.list-day:first-child{margin-top:4px}.list-day small{font-weight:600;color:var(--muted);text-transform:none}
+.dash-list .tab-panel{max-height:560px;overflow-y:auto}
+.bars a rect{cursor:pointer;transition:opacity .2s}.bars a:hover rect{opacity:.8}
+
+/* 2.13.0: Logo e aspetto, with the menu and the booking page as they will look */
+.brand-form{--pick:#7a55ad;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;margin-top:6px}
+.brand-fields .field{margin-bottom:16px}.brand-fields .label{display:block;font-weight:600;margin-bottom:6px}
+.logo-drop{display:flex;align-items:center;gap:16px;padding:14px 16px;border:1.5px dashed var(--line);border-radius:var(--r);cursor:pointer;transition:border-color .2s,background-color .2s}
+.logo-drop:hover{border-color:var(--brand);background:var(--soft)}
+.logo-field:has(input[type=file]:focus-visible) .logo-drop{outline:2px solid var(--brand);outline-offset:2px}
+.logo-drop-text strong{display:block;color:var(--brand)}.logo-drop-text small{display:block;color:var(--muted);margin-top:2px}
+.logo-field input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.logo-field .check{margin-top:10px}
+.brand-mark{flex:none;display:grid;place-items:center;width:56px;height:56px;padding:6px;border-radius:14px;background:#fff;border:1px solid var(--line);overflow:hidden}
+.brand-mark img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.brand-letter{display:grid;place-items:center;width:calc(100% + 12px);height:calc(100% + 12px);margin:-6px;background:var(--pick);color:#fff;font:700 22px/1 var(--head)}
+.color-pick{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.color-pick input[type=color]{width:52px;height:44px;padding:3px;cursor:pointer}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.swatch{width:28px;height:28px;min-height:0;margin:0;padding:0;border-radius:50%;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--line);cursor:pointer;transition:transform .15s}
+.swatch:hover{transform:scale(1.12)}
+.swatch[data-color="#7a55ad"]{background:#7a55ad}.swatch[data-color="#be185d"]{background:#be185d}.swatch[data-color="#b91c1c"]{background:#b91c1c}
+.swatch[data-color="#c2410c"]{background:#c2410c}.swatch[data-color="#a16207"]{background:#a16207}.swatch[data-color="#15803d"]{background:#15803d}
+.swatch[data-color="#0f766e"]{background:#0f766e}.swatch[data-color="#1d4ed8"]{background:#1d4ed8}.swatch[data-color="#334155"]{background:#334155}
+.brand-preview{display:grid;gap:18px;align-content:start}
+.brand-preview figure{margin:0;display:grid;gap:8px}
+.brand-preview figcaption{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mock-side{display:flex;align-items:center;gap:12px;padding:18px;border-radius:var(--r);background:#2b2236;color:#fff}
+.mock-side .brand-mark{width:46px;height:46px;border:0}.mock-side strong{display:block;font-family:var(--head)}.mock-side small{color:#b0a4c2}
+.mock-page{padding:18px;border-radius:var(--r);background:var(--paper);border:1px solid var(--line)}
+.mock-head{display:flex;align-items:center;gap:12px}.mock-head .brand-mark{width:42px;height:42px;padding:4px;border-radius:11px}.mock-head strong{font:600 18px/1.2 var(--head)}
+.mock-tagline{margin:8px 0 0;color:var(--muted);min-height:1.4em}
+.mock-slots{display:flex;gap:8px;margin:14px 0}
+.mock-slots span{padding:6px 12px;border-radius:10px;border:1px solid var(--line);font-weight:600;font-size:14px}
+.mock-slots .on{background:var(--pick);border-color:var(--pick);color:#fff}
+.mock-button{display:inline-block;padding:9px 20px;border-radius:12px;background:var(--pick);color:#fff;font-weight:700}
+@media(max-width:900px){.brand-form{grid-template-columns:1fr}}
+
+/* 2.13.0: the business's own logo at the top of the menu (Windows edition) */
+.tenant-mark{flex:none;display:grid;place-items:center;width:42px;height:42px;padding:4px;border-radius:12px;background:#fff}
+.tenant-mark img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.tenant-mark.wide{width:auto;height:46px;max-width:210px;padding:6px 10px;border-radius:10px}.tenant-mark.wide img{height:34px;width:auto}

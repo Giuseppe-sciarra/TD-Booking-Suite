@@ -42,20 +42,63 @@
   agenda.querySelectorAll("[data-lanes]").forEach(el=>el.style.setProperty("--lanes",el.dataset.lanes));
   const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";
   (now||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"nearest"});});
- document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));
+ document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select,form[data-autosubmit] input[type=checkbox]").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));
  // 2.11.0: the tabs of the client card; without the script every panel shows, one after the other. A link to
  // something inside a panel (#nuovo-trattamento) opens that panel first
  document.querySelectorAll("[data-tabs]").forEach(box=>{
   const tabs=[...box.querySelectorAll("[data-tab]")];
   const show=name=>{if(!tabs.some(t=>t.dataset.tab===name))name=box.dataset.default;
-   tabs.forEach(t=>{const on=t.dataset.tab===name,panel=document.getElementById(t.dataset.tab);t.setAttribute("aria-selected",on);t.tabIndex=on?0:-1;if(panel)panel.hidden=!on;});};
+   tabs.forEach(t=>{const on=t.dataset.tab===name,panel=document.getElementById(t.dataset.tab);t.setAttribute("aria-selected",on);t.tabIndex=on?0:-1;if(panel)panel.hidden=!on;});
+   document.querySelectorAll("[data-tab-link]").forEach(a=>a.classList.toggle("is-current",a.dataset.tabLink===name));};
   const fromHash=()=>{const target=location.hash.length>1?document.getElementById(decodeURIComponent(location.hash.slice(1))):null;return target?.closest(".tab-panel")?.id||box.dataset.default;};
   show(fromHash());
   tabs.forEach((t,i)=>{
    t.addEventListener("click",e=>{e.preventDefault();show(t.dataset.tab);history.replaceState(null,"","#"+t.dataset.tab);});
    t.addEventListener("keydown",e=>{const step={ArrowRight:1,ArrowLeft:-1}[e.key];if(!step)return;e.preventDefault();const next=tabs[(i+step+tabs.length)%tabs.length];next.focus();next.click();});});
   document.querySelectorAll("[data-tab-link]").forEach(a=>a.addEventListener("click",()=>show(a.dataset.tabLink)));
-  window.addEventListener("hashchange",()=>show(fromHash()));
+  // 2.13.0: a link to something in a hidden panel (a day of the week on the dashboard) shows it once it is open
+  window.addEventListener("hashchange",()=>{show(fromHash());document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView({block:"nearest",behavior:"smooth"});});
+ });
+ // 2.13.0: the emails to the clients: the preview with an example booking, a field put where the cursor is, the
+ // standard text back with one click
+ document.querySelectorAll("[data-mails]").forEach(box=>{
+  const sample=JSON.parse(document.getElementById("mail-sample").textContent);
+  const fill=t=>t.replace(/\{(\w+)\}/g,(m,k)=>k in sample?sample[k]:m);
+  box.querySelectorAll("[data-mail]").forEach(card=>{
+   const subject=card.querySelector("[data-mail-subject]"),body=card.querySelector("[data-mail-body]"),on=card.querySelector("[data-mail-on]");
+   let last=body;
+   const draw=()=>{card.querySelector("[data-preview-subject]").textContent=fill(subject.value||subject.dataset.default);
+    card.querySelector("[data-preview-body]").textContent=fill(body.value||body.dataset.default);
+    card.classList.toggle("is-on",on.checked);on.nextElementSibling.textContent=on.checked?"Parte":"Spenta";};
+   [subject,body].forEach(f=>{f.addEventListener("input",draw);f.addEventListener("focus",()=>{last=f;});});
+   on.addEventListener("change",draw);
+   card.querySelectorAll("[data-insert]").forEach(b=>b.addEventListener("click",()=>{
+    const a=last.selectionStart??last.value.length,z=last.selectionEnd??a;
+    last.setRangeText(b.dataset.insert,a,z,"end");last.focus();draw();}));
+   card.querySelector("[data-mail-reset]").addEventListener("click",()=>{subject.value=subject.dataset.default;body.value=body.dataset.default;draw();});
+   draw();});
+ });
+ // 2.13.0: Logo e aspetto: the chosen logo, colour and line are seen at once in the menu and on the booking page
+ document.querySelectorAll("[data-brand]").forEach(form=>{
+  const file=form.querySelector("[data-brand-file]"),color=form.querySelector("[data-brand-color]"),line=form.querySelector("[data-brand-tagline]");
+  const remove=form.querySelector("[data-brand-remove]"),preview=form.querySelector("[data-brand-preview]"),marks=[...form.querySelectorAll("[data-brand-mark]")];
+  const original=marks.map(m=>m.innerHTML),letter=(form.dataset.name||"?").trim().charAt(0).toUpperCase();
+  const paint=()=>{form.style.setProperty("--pick",color.value);};
+  const show=src=>marks.forEach((m,i)=>{m.replaceChildren();
+   if(src){const img=document.createElement("img");img.src=src;img.alt="";m.append(img);}
+   else if(src===null){const s=document.createElement("span");s.className="brand-letter";s.textContent=letter;m.append(s);}
+   else m.innerHTML=original[i];});
+  file.addEventListener("change",()=>{const f=file.files[0];if(remove)remove.checked=false;
+   if(!f){show(undefined);return;}
+   const pick=form.querySelector("[data-brand-pick]");pick.classList.remove("danger-text");
+   if(f.size>1024*1024){pick.textContent="Troppo grande: il logo va al massimo di 1 MB";pick.classList.add("danger-text");file.value="";show(undefined);return;}
+   pick.textContent=f.name;
+   const r=new FileReader();r.onload=()=>show(r.result);r.readAsDataURL(f);});
+  remove?.addEventListener("change",()=>{if(remove.checked){file.value="";show(null);}else show(undefined);});
+  color.addEventListener("input",paint);
+  form.querySelectorAll("[data-color]").forEach(b=>b.addEventListener("click",()=>{color.value=b.dataset.color;paint();}));
+  line.addEventListener("input",()=>{preview.querySelector("[data-brand-tagline-out]").textContent=line.value;});
+  paint();
  });
  // 2.12.0: a field's suggestions (a datalist) in the program's own list instead of the browser's black box:
  // what is typed filters them, arrows and Enter choose, Esc closes

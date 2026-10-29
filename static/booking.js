@@ -88,7 +88,7 @@
  [option,resource,party,day,departure].forEach(el=>el.addEventListener("change",loadSlots));
  // 2.12.0: with operators' photos, one face each to choose with whom; the select stays, for the keyboard and the logic
  function pickers(){
-  const box=$("resource-pick"),s=current();if(!box)return;
+  const box=$("resource-pick"),s=current();if(!box)return;mark();
   const people=s?.kind==="resource"?s.resources:[];
   box.replaceChildren();box.hidden=!people.some(r=>r.photo);resource.classList.toggle("has-pick",!box.hidden);
   if(box.hidden)return;
@@ -99,7 +99,10 @@
    b.addEventListener("click",()=>{resource.value=b.dataset.value;resource.dispatchEvent(new Event("change"));mark();});return b;};
   box.append(face(null),...people.map(face));mark();
  }
- function mark(){document.querySelectorAll("#resource-pick .pick").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.value===resource.value)));}
+ function mark(){document.querySelectorAll("#resource-pick .pick").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.value===resource.value)));
+  // the description of the operator or the room chosen, as its form promises
+  const note=$("resource-description"),r=current()?.resources.find(x=>x.id===resource.value);
+  if(note){note.textContent=r?.description||"";note.hidden=!note.textContent;}}
  resource.addEventListener("change",mark);
  form.addEventListener("submit",async e=>{
   e.preventDefault();if(busy||!selected||!form.reportValidity())return;
@@ -108,7 +111,7 @@
    const s=current(),answers={};
    document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
    const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value};
-   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
+   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
    // Persist only a fingerprint and random idempotency key, never personal fields.
    let cacheKey="";
