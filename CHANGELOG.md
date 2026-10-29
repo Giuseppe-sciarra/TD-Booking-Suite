@@ -1,6 +1,11 @@
-# TD Booking Suite 2.10.1 — registro modifiche
+# TD Booking Suite 2.10.2 — registro modifiche
 
-**29 ottobre 2026 · versione 2.10.1**
+**29 ottobre 2026 · versione 2.10.2**
+
+## 2.10.2 — versione dell'edizione Windows
+
+- Il core non cambia: la versione segue l'edizione Windows, dove *Ricomincia da zero* funziona anche lanciato a mano da un PowerShell di amministratore, e un da zero rimasto a metà si finisce rilanciandolo o riaprendo l'MSI, con la stessa licenza
+- **Plugin WordPress 2.10.2**: stesso codice della 2.10.0, cambia solo il numero di versione
 
 ## 2.10.1 — versione dell'edizione Windows
 

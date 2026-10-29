@@ -1,4 +1,4 @@
-# TD Booking Suite 2.10.1 · Installazione
+# TD Booking Suite 2.10.2 · Installazione
 
 Questa guida installa TD Booking Suite su un server nuovo, dietro NPMplus. Ogni passo dice cosa scrivere e cosa deve comparire. Se compare altro, fermati e guarda **Se qualcosa non va**, in fondo.
 
@@ -18,19 +18,19 @@ Sul server girano tre container: `db` (il database), `web` (l'applicazione) e `w
 Dal tuo computer:
 
 ```
-scp TD-Booking-Suite-2.10.1-sorgenti.zip root@IP-DEL-SERVER:/opt/
+scp TD-Booking-Suite-2.10.2-sorgenti.zip root@IP-DEL-SERVER:/opt/
 ```
 
 Sul server:
 
 ```
 cd /opt
-unzip -q TD-Booking-Suite-2.10.1-sorgenti.zip
+unzip -q TD-Booking-Suite-2.10.2-sorgenti.zip
 cd /opt/td-booking-suite
 cat VERSION
 ```
 
-**Deve comparire:** `2.10.1`
+**Deve comparire:** `2.10.2`
 
 ## 2. Crea la configurazione
 
@@ -151,7 +151,7 @@ L'amministratore dell'attività, entrando, trova **Configura l'attività**: sedi
 
 In WordPress:
 
-1. *Plugin › Aggiungi nuovo › Carica plugin*: `td-booking-suite-2.10.1-wordpress.zip`, poi attiva. Nell'edizione Cloud lo zip si scarica anche dal portale, in **Area agenzia › Plugin WordPress**, con i valori da inserire per ogni attività
+1. *Plugin › Aggiungi nuovo › Carica plugin*: `td-booking-suite-2.10.2-wordpress.zip`, poi attiva. Nell'edizione Cloud lo zip si scarica anche dal portale, in **Area agenzia › Plugin WordPress**, con i valori da inserire per ogni attività
 2. *Impostazioni › TD Booking Suite › Collegati al portale*: indirizzo del portale, per esempio `https://prenota.tastieredigitali.it`, e il codice di collegamento. Il plugin autorizza il sito, legge sedi e servizi e crea la pagina **Prenota** con `[td_booking_suite]`. Nelle stesse impostazioni trovi gli shortcode per una sola sede o un solo servizio
 3. In alternativa, le *Impostazioni manuali*: origine del portale e indirizzo breve dell'attività, con il sito autorizzato in *Impostazioni e sito*
 
