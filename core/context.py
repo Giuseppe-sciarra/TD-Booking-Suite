@@ -23,7 +23,7 @@ def presentation(request):
  return {"trial_new":trials,"mfa_missing":missing,"mfa_enabled":settings.MFA_ENABLED,"usernames":settings.LOGIN_USERNAMES,"site":current(request),"edition":settings.EDITION,"tenant":brand,"member":member,"support":getattr(request,"support",None),"can":can,"mfa_ok":mfa_ok,"app_version":settings.VERSION,"source_url":settings.SOURCE_URL,
          # an edition's own menu entries, a list or a function of the request (2.10.0: entries that go once done)
          "extra_nav":(settings.EXTRA_NAV(request) if callable(settings.EXTRA_NAV) else settings.EXTRA_NAV) if user and user.is_authenticated and user.is_staff else (),
-         "extra_css":settings.EXTRA_CSS,
+         "extra_css":settings.EXTRA_CSS,"public_booking":settings.PUBLIC_BOOKING,
          "edition_label":settings.EDITION_LABEL or ("Private" if settings.EDITION=="private" else "Cloud"),
          # how the platform staff are called: the agency here, the program's administrator in an installed edition
          "agency":settings.AGENCY_NAMES,

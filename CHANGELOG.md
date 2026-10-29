@@ -1,6 +1,22 @@
-# TD Booking Suite 2.9.1 — registro modifiche
+# TD Booking Suite 2.10.0 — registro modifiche
 
-**29 ottobre 2026 · versione 2.9.1**
+**29 ottobre 2026 · versione 2.10.0**
+
+## 2.10.0 — agenda per operatore, operatori veri, chi configura e chi lavora, menu a gruppi, pagine compatte
+
+- **Agenda del giorno per operatore**, per le attività ad appuntamento (parrucchieri, estetica, studi, campi): una colonna per operatore, una riga ogni 15 minuti, gli appuntamenti dove cadono e il tempo fuori orario in grigio. Uno spazio libero apre la prenotazione con operatore, giorno e ora già messi. Frecce per il giorno prima e dopo, Oggi, scelta del giorno e della sede; l'elenco resta a un clic (*Elenco*). Ristoranti, soggiorni ed eventi restano sull'elenco
+- **Operatori veri**: niente più *Posti disponibili* su una persona (restano per camere e mezzi). Ogni operatore ha *Cosa fa*, i servizi da spuntare (uno nuovo parte con tutti), e se serve *Ha giorni e orari suoi*, un orario per giorno; dalla sua scheda si segnano ferie e giorni liberi. Il motore delle disponibilità li rispettava già: ora si impostano dalla pagina
+- **Prenotazione manuale**: torna all'agenda, si chiama *Trattamento* per parrucchieri, estetica e SPA (*Visita* negli studi, *Seduta* dal tatuatore), il cliente si cerca in rubrica, operatore, giorno e ora arrivano dall'agenda e l'orario è già scelto se è libero. Anche la prenotazione aperta e lo spostamento tornano indietro
+- **Chi configura e chi lavora, in tutte le edizioni**: l'agenzia (l'amministratore del programma nell'edizione Windows) imposta tipo di attività, sedi, servizi, varianti, turni, eventi, domande del modulo, allergeni, sito e parte tecnica. L'attività lavora e tiene aggiornati orari, chiusure e ferie e il personale: operatori, camere, campi e persone con accesso. Nell'edizione Private anche il tipo di attività passa all'amministratore della piattaforma
+- **Il tipo di attività non azzera più niente**: cliccare di nuovo lo stesso tipo lascia servizi, operatori e orari come sono e aggiorna solo le sedi (una sede nuova parte con il catalogo del tipo). Un tipo diverso va confermato con una spunta che dice cosa sostituisce
+- **Un'attività nuova nasce con il catalogo vero del suo tipo**: per un salone Taglio, Piega e Colore, due operatori, martedì-sabato, come *Configura l'attività*; prima era un servizio solo chiamato come il tipo
+- **Menu a gruppi**: ogni gruppo in una cornice con il suo titolo, un'icona su ogni voce; il lavoro di ogni giorno in alto, l'area dell'agenzia richiudibile sotto, la Guida in fondo. Un'edizione può dare le sue voci con una funzione (`EXTRA_NAV`) e farle sparire quando non servono più
+- **Pagine compatte su Full HD e più grandi**, anche al 125%: titoli, schede, campi, avvisi e menu più piccoli, l'accesso tutto in una schermata. Telefoni e finestre strette restano come prima
+- **Pagina prenotazioni e sito si possono spegnere** per edizione (`PUBLIC_BOOKING`): spariscono il collegamento WordPress e i link alla pagina. Di serie accesi
+- **Plugin WordPress 2.10.0**: stesso codice della 2.9.1, cambia solo il numero di versione, che segue il core
+
+### Test
+- `tests/test_agenda.py` (colonne per operatore, spazi liberi con operatore/giorno/ora, orari dell'operatore, operatore che vede solo la sua colonna, ristorante sull'elenco), operatore con servizi e orari, tipo che non azzera e cambio con conferma, regola di chi configura in `tests/test_profile.py`; i test che facevano configurare servizi e sedi all'attività ora lo fanno come agenzia e controllano il 403 per l'attività. Suite completa verde (297 test)
 
 ## 2.9.1 — fogli di stile per edizione, giorno locale nella dashboard dell'agenzia
 

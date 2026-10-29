@@ -67,8 +67,11 @@ def test_every_page_for_every_role(world,role):
         if r.status_code==200 and r["Content-Type"].startswith("text/html"):check_markup(r.content.decode(),path)
     p=f"/t/{t.slug}"
     if role=="owner":
-        must=[x for x in pages(t,ids) if not x.startswith("/platform/") and x not in (f"{p}/settings/",f"{p}/smtp/")]
+        # 2.10.0: the owner keeps hours, closing days and staff; type, locations and services are the agency's
+        agency_only=lambda x:any(f"{p}/catalog/{k}/" in x for k in ("services","locations","options","turns","occurrences"))
+        must=[x for x in pages(t,ids) if not x.startswith("/platform/") and x not in (f"{p}/settings/",f"{p}/smtp/") and not agency_only(x)]
         assert all(seen[x] in (200,302) for x in must),{x:seen[x] for x in must if seen[x] not in (200,302)}
+        assert all(seen[x]==403 for x in pages(t,ids) if agency_only(x) and x in seen)
     if role=="marketing":assert seen[f"{p}/bookings/"]==403 and seen[f"{p}/contacts/"]==200
     if role=="viewer":assert seen[f"{p}/bookings/"]==200 and seen[f"{p}/members/"]==403
 

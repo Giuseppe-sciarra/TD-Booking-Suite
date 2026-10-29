@@ -91,12 +91,23 @@ def test_more_than_five_locations(sample):
     r=c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"ristorante","locations":"custom","locations_custom":"99"},follow=True).content.decode()
     assert "Le sedi vanno da 1 a 50" in r
 
-def test_the_single_admin_changes_the_profile_in_private(sample,settings):
+def test_the_administrator_sets_up_the_business_and_the_owner_runs_it(sample,settings):
+    # 2.10.0, every edition: type, locations, services and the technical side are the agency's (the program's
+    # administrator); the owner keeps opening hours, closing days and staff up to date
     settings.EDITION="private"
     t,o,s=sample
     owner,_=client_as(t,role="owner")
-    assert 'name="business_type"' in owner.get(f"/t/{t.slug}/setup/").content.decode()
-    r=owner.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"},follow=True)
+    page=owner.get(f"/t/{t.slug}/setup/").content.decode()
+    assert 'name="business_type"' not in page and "li imposta l&#x27;agenzia" in page or "li imposta l'agenzia" in page
+    assert "<h2>Orari di apertura</h2>" in page and "<h2>Servizi</h2>" not in page and "<h2>Sedi</h2>" not in page
+    assert owner.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"}).status_code==403
+    for kind in ("services","locations","options","turns","occurrences"):
+        assert owner.get(f"/t/{t.slug}/catalog/{kind}/").status_code==403 and owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==403
+    for kind in ("schedules","exceptions","resources"):assert owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==200
+    tabs=owner.get(f"/t/{t.slug}/catalog/schedules/").content.decode()
+    assert ">Chiusure e giorni speciali</a>" in tabs and ">Servizi</a>" not in tabs and ">Sedi</a>" not in tabs
+    admin,_=client_as(t,staff=True)
+    r=admin.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"},follow=True)
     assert "Studio medico / Fisioterapia" in r.content.decode()
     staffer,_=client_as(t,role="operator")
     assert staffer.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"hotel","locations":"1"}).status_code==403
@@ -276,16 +287,16 @@ def test_service_form_follows_the_kind(sample):
     t,o,s=sample
     owner,_=client_as(t,role="owner")
     Tenant.objects.filter(pk=t.pk).update(business_type="ristorante")
-    form=owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
-    assert 'name="kind"' not in form and 'name="checkin"' not in form and 'name="min_days"' not in form and 'name="capacity"' in form
-    assert "Posti (coperti)" in form and 'name="turnover"' in form and "Passo degli orari" not in form
+    # 2.10.0: services are set up by the agency only
+    assert owner.get(f"/t/{t.slug}/catalog/services/new/").status_code==403
     c,_=staff_client()
+    # the agency's form has every kind's fields, shown by the kind chosen; it starts from the restaurant's
     form=c.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
-    assert 'name="kind"' in form and "data-kinds" in form
+    assert 'name="kind"' in form and "data-kinds" in form and 'name="capacity"' in form and 'name="turnover"' in form and "Passo degli orari" not in form
 
 def test_location_form_is_in_italian(sample):
     t,o,s=sample
-    owner,_=client_as(t,role="owner")
+    owner,_=client_as(t,staff=True)
     form=owner.get(f"/t/{t.slug}/catalog/locations/new/").content.decode()
     assert ">Indirizzo<" in form and ">Telefono<" in form and ">Address<" not in form
 
@@ -355,7 +366,7 @@ def test_password_managers_stay_out_of_the_portal(sample):
 def test_catalog_items_can_be_removed(sample):
     t,o,s=sample
     from core.booking import create_booking
-    owner,_=client_as(t,role="owner")
+    owner,_=client_as(t,staff=True)
     apply_profile(t,"parrucchiere",["Centro","Mare"])
     with scope(t):
         taglio=Service.objects.get(name="Taglio",location__name="Centro");piega=Service.objects.get(name="Piega",location__name="Centro")
@@ -388,12 +399,13 @@ def test_catalog_items_can_be_removed(sample):
 def test_restaurant_catalog_speaks_its_language(sample):
     t,o,s=sample
     apply_profile(t,"ristorante",["Centro"])
-    c,_=client_as(t,role="owner")
+    c,_=client_as(t,staff=True)
     page=c.get(f"/t/{t.slug}/catalog/services/").content.decode()
     assert "La sede è il luogo, il servizio è cosa si prenota" in page and "Sede: Centro" in page
-    assert "Risorse" not in page and "Varianti dei servizi" not in page and "Operatori" not in page
+    # the tabs speak the restaurant's language (the agency's template picker lists every type, operators included)
+    assert ">Risorse</a>" not in page and ">Varianti dei servizi</a>" not in page and ">Operatori</a>" not in page
     setup=c.get(f"/t/{t.slug}/setup/").content.decode()
-    assert "<h2>Risorse</h2>" not in setup and "Operatori" not in setup
+    assert "<h2>Risorse</h2>" not in setup and "<h2>Operatori</h2>" not in setup
     apply_profile(t,"parrucchiere",["Centro"])
     page=c.get(f"/t/{t.slug}/catalog/resources/").content.decode()
     assert "<h1>Operatori</h1>" in page and "ogni operatore ha la sua agenda" in page
@@ -431,7 +443,7 @@ def test_restaurant_counts_covers_per_lunch_and_dinner(sample):
         assert book(20,0,12)[0].pk  # dinner has its own covers
     page=Client().get(f"/book/{t.slug}/").content.decode()
     assert '"turnover": false' in page
-    c,_=client_as(t,role="owner")
+    c,_=client_as(t,staff=True)
     form=c.get(f"/t/{t.slug}/catalog/services/{tavolo.pk}/").content.decode()
     assert 'name="turnover"' in form and "A turni: il posto si libera dopo un tempo fisso" in form
     assert "coperti per ogni pranzo e cena" in c.get(f"/t/{t.slug}/catalog/services/").content.decode()
@@ -460,7 +472,7 @@ def test_phone_without_international_prefix():
 def test_restaurant_setup_has_no_variants_link(sample):
     t,o,s=sample
     apply_profile(t,"ristorante",["Centro"])
-    c,_=client_as(t,role="owner")
+    c,_=client_as(t,staff=True)
     page=c.get(f"/t/{t.slug}/setup/").content.decode()
     assert "Varianti dei servizi" not in page
     apply_profile(t,"parrucchiere",["Centro"])

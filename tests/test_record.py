@@ -144,7 +144,7 @@ def test_allergens_in_the_booking_form(sample):
 
 def test_allergens_page(sample):
     t,o,s=sample
-    owner,_=client_as(t)
+    owner,_=client_as(t,staff=True)  # 2.10.0: what the form asks is set up by the agency
     url=f"/t/{t.slug}/setup/allergie/"
     owner.post(url,{"action":"toggle","on":"1"})
     t.refresh_from_db();assert t.allergens_on and t.allergens==ALLERGENS and len(ALLERGENS)==15
@@ -153,6 +153,8 @@ def test_allergens_page(sample):
     t.refresh_from_db();assert t.allergens[-1]=="Vegano" and t.allergens.count("Vegano")==1 and "Lupini" not in t.allergens
     reception,_=member(t,"reception")  # no catalog.write
     assert reception.post(url,{"action":"toggle","on":"0"}).status_code==403
+    real_owner,_=client_as(t)
+    assert real_owner.post(url,{"action":"toggle","on":"0"}).status_code==403
 
 def test_restaurant_starts_with_allergens_and_questions(sample):
     t,o,s=sample
@@ -168,7 +170,7 @@ def test_recommended_questions_added_without_removing(sample):
     t.business_type="officina";t.save()
     with scope(t):
         s.fields=[{"key":"targa","label":"La targa","type":"text","required":False},{"key":"mio","label":"Mia domanda","type":"text","required":False}];s.save()
-    owner,_=client_as(t)
+    owner,_=client_as(t,staff=True)  # 2.10.0: the agency sets up the questions
     page=owner.get(f"/t/{t.slug}/setup/").content.decode()
     assert "Domande consigliate per Officina" in page and "Chilometri attuali" in page and "La targa" not in page
     owner.post(f"/t/{t.slug}/setup/consigliati/",{"q":["veicolo","km"]})
@@ -181,7 +183,7 @@ def test_new_service_starts_with_questions_and_operators(sample):
     t,o,s=sample
     t.business_type="centro_estetico";t.save()
     svc,people=salon(t)
-    owner,_=client_as(t)
+    owner,_=client_as(t,staff=True)
     page=owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
     assert "prima_volta" in page and page.count("checked")>=len(people)
 

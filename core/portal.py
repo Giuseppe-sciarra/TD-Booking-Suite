@@ -52,6 +52,10 @@ EDIT_HELP={
  "turns":"Un turno che si ripete ogni settimana, per esempio la cena del venerdì dalle 19:30 alle 23:00, con i suoi coperti",
  "occurrences":"Una data dell'evento o del corso, con i posti disponibili",
 }
+# 2.10.0, every edition: the agency (the program's administrator) sets up type, locations, services and the technical
+# side; the business runs the day and keeps its opening hours, closing days and staff (operators, rooms) up to date
+OWNER_CATALOG={"schedules","exceptions","resources"}
+def catalog_allowed(request,kind):return request.user.is_staff or kind in OWNER_CATALOG
 def catalog_kinds(tenant=None):
     """Pages appear only when a service actually uses them, with the names the business uses: a restaurant
     has no operators and no variants, a salon calls its resources Operatori, a hotel Camere."""
@@ -94,18 +98,20 @@ def setup(request,slug):
     ]
     # site and email are set by the agency: business users do not even see them
     agency=[a for a in agency if a["link"]]
+    steps=[s for s in steps if catalog_allowed(request,s["key"])]
     done=sum(1 for s in steps if s["done"])+sum(1 for a in agency if a["done"])
     from .presets import PRESETS
     from .profile import describe,MAX_LOCATIONS,default_name
     profile=describe(t)
     shown=max(5,len(profile["locations"]))
     names=[l.name for l in profile["locations"]]+[default_name(i) for i in range(len(profile["locations"]),shown)]
-    return render(request,"setup.html",{"steps":steps,"agency":agency,"done":done,"total":len(steps)+len(agency),
+    return render(request,"setup.html",{"steps":steps,"agency":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
         "counts":range(1,6),"max_locations":MAX_LOCATIONS,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
-        "recommended":recommended(t)[0],"allergens_card":t.business_type=="ristorante" or t.allergens_on})
+        # questions and allergies shape the services: the agency's, like the services themselves (2.10.0)
+        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":can_profile(request) and (t.business_type=="ristorante" or t.allergens_on)})
 
 def recommended(tenant):
     """2.8.0: the usual questions of this kind of business that some active service does not ask yet."""
@@ -120,6 +126,7 @@ def recommended_view(request,slug):
     from django.http import Http404
     if request.method!="POST":raise Http404
     require(request,"catalog.write")
+    if not can_profile(request):raise PermissionDenied
     missing,services=recommended(request.tenant)
     chosen=[q for q in missing if q["key"] in request.POST.getlist("q")]
     changed=0
@@ -137,6 +144,7 @@ def recommended_view(request,slug):
 def allergens_view(request,slug):
     """2.8.0: the allergies and intolerances the booking form asks about, as the business wants them."""
     require(request,"catalog.write")
+    if not can_profile(request):raise PermissionDenied
     from .presets import ALLERGENS
     t=request.tenant
     if request.method=="POST":
@@ -165,8 +173,8 @@ def allergens_view(request,slug):
     return render(request,"allergens.html",{"items":t.allergens or [],"on":t.allergens_on,"standard":ALLERGENS})
 
 def can_profile(request):
-    """Type of business, locations and the WordPress code: the agency, or the administrator of a Private installation."""
-    return request.user.is_staff or (settings.EDITION=="private" and can(request,"users.manage"))
+    """Type of business, locations and the WordPress code: the agency, in every edition (2.10.0)."""
+    return request.user.is_staff
 
 def setup_action(request,slug):
     """2.6.0: the profile of the business in one go, and the code that connects the WordPress site."""
@@ -574,6 +582,7 @@ def calendar_conflicts(tenant):
 def catalog(request,slug,kind):
     if kind not in CATALOG:raise PermissionDenied
     require_role(request,schedule=True)
+    if not catalog_allowed(request,kind):raise PermissionDenied
     model,_,title=CATALOG[kind]
     rows=model.objects.all()
     from .presets import PRESETS,units
@@ -582,12 +591,13 @@ def catalog(request,slug,kind):
         one,many,help_text=units(request.tenant.business_type);title=many
     # 2.6.0: active items first, by name or by date; the ones kept for old bookings at the end
     order={"schedules":("weekday","start"),"exceptions":("-date",),"occurrences":("-active","start"),"services":("-active","location__name","name"),"resources":("-active","location__name","name")}.get(kind,("-active","name"))
-    return render(request,"catalog.html",{"kind":kind,"title":title,"help":help_text,"page":Paginator(rows.order_by(*order,"pk"),50).get_page(request.GET.get("page")),"catalog":catalog_kinds(request.tenant),
+    return render(request,"catalog.html",{"kind":kind,"title":title,"help":help_text,"page":Paginator(rows.order_by(*order,"pk"),50).get_page(request.GET.get("page")),"catalog":{k:v for k,v in catalog_kinds(request.tenant).items() if catalog_allowed(request,k)},
         "presets":PRESETS if kind=="services" and request.user.is_staff else {},"many_locations":Location.objects.filter(active=True).count()>1,"removable":kind in REMOVABLE,
         "can_profile":can_profile(request),"business_label":(PRESETS.get(request.tenant.business_type) or {}).get("label","")})
 def catalog_edit(request,slug,kind,item_id=None):
     if kind not in CATALOG:raise PermissionDenied
     require(request,"catalog.write")
+    if not catalog_allowed(request,kind):raise PermissionDenied
     model,formclass,title=CATALOG[kind]
     instance=get_object_or_404(model.objects,pk=item_id) if item_id else None
     extra={};need_confirm=False
@@ -635,6 +645,7 @@ REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","optio
 def calendar_remove(request,slug,kind,item_id):
     if request.method!="POST" or kind not in CATALOG:raise PermissionDenied
     require(request,"catalog.write")
+    if not catalog_allowed(request,kind):raise PermissionDenied
     model=CATALOG[kind][0]
     if kind in REMOVABLE:
         # 2.6.0: every catalog item can be removed; what bookings point to is switched off and kept in the history

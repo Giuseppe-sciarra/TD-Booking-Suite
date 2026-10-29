@@ -61,7 +61,7 @@ def test_role_is_always_visible(sample):
     assert "Area agenzia" in page and "Amministratore dell&#x27;agenzia" in page
 
 def test_setup_lists_the_steps_in_order(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     page=c.get(f"/t/{t.slug}/setup/").content.decode()
     order=[page.index(x) for x in ("<h2>Sedi</h2>","<h2>Orari di apertura</h2>","<h2>Servizi</h2>")]
     assert order==sorted(order) and "Turni del ristorante" not in page
@@ -75,7 +75,7 @@ def test_setup_lists_the_steps_in_order(sample):
     assert op.get(f"/t/{t.slug}/setup/").status_code==403
 
 def test_advanced_catalog_pages_appear_only_when_used(sample):
-    t,o,s=sample;c,u=client_as(t)
+    t,o,s=sample;c,u=client_as(t,staff=True)
     tabs=c.get(f"/t/{t.slug}/catalog/services/").content.decode()
     # places by capacity: no turns, dates, operators or variants
     assert "Turni del ristorante" not in tabs and "Eventi con data" not in tabs and "Varianti dei servizi" not in tabs and "Operatori e postazioni" not in tabs

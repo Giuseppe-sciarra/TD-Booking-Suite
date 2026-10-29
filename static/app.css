@@ -928,9 +928,9 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 
 /* 2.10.0: the day agenda, one column for each operator, a row every 15 minutes */
 .agenda-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:0 0 14px}.day-nav{display:flex;gap:6px}.day-nav .button{min-width:40px}
-.day-pick{display:flex;gap:8px;align-items:center;margin:0}.day-pick input,.day-pick select{width:auto;min-height:36px;padding:5px 10px}
+.day-pick{display:flex;gap:8px;align-items:center;margin:0}.day-pick button{margin:0}.day-pick input,.day-pick select{width:auto;min-height:36px;padding:5px 10px}
 .agenda-bar .segmented{margin-left:auto}
-.agenda-card{padding:0;overflow:visible}
+.card.agenda-card{padding:0;overflow:visible}
 .agenda{--row:22px;--hours:58px;--lane:minmax(130px,1fr)}
 .agenda-head,.agenda-body{display:grid;grid-template-columns:var(--hours) repeat(var(--cols,1),var(--lane))}
 .agenda-head{position:sticky;top:0;z-index:3;background:var(--paper);border-bottom:1px solid var(--line);border-radius:var(--r) var(--r) 0 0}
@@ -951,16 +951,81 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}
 @media(max-width:700px){.agenda{--lane:minmax(110px,1fr)}.agenda-card{overflow-x:auto}.agenda-bar .segmented{margin-left:0}}
 
-/* 2.10.0: the menu in framed groups, each with its icon; daily work on top, the program's settings folded below */
-.sidebar .nav-groups{margin-top:10px}.sidebar .nav-groups+.nav-groups,.sidebar .nav-admin+.nav-groups{margin-top:0}
-.nav-group{border:1px solid var(--side-line);border-radius:12px;padding:4px 6px 6px;margin:0 0 8px;background:#ffffff06}
-.sidebar .nav-group .nav-label{display:flex;align-items:center;gap:8px;margin:5px 6px 3px;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--side-muted)}
-.nav-ico{width:16px;height:16px;flex:none;fill:none;stroke:var(--pastel);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* 2.10.0: the menu in framed groups, an icon on every entry; daily work on top, the program's settings folded below */
+.sidebar .nav-groups{margin-top:12px}.sidebar .nav-groups+.nav-groups,.sidebar .nav-admin+.nav-groups{margin-top:0}
+.nav-group{border:1px solid var(--side-line);border-radius:12px;padding:4px 6px 6px;margin:0 0 12px;background:#ffffff08;box-shadow:0 1px 0 #00000026}
+.sidebar .nav-group .nav-label{display:flex;align-items:center;gap:8px;margin:2px 4px 5px;padding:6px 6px 7px;border-bottom:1px solid var(--side-line);font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--side-muted)}
+.sidebar nav a{display:flex;align-items:center;gap:10px}
+.nav-ico{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.sidebar nav a:hover .nav-ico{opacity:1}.sidebar nav a.active .nav-ico{opacity:1}
 .sidebar .nav-group nav{margin:0}
-.nav-admin summary{cursor:pointer;list-style:none;border-radius:8px;padding:3px 0}.nav-admin summary::-webkit-details-marker{display:none}
+.nav-admin summary{cursor:pointer;list-style:none}.nav-admin summary::-webkit-details-marker{display:none}
 .nav-admin summary::after{content:"";margin-left:auto;width:7px;height:7px;border:solid var(--side-muted);border-width:0 1.6px 1.6px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s}
 .nav-admin[open] summary::after{transform:rotate(-135deg) translateY(-2px)}
-.nav-admin summary:hover{color:var(--side-ink)}
-.nav-help{border:0}.sidebar .nav-help a,.sidebar .nav-group>a{display:flex;align-items:center;gap:10px}
-.sidebar .workspace{margin-bottom:6px}
+.nav-admin:not([open]) summary{border-bottom-color:transparent;margin-bottom:0}.nav-admin summary:hover{color:var(--side-ink)}
+.nav-help{border:0;background:none;box-shadow:none}
+.sidebar .workspace{margin-bottom:10px}
+.sidebar-bottom a{display:inline-flex;align-items:center;gap:8px}
 @media(max-width:850px){.sidebar details.nav-admin{display:none}.sidebar.open details.nav-admin{display:block}.sidebar.open .nav-group .nav-label{display:flex}}
+/* 2.10.0: Full HD and up, often at 125% scaling (about 1400x720 points in a window): less air than before, smaller
+   headings, tighter cards, fields and menu, the sign-in in one screen. Phones and narrow windows keep the layout above. */
+@media(min-width:851px){
+body{font-size:14px;line-height:1.5}
+h1{font-size:clamp(22px,1.8vw,28px);margin:0 0 4px}
+h2{font-size:17px;margin:0 0 10px}
+h3{font-size:15px}
+.sidebar{width:228px;padding:16px 12px 14px}.shell{margin-left:228px}
+.logo span:last-child{font-size:15px}
+.sidebar nav{margin-top:10px}
+.sidebar nav a{padding:6px 10px;margin:1px 0;font-size:13.5px}
+.nav-label{margin:14px 10px 3px;font-size:11.5px}
+.workspace{margin:14px 0 6px;padding:9px 12px}.workspace .eyebrow{font-size:11.5px}.workspace strong{font-size:14px}
+.sidebar-bottom{padding:14px 10px 0}
+.topbar{min-height:50px;padding:0 26px;font-size:13.5px}
+.topbar select{min-height:32px;padding:4px 30px 4px 10px}
+main{max-width:1480px;padding:20px 26px 16px}
+footer{padding:8px 26px 12px;font-size:12px}
+.page-heading{margin-bottom:16px;gap:16px}.page-heading p{font-size:14px;max-width:760px}
+.card{padding:16px 20px;margin-bottom:14px}
+.notice{padding:8px 14px;margin:10px 0;font-size:13.5px}
+.notice.nudge{margin:0 0 8px;padding:7px 10px 7px 14px;gap:12px}
+.nudge>div{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}.nudge strong{font-size:14px}
+label{margin:12px 0 5px;font-size:13px}
+input,select,textarea{min-height:38px;padding:7px 11px}
+button,.button{padding:8px 15px}
+.small{padding:5px 11px}
+.actions{margin-top:12px;gap:10px}
+.section-heading{margin-bottom:4px}
+.metrics{margin-bottom:14px}.metric{padding:12px 18px}.metric span{font-size:13px}
+.metric strong{font-size:26px;margin:2px 0 0}
+.dash-row{margin-top:14px}
+.bars{max-height:200px}
+.clean-list li{padding:10px 0}
+.facts div{padding:7px 0;font-size:13.5px}
+.form-grid{gap:0 18px}
+.guide-step h2{gap:8px}.step-num{width:24px;height:24px;font-size:13px}
+.steps-list{font-size:13.5px}
+
+/* sign-in: the whole card in the window, the welcome smaller beside it */
+.login{grid-template-columns:minmax(0,1fr) minmax(400px,.8fr)}
+.login-brand{padding:28px clamp(28px,4vw,56px);gap:18px}
+.login-copy h1{font-size:clamp(28px,2.6vw,40px);margin-bottom:10px}
+.login-copy p{font-size:15px}
+.login-kicker{margin-bottom:10px;font-size:14px}
+.login-stage{zoom:.78;margin:0 40px 24px 0}
+.login-panel{padding:20px 32px 14px}
+.login-card{padding:24px 28px 20px}
+.login-badge{margin-bottom:10px}
+.login-form h2{font-size:25px}.login-form>.muted{margin-bottom:12px;font-size:13.5px}
+.login-form input{min-height:40px}
+.login-form .check.remember{margin:0 0 4px}
+.login-submit{min-height:42px;margin-top:10px}
+#auth-status:empty{display:none}
+.login-form .divider{margin:12px 0 10px}
+.login-help{margin-top:12px}
+.login-note{margin-top:12px;padding:9px 12px;font-size:12px;line-height:1.4}.login-note div+div{margin-top:6px}
+.login-footer{padding:8px 20px 10px}
+}
+@media(min-width:851px) and (max-width:1200px){.sidebar{width:210px}.shell{margin-left:210px}main{padding:16px 20px}.topbar,footer{padding-left:20px;padding-right:20px}}
+@media(min-width:851px) and (max-height:760px){.login-points{display:none}.login-stage{zoom:.62;margin-bottom:12px}}
+@media(min-width:851px) and (max-height:620px){.login-stage{display:none}}
