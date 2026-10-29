@@ -1,4 +1,4 @@
-import csv,io,secrets
+import csv,io,re,secrets
 from datetime import date,datetime,time,timedelta
 from zoneinfo import ZoneInfo
 from django.conf import settings
@@ -177,15 +177,26 @@ def setup_action(request,slug):
     if not can_profile(request):raise PermissionDenied
     fresh(request);t=request.tenant;action=request.POST.get("action")
     if action=="profile":
-        from .profile import apply_profile,clean_names,MAX_LOCATIONS
+        from .profile import apply_profile,keep_profile,clean_names,MAX_LOCATIONS
+        from .presets import PRESETS
+        preset=request.POST.get("business_type","")
         try:
             raw=request.POST.get("locations","1")
             count=int(request.POST.get("locations_custom","") if raw=="custom" else raw)
             if not 1<=count<=MAX_LOCATIONS:raise ValueError(f"Le sedi vanno da 1 a {MAX_LOCATIONS}.")
             names=clean_names([request.POST.get(f"name_{i}","") for i in range(1,count+1)],count)
-            r=apply_profile(t,request.POST.get("business_type",""),names,request.user)
+            # the same type keeps what the business made; another type replaces it, only once confirmed
+            if preset and preset==t.business_type:r=keep_profile(t,names,request.user)
+            elif t.business_type in PRESETS and not request.POST.get("confirm_type"):
+                raise ValueError(f"Per passare a {PRESETS[preset]['label'] if preset in PRESETS else 'un altro tipo'} spunta la conferma: servizi, operatori e orari vengono sostituiti. Le prenotazioni restano.")
+            else:r=apply_profile(t,preset,names,request.user)
         except ValueError as ex:
             messages.error(request,str(ex) or "Dati non validi.");return redirect(reverse("setup",args=[slug])+"#tipo")
+        if r["kept"]:
+            text=f"Sedi aggiornate: {r['locations']} {'sede' if r['locations']==1 else 'sedi'}. Servizi, operatori e orari restano come li hai impostati"
+            if r["services"]:text+=f"; le sedi nuove partono con {r['services']} servizi del tipo"
+            if r["archived"]:text+=f". {r['archived']} elementi usati da prenotazioni sono stati disattivati, non cancellati"
+            messages.success(request,text+".");return redirect(reverse("setup",args=[slug])+"#tipo")
         text=f"Configurazione applicata: {r['label']}, {r['locations']} {'sede' if r['locations']==1 else 'sedi'}, {r['services']} servizi"
         if r["resources"]:
             from .presets import units
@@ -275,13 +286,17 @@ def period(request,default_days=7):
     return datetime.combine(first,time.min,tz),datetime.combine(last+timedelta(days=1),time.min,tz)
 def bookings(request,slug):
     require(request,"booking.read")
+    # 2.10.0: appointments open on the day, one column for each operator; the list stays with ?vista=elenco
+    from .agenda import fits,day_view
+    agenda=fits(request)
+    if agenda and request.GET.get("vista")!="elenco" and "from" not in request.GET and "to" not in request.GET:return day_view(request)
     try:a,b=period(request)
     except ValidationError as ex:return render(request,"message.html",{"title":"Filtro non valido","text":str(ex)},status=400)
     rows=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).select_related("service","resource").order_by("start")
     if request.GET.get("status"):rows=rows.filter(status=request.GET["status"])
     page=Paginator(rows,50).get_page(request.GET.get("page"))
     for row in page:row.shown=shown(request,row.data)
-    return render(request,"bookings.html",{"page":page,"start":a.date(),"end":(b-timedelta(days=1)).date()})
+    return render(request,"bookings.html",{"page":page,"start":a.date(),"end":(b-timedelta(days=1)).date(),"agenda":agenda})
 def booking_detail(request,slug,booking_id):
     require(request,"booking.read")
     booking=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service","resource"),pk=booking_id)
@@ -305,7 +320,7 @@ def booking_detail(request,slug,booking_id):
         except BookingError as ex:messages.error(request,str(ex))
     data=shown(request,booking.data)
     answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":"Sì" if v is True else v} for k,v in data.get("answers",{}).items() if v not in ("",None,False)]
-    ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,
+    ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,"back_day":booking.start.astimezone(ZoneInfo(request.tenant.timezone)).date().isoformat(),
         # 2.8.0: the note kept on the client card shows on every booking, as the main booking software do
         "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else ""}
     if spec and can(request,"notes.read"):
@@ -585,6 +600,10 @@ def catalog_edit(request,slug,kind,item_id=None):
         if not instance:
             extra["initial"]=initial(preset)
             if request.method=="POST" and agency and request.POST.get("kind"):extra["initial"]={}
+    # 2.10.0: "Segna ferie" from an operator opens the closing day with that operator already chosen
+    if kind in ("schedules","exceptions") and not instance and request.GET.get("resource"):
+        res=Resource.objects.filter(pk=request.GET["resource"]).first() if re.fullmatch(r"[0-9a-f-]{36}",request.GET["resource"]) else None
+        if res:extra["initial"]={"resource":res.pk,"location":res.location_id}
     form=formclass(request.POST or None,instance=instance,tenant=request.tenant,**extra)
     if kind=="services" and not instance:form.instance.preset=preset if preset in PRESETS else ""
     if request.method=="POST" and form.is_valid():

@@ -64,8 +64,12 @@ def private_guard():
         if Tenant.objects.count()>=limit:
             raise ValidationError("L'edizione Private gestisce una sola attività con più utenti." if settings.EDITION=="private" else f"Puoi gestire al massimo {limit} attività. {settings.MORE_TENANTS_HINT}")
 def seed_tenant(tenant,preset=""):
-    """First configuration of a new business, from one of the activity presets."""
+    """First configuration of a new business: the type's real catalog (for a salon Taglio, Piega and Colore, two
+    operators, Tuesday to Saturday), the same that Configura l'attività applies; a generic appointment without a type."""
     from .presets import PRESETS,initial
+    from .profile import PROFILES,apply_profile
+    if preset in PROFILES:
+        apply_profile(tenant,preset,["Sede principale"]);return
     p=PRESETS.get(preset)
     with scope(tenant):
         location=Location.objects.create(tenant=tenant,name="Sede principale")

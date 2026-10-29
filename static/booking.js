@@ -10,9 +10,9 @@
  const places=new Set(config.services.map(s=>s.location)).size,names=new Set(config.services.map(s=>s.name)).size;
  if(config.services.length===1){$("service-wrap").hidden=true;select(service,config.services,"");}
  else if(names===1&&places>1){$("service-label").textContent="Sede";$("slot-status").textContent="Scegli la sede e la data.";select(service,config.services.map(s=>({id:s.id,name:s.location})),"Scegli la sede");}
- else select(service,config.services.map(s=>({id:s.id,name:places>1?s.name+" ("+s.location+")":s.name})),"Scegli un servizio");
+ else{const word=config.service_label||"Servizio";$("service-label").textContent=word;select(service,config.services.map(s=>({id:s.id,name:places>1?s.name+" ("+s.location+")":s.name})),"Scegli un "+word.toLowerCase());}
  const kinds=new Set(config.services.map(s=>s.kind));if(kinds.size===1){const k=[...kinds][0];$("party-label").textContent=["shift","capacity","event"].includes(k)?"Persone":k==="day"?"Ospiti":"Persone / quantità";}
- day.min=config.today;day.value=config.today;departure.min=config.today;
+ day.min=config.today;day.value=config.prefill?.date&&config.prefill.date>=config.today?config.prefill.date:config.today;departure.min=config.today;
  // until a service is chosen, the number of people shows only if some service takes more than one
  $("party-wrap").hidden=Math.max(1,...config.services.map(s=>s.max_party||1))<=1;
  // 2.8.0: allergies and intolerances from the business's own list, as chips to tick
@@ -42,6 +42,8 @@
  }
  function changeService(){
   const s=current();select(option,s?.options||[],"Prestazione standard");select(resource,s?.resources||[],s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile");
+  // 2.10.0: from the agenda, the operator of the free space clicked
+  if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   $("option-wrap").hidden=!s?.options.length;$("resource-wrap").hidden=!(s?.kind==="resource"||(s?.kind==="day"&&s?.resources.length));
   $("resource-label").textContent=s?.resource_label||(s?.kind==="day"?"Unità / camera":"Operatore / risorsa");$("departure-wrap").hidden=s?.kind!=="day";departure.required=s?.kind==="day";
   party.max=s?.max_party||1;party.value=Math.min(Number(party.value)||1,Number(party.max));
@@ -76,6 +78,8 @@
     button.addEventListener("click",()=>{selected=slot;$("slots").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));submit.disabled=busy;});
     $("slots").append(button);
    }
+   // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
+   if(config.prefill?.time&&!selected){const hit=[...$("slots").querySelectorAll("button")].find(b=>b.firstChild?.textContent===config.prefill.time);if(hit){hit.click();hit.scrollIntoView({block:"nearest"});}}
    $("slot-status").textContent=result.slots.length?(units?"Scegli l'unità che preferisci.":"Scegli uno degli orari disponibili."):(units?"Nessuna unità libera per tutte le date scelte.":"Nessun orario disponibile: prova un'altra data.");
   }catch(e){if(e.name!=="AbortError"&&seq===sequence)$("slot-status").textContent=e.message;}
  }

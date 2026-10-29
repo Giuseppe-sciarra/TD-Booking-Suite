@@ -284,7 +284,8 @@ def test_activate_a_request_into_a_client():
     assert r.status=="done" and r.client==t and t.status=="trial" and "/platform/clienti/trattoria-da-lina/" in page
     assert load_profile(t)["contacts"][0]["name"]=="Lina Ferri"
     from core.presets import PRESETS
-    with scope(t):assert Service.objects.filter(name=PRESETS[preset_key()]["label"].split(" / ")[0]).exists()
+    from core.profile import PROFILES
+    with scope(t):assert Service.objects.filter(name=PROFILES[preset_key()]["services"][0][0]).exists()  # the type's real catalog
 
 def test_requests_are_agency_only_and_can_be_dropped(sample):
     t,o,s=sample

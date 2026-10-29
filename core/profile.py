@@ -93,10 +93,51 @@ def clean_names(names,count):
     if len({n.casefold() for n in out})<len(out):raise ValueError("Dai un nome diverso a ogni sede.")
     return out
 
+def place_locations(tenant,names):
+    """The locations of the form: the existing ones kept and renamed in order, new ones created, the extra ones go
+    (switched off when bookings use them). Returns (locations, the new ones, how many were kept switched off)."""
+    current=list(Location.objects.order_by("-active","name"))
+    locations=[];new=[]
+    for i,name in enumerate(names):
+        if i<len(current):
+            loc=current[i];loc.name=name;loc.active=True;loc.save(update_fields=["name","active"])
+        else:loc=Location.objects.create(tenant=tenant,name=name);new.append(loc)
+        locations.append(loc)
+    extra=Location.objects.exclude(pk__in=[l.pk for l in locations])
+    archived=0
+    for loc in extra:archived+=remove("locations",loc)
+    return locations,new,archived
+
+def build_catalog(tenant,preset,locations):
+    """The type's starting catalog in these locations: services, the operators or rooms they need, event dates."""
+    p=PRESETS[preset];spec=PROFILES[preset];tz=ZoneInfo(tenant.timezone)
+    base=initial(preset);base.pop("preset",None)
+    label=p["resource_label"] or "Risorsa"
+    created={"services":0,"resources":0,"dates":0}
+    for loc in locations:
+        units=[]
+        for n in range(1,spec.get("units",0)+1):
+            units.append(Resource.objects.create(tenant=tenant,location=loc,name=f"{label} {n}",capacity=p["defaults"].get("max_party",0) if spec.get("day") else 0))
+        created["resources"]+=len(units)
+        for name,changes in spec["services"]:
+            s=Service.objects.create(tenant=tenant,location=loc,name=name,preset=preset,lead_minutes=0,**{**base,**changes})
+            created["services"]+=1
+            for u in units:ServiceResource.objects.create(tenant=tenant,service=s,resource=u)
+            ev=spec.get("events")
+            if ev:
+                today=timezone.now().astimezone(tz).date()
+                for d in range(1,ev["weeks"]*7+1):
+                    day=today+timedelta(days=d)
+                    if day.weekday() in ev["weekdays"]:
+                        start=datetime.combine(day,hhmm(ev["start"]),tz);end=datetime.combine(day,hhmm(ev["end"]),tz)
+                        Occurrence.objects.create(tenant=tenant,service=s,start=start,end=end,capacity=s.capacity);created["dates"]+=1
+    return created
+
 @transaction.atomic
 def apply_profile(tenant,preset,names,actor=None):
+    """A new type: the catalog is rebuilt for it. Bookings are never touched, what they use is switched off."""
     if preset not in PRESETS:raise ValueError("Scegli un tipo di attività.")
-    p=PRESETS[preset];spec=PROFILES[preset];tz=ZoneInfo(tenant.timezone)
+    p=PRESETS[preset];spec=PROFILES[preset]
     with scope(tenant):
         # 1. the old catalog: hours and anything tied to services and resources
         Schedule.objects.all().delete()
@@ -104,38 +145,9 @@ def apply_profile(tenant,preset,names,actor=None):
         archived=retire(Occurrence.objects.all())+retire(ShiftRule.objects.all())+retire(Option.objects.all())
         ServiceResource.objects.all().delete()
         archived+=retire(Service.objects.all())+retire(Resource.objects.all())
-        # 2. locations: the existing ones are kept and renamed, in order; the extra ones go
-        current=list(Location.objects.order_by("-active","name"))
-        locations=[]
-        for i,name in enumerate(names):
-            if i<len(current):
-                loc=current[i];loc.name=name;loc.active=True;loc.save(update_fields=["name","active"])
-            else:loc=Location.objects.create(tenant=tenant,name=name)
-            locations.append(loc)
-        extra=Location.objects.exclude(pk__in=[l.pk for l in locations])
-        ExceptionDay.objects.filter(location__in=extra).delete()
-        archived+=retire(extra)
-        # 3. the new catalog, the same in every location
-        base=initial(preset);base.pop("preset",None)
-        label=p["resource_label"] or "Risorsa"
-        created={"services":0,"resources":0,"dates":0}
-        for loc in locations:
-            units=[]
-            for n in range(1,spec.get("units",0)+1):
-                units.append(Resource.objects.create(tenant=tenant,location=loc,name=f"{label} {n}",capacity=p["defaults"].get("max_party",0) if spec.get("day") else 0))
-            created["resources"]+=len(units)
-            for name,changes in spec["services"]:
-                s=Service.objects.create(tenant=tenant,location=loc,name=name,preset=preset,lead_minutes=0,**{**base,**changes})
-                created["services"]+=1
-                for u in units:ServiceResource.objects.create(tenant=tenant,service=s,resource=u)
-                ev=spec.get("events")
-                if ev:
-                    today=timezone.now().astimezone(tz).date()
-                    for d in range(1,ev["weeks"]*7+1):
-                        day=today+timedelta(days=d)
-                        if day.weekday() in ev["weekdays"]:
-                            start=datetime.combine(day,hhmm(ev["start"]),tz);end=datetime.combine(day,hhmm(ev["end"]),tz)
-                            Occurrence.objects.create(tenant=tenant,service=s,start=start,end=end,capacity=s.capacity);created["dates"]+=1
+        # 2. locations, 3. the new catalog, the same in every location
+        locations,_,gone=place_locations(tenant,names);archived+=gone
+        created=build_catalog(tenant,preset,locations)
         # 4. opening hours for the whole business; stays and events are open every day
         hours=spec.get("hours") or [(WEEK,"00:00",None)]
         for days,start,end in hours:
@@ -143,4 +155,15 @@ def apply_profile(tenant,preset,names,actor=None):
                 Schedule.objects.create(tenant=tenant,weekday=d,start=hhmm(start),end=hhmm(end) if end else time(23,59,59,999999))
         tenant.save(update_fields=first_settings(tenant,preset))
         audit(tenant,actor,"tenant.profile",tenant.pk,type=preset,locations=len(locations),archived=archived)
-    return {**created,"locations":len(locations),"archived":archived,"label":p["label"],"type":preset}
+    return {**created,"locations":len(locations),"archived":archived,"label":p["label"],"type":preset,"kept":False}
+
+@transaction.atomic
+def keep_profile(tenant,names,actor=None):
+    """The same type again: services, operators and hours stay as the business made them. Only the locations follow
+    the form; a new location starts with the type's catalog, so it can be booked at once."""
+    preset=tenant.business_type
+    with scope(tenant):
+        locations,new,archived=place_locations(tenant,names)
+        created=build_catalog(tenant,preset,new) if preset in PROFILES else {"services":0,"resources":0,"dates":0}
+        audit(tenant,actor,"tenant.locations",tenant.pk,type=preset,locations=len(locations),new=len(new),archived=archived)
+    return {**created,"locations":len(locations),"archived":archived,"label":PRESETS[preset]["label"] if preset in PRESETS else "Personalizzato","type":preset,"kept":True}

@@ -465,3 +465,68 @@ def test_restaurant_setup_has_no_variants_link(sample):
     assert "Varianti dei servizi" not in page
     apply_profile(t,"parrucchiere",["Centro"])
     assert "Varianti dei servizi" in c.get(f"/t/{t.slug}/setup/").content.decode()
+
+def test_the_same_type_again_keeps_what_the_business_made(sample):
+    t,o,s=sample
+    c,_=staff_client()
+    apply_profile(t,"parrucchiere",["Centro"])
+    with scope(t):
+        Resource.objects.filter(name="Operatore 1").update(name="Giulia")
+        Service.objects.filter(name="Taglio").update(duration=40)
+        hours=Schedule.objects.count()
+    # the tile clicked again, a second location added: nothing the salon set changes, the new location can be booked
+    r=c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"parrucchiere","locations":"2","name_1":"Centro storico","name_2":"Mare"},follow=True).content.decode()
+    assert "Sedi aggiornate: 2 sedi. Servizi, operatori e orari restano come li hai impostati" in r
+    with scope(t):
+        centro=Location.objects.get(name="Centro storico");mare=Location.objects.get(name="Mare")
+        assert Resource.objects.filter(location=centro,name="Giulia",active=True).exists()
+        assert Service.objects.get(location=centro,name="Taglio").duration==40 and Schedule.objects.count()==hours
+        assert set(Service.objects.filter(location=mare).values_list("name",flat=True))=={"Taglio","Piega","Colore"}
+        assert Resource.objects.filter(location=mare).count()==2
+    # another type is not applied by a stray click: it needs the confirmation
+    r=c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"ristorante","locations":"1","name_1":"Centro storico"},follow=True).content.decode()
+    assert "spunta la conferma" in r
+    t.refresh_from_db();assert t.business_type=="parrucchiere"
+    with scope(t):assert Resource.objects.filter(name="Giulia",active=True).exists()
+    page=c.get(f"/t/{t.slug}/setup/").content.decode()
+    assert 'data-current="parrucchiere"' in page and 'name="confirm_type"' in page
+    r=c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"ristorante","locations":"1","name_1":"Centro storico","confirm_type":"1"},follow=True).content.decode()
+    assert "Configurazione applicata: Ristorante / Pizzeria" in r
+    with scope(t):assert not Resource.objects.filter(active=True).exists() and Service.objects.filter(active=True,name="Tavolo").count()==1
+
+def test_an_operator_has_what_she_does_and_her_own_days(sample):
+    from core.booking import available
+    t,o,s=sample
+    owner,_=client_as(t,role="owner")
+    apply_profile(t,"parrucchiere",["Centro"])
+    with scope(t):
+        loc=Location.objects.get();taglio=Service.objects.get(name="Taglio");colore=Service.objects.get(name="Colore")
+    form=owner.get(f"/t/{t.slug}/catalog/resources/new/").content.decode()
+    # a person takes one client at a time: no places; a new operator starts with every service ticked
+    assert "Posti disponibili" not in form and "Persone massime" not in form and "Cosa fa" in form and "Ha giorni e orari suoi" in form
+    assert form.count('name="services"')==3 and form.count("checked")>=3
+    data={"name":"Giulia","location":str(loc.pk),"active":"on","services":[str(taglio.pk)],"own_hours":"on",
+          "day_2":"on","start_2":"14:00","end_2":"19:00"}
+    r=owner.post(f"/t/{t.slug}/catalog/resources/new/",data,follow=True).content.decode()
+    assert "Salvato." in r
+    with scope(t):
+        giulia=Resource.objects.get(name="Giulia")
+        assert list(ServiceResource.objects.filter(resource=giulia).values_list("service__name",flat=True))==["Taglio"]
+        assert list(Schedule.objects.filter(resource=giulia).values_list("weekday","start","end"))==[(2,time(14),time(19))]
+        # her own days narrow the salon's: only Wednesday afternoon, and Colore is not hers
+        day=timezone.localdate()+timedelta(days=1)
+        while day.weekday()!=2:day+=timedelta(days=1)
+        hours={x["start"][11:16] for x in available(t,taglio.pk,day,resource_id=giulia.pk)}
+        assert hours and min(hours)=="14:00" and max(hours)=="18:30"
+        with pytest.raises(Exception):available(t,colore.pk,day,resource_id=giulia.pk)
+    # back to the salon's hours, and a day that ends before it starts is refused
+    edit=f"/t/{t.slug}/catalog/resources/{giulia.pk}/"
+    page=owner.get(edit).content.decode()
+    assert "Segna ferie o un giorno libero" in page and f"?resource={giulia.pk}" in page
+    r=owner.post(edit,{**data,"start_2":"19:00","end_2":"14:00"}).content.decode()
+    assert "l&#x27;orario di fine viene dopo quello di inizio" in r or "l'orario di fine viene dopo quello di inizio" in r
+    owner.post(edit,{"name":"Giulia","location":str(loc.pk),"active":"on","services":[str(taglio.pk),str(colore.pk)]})
+    with scope(t):
+        assert not Schedule.objects.filter(resource=giulia).exists() and ServiceResource.objects.filter(resource=giulia).count()==2
+    # a closing day for her alone starts from her card
+    assert f'value="{giulia.pk}" selected' in owner.get(f"/t/{t.slug}/catalog/exceptions/new/?resource={giulia.pk}").content.decode()

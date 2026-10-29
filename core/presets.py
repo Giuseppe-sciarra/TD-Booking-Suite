@@ -118,6 +118,9 @@ UNITS={
  "noleggio":("Mezzo","Mezzi","Bici, auto o attrezzature che si noleggiano, una per una"),
 }
 DEFAULT_UNITS=("Operatore o postazione","Operatori e postazioni","Chi o cosa si prenota uno alla volta, con la sua agenda: un operatore, una cabina, una camera, un campo")
+# 2.10.0: what the client books, in the words of the business: a salon books treatments
+SERVICE_WORDS={"parrucchiere":"Trattamento","centro_estetico":"Trattamento","spa":"Trattamento","medico":"Visita","tattoo":"Seduta"}
+def service_word(business_type):return SERVICE_WORDS.get(business_type,"Servizio")
 def units(business_type):
     """(singular, plural, help) of the things booked one at a time."""
     return UNITS.get(business_type,DEFAULT_UNITS)

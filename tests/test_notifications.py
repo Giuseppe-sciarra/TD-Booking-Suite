@@ -123,7 +123,8 @@ def test_new_business_from_preset():
     with scope(t):
         svc=Service.objects.get()
         assert (svc.kind,svc.resource_label,svc.checkin,svc.max_party,svc.preset)==("day","Camera",clock(15),6,"hotel")
-        assert list(Resource.objects.order_by("name").values_list("name",flat=True))==["Camera 1","Camera 2"]
+        # the hotel type's own catalog, as Configura l'attività makes it: one Camera service, three rooms
+        assert svc.name=="Camera" and list(Resource.objects.order_by("name").values_list("name",flat=True))==["Camera 1","Camera 2","Camera 3"]
         arrival=(timezone.now()+timedelta(days=10)).astimezone(ZoneInfo(t.timezone)).date()
         data={"service":str(svc.pk),"start":datetime.combine(arrival,svc.checkin,ZoneInfo(t.timezone)).isoformat(),"end_date":(arrival+timedelta(days=2)).isoformat(),
             "party":2,"first_name":"Ospite","last_name":"Test","email":"o@example.invalid","phone":"+393331234567","request_key":secrets.token_urlsafe(24)}

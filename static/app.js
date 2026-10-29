@@ -12,6 +12,7 @@
  const links=[...document.querySelectorAll(".sidebar nav a")];
  const current=links.find(a=>a.pathname===location.pathname)||links.filter(a=>a.pathname.split("/").length>3&&!/^\/t\/[^/]+\/$/.test(a.pathname)&&location.pathname.startsWith(a.pathname)).sort((a,b)=>b.pathname.length-a.pathname.length)[0];
  current?.classList.add("active");
+ current?.closest("details")?.setAttribute("open","");  // 2.10.0: the folded group of the page in use opens
  // phones: the whole menu behind one button instead of a strip that scrolls sideways
  document.querySelectorAll("[data-menu]").forEach(b=>b.addEventListener("click",()=>{const side=b.closest(".sidebar");const open=side.classList.toggle("open");b.setAttribute("aria-expanded",String(open));}));
  // service form for the agency: only the fields of the chosen kind of booking, with labels that fit it
@@ -33,6 +34,16 @@
  if(turnover){const timed=()=>["#id_duration","#id_buffer_after"].forEach(sel=>{const box=$(sel)?.closest(".field");if(box&&!(box.dataset.kindHidden))box.classList.toggle("off-turnover",!turnover.checked);});
   turnover.addEventListener("change",timed);timed();}
  // type of business: as many location names as locations, added on the fly past the fifth
+ // 2.10.0: the day agenda, placed on its grid here (the page allows no inline styles)
+ document.querySelectorAll("[data-agenda]").forEach(agenda=>{agenda.style.setProperty("--rows",agenda.dataset.rows);agenda.style.setProperty("--cols",agenda.dataset.cols);
+  agenda.querySelectorAll("[data-row]").forEach(el=>{el.style.gridRow=el.dataset.row+" / "+(el.dataset.end||+el.dataset.row+1);el.style.gridColumn=el.dataset.col;});
+  agenda.querySelectorAll(".agenda-head [data-col]").forEach(el=>{el.style.gridColumn=el.dataset.col;});
+  const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";
+  (now||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"center"});});
+ document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));
+ // 2.10.0: an operator's working days show only with Ha giorni e orari suoi
+ document.querySelectorAll("[data-own-hours]").forEach(box=>{const on=box.querySelector("[name=own_hours]"),grid=box.querySelector(".hours-grid");
+  const sync=()=>{grid.hidden=!on.checked;};on.addEventListener("change",sync);sync();});
  const profileForm=$("[data-profile]");
  if(profileForm){
   const box=profileForm.querySelector(".loc-names"),custom=profileForm.querySelector("#loc-custom"),customWrap=profileForm.querySelector(".custom-count");
@@ -45,7 +56,13 @@
     l.htmlFor=inp.id="loc-"+i;inp.name="name_"+i;l.textContent="Nome della sede "+i;inp.value=ordinal[i-1]||("Sede "+i);box.append(f);}
    box.querySelectorAll("[data-loc]").forEach(f=>{const on=+f.dataset.loc<=n;f.hidden=!on;f.querySelector("input").disabled=!on;});};
   profileForm.querySelectorAll("[name=locations]").forEach(r=>r.addEventListener("change",()=>{sync();if(r.value==="custom"&&r.checked)custom.focus();}));
-  custom.addEventListener("input",sync);sync();}
+  custom.addEventListener("input",sync);sync();
+  // another type replaces the catalog: it asks to be confirmed, the same type keeps everything
+  const current=profileForm.dataset.current,change=profileForm.querySelector("[data-type-change]");
+  const typed=()=>{const v=profileForm.querySelector("[name=business_type]:checked")?.value;const other=!!current&&!!v&&v!==current;
+   if(change){change.hidden=!other;change.querySelector("input").required=other;}
+   profileForm.querySelector("[data-apply-same]").hidden=other||!current;profileForm.querySelector("[data-apply-new]").hidden=!other&&!!current;};
+  profileForm.querySelectorAll("[name=business_type]").forEach(r=>r.addEventListener("change",typed));typed();}
  // 2.6.0: password managers (1Password, Bitwarden, LastPass, Dashlane, the browser) stay out of every page.
  // <body data-autofill="all">: sign-in, second factor, confirmation, invitation and own password keep them.
  // <body data-autofill="contact">: the public booking page keeps the browser's own name, email and phone

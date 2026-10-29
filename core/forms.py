@@ -77,16 +77,72 @@ class LocationForm(ScopedForm):
         model=Location;fields=["name","address","phone","active"]
         labels={"name":"Nome della sede","active":"Attiva"}
         help_texts={"name":"Per esempio Centro o Via degli Angeli"}
+WEEKDAYS=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
+def hour_field():return forms.TimeField(required=False,widget=forms.TimeInput(attrs={"type":"time"},format="%H:%M"))
 class ResourceForm(ScopedForm):
+    """An operator, a cabin, a room: what it does, and for people their own working days. A person takes one client
+    at a time, so places only appear for rooms and vehicles (stays)."""
+    services=forms.ModelMultipleChoiceField(queryset=Service.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    own_hours=forms.BooleanField(required=False,label="Ha giorni e orari suoi",help_text="Spento: lavora negli orari di apertura dell'attività. Le ferie e i giorni liberi si segnano in Chiusure e giorni speciali")
     class Meta:
         model=Resource;fields=["name","location","capacity","description","photo_url","active"]
         labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Foto (indirizzo HTTPS)","active":"Attiva"}
         help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno"}
         widgets={"description":forms.Textarea(attrs={"rows":3})}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        from .presets import units
+        bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
+        f=self.fields["services"];f.queryset=bookable
+        many=Location.objects.filter(active=True).count()>1
+        f.label_from_instance=lambda s:f"{s.name} ({s.location.name})" if many else s.name
+        one=units(getattr(self.tenant,"business_type",""))[0].lower()
+        f.label="Cosa fa";f.help_text=f"Si prenota solo per i servizi spuntati. Un {one} nuovo parte con tutti"
+        new=self.is_new=self.instance._state.adding
+        self.initial["services"]=[s.pk for s in bookable] if new else list(ServiceResource.objects.filter(resource=self.instance).values_list("service_id",flat=True))
+        if not Service.objects.filter(kind="day").exists():del self.fields["capacity"]
+        # working days: one span a day here; with two spans a day (a lunch break) they stay in Orari di apertura
+        rows=[] if new else list(Schedule.objects.filter(resource=self.instance,purpose="service"))
+        self.split_hours=len({r.weekday for r in rows})<len(rows)
+        self.grid_fields=["own_hours"]
+        for d in range(7):
+            mine=[r for r in rows if r.weekday==d]
+            self.fields[f"day_{d}"]=forms.BooleanField(required=False,label=WEEKDAYS[d])
+            self.fields[f"start_{d}"]=hour_field();self.fields[f"end_{d}"]=hour_field()
+            self.initial[f"day_{d}"]=bool(mine) if rows else d<5
+            self.initial[f"start_{d}"]=mine[0].start if mine else "09:00";self.initial[f"end_{d}"]=mine[0].end if mine else "18:00"
+            self.grid_fields+=[f"day_{d}",f"start_{d}",f"end_{d}"]
+        self.initial["own_hours"]=bool(rows)
+        for name in self.grid_fields:
+            self.fields[name].in_grid=True  # drawn as a week grid, not in the field list
+            if self.split_hours:self.fields[name].disabled=True
+    @property
+    def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"]} for d in range(7)]
     def clean_photo_url(self):
         value=self.cleaned_data.get("photo_url","")
         if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
         return value
+    def clean(self):
+        d=super().clean()
+        loc=d.get("location")
+        if loc and any(s.location_id!=loc.pk for s in d.get("services",[])):raise ValidationError("Spunta solo servizi della sua sede.")
+        if d.get("own_hours") and not self.split_hours:
+            days=[n for n in range(7) if d.get(f"day_{n}")]
+            if not days:raise ValidationError("Spunta almeno un giorno di lavoro, o spegni Ha giorni e orari suoi.")
+            for n in days:
+                if not d.get(f"start_{n}") or not d.get(f"end_{n}") or d[f"end_{n}"]<=d[f"start_{n}"]:raise ValidationError(f"{WEEKDAYS[n]}: l'orario di fine viene dopo quello di inizio.")
+        return d
+    def save(self,commit=True):
+        obj=super().save(commit)
+        d=self.cleaned_data
+        ServiceResource.objects.filter(resource=obj).exclude(service__in=d.get("services",[])).delete()
+        for s in d.get("services",[]):ServiceResource.objects.get_or_create(tenant=self.tenant,service=s,resource=obj)
+        if not self.split_hours:
+            Schedule.objects.filter(resource=obj,purpose="service").delete()
+            if d.get("own_hours"):
+                for n in range(7):
+                    if d.get(f"day_{n}"):Schedule.objects.create(tenant=self.tenant,resource=obj,weekday=n,start=d[f"start_{n}"],end=d[f"end_{n}"])
+        return obj
 def default_kind(tenant):
     from .presets import PRESETS
     return PRESETS.get(getattr(tenant,"business_type",""),{}).get("kind","resource")

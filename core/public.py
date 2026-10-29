@@ -1,3 +1,4 @@
+import re
 from datetime import date,datetime,timedelta
 from zoneinfo import ZoneInfo
 from django.conf import settings
@@ -45,7 +46,8 @@ def widget_data(request,booking=None):
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration} for o in Option.objects.filter(service=s,active=True)],
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_url} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if mine is None or str(r.pk) in mine]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
-    result={"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
+    from .presets import service_word
+    result={"service_label":service_word(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
         "ticket":signing.dumps({"tenant":str(tenant.pk)},salt="public-booking"),"internal":internal,
         "allergens":tenant.asked_allergens}
     if booking:
@@ -89,7 +91,14 @@ def manual_booking(request,slug):
         except ValueError:c=None
         if c:
             d=c.data;widget["client"]={"id":str(c.pk),**{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
-    return render(request,"booking.html",{"widget":widget,"intro":INTRO[first_step(widget)]})
+    # 2.10.0: from a free space of the agenda, the booking starts with that operator, day and time
+    prefill={}
+    if re.fullmatch(r"[0-9a-f-]{36}",request.GET.get("operatore","")):prefill["resource"]=request.GET["operatore"]
+    try:prefill["date"]=date.fromisoformat(request.GET.get("data","")).isoformat()
+    except ValueError:pass
+    if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d",request.GET.get("ora","")):prefill["time"]=request.GET["ora"]
+    if prefill:widget["prefill"]=prefill
+    return render(request,"booking.html",{"widget":widget,"intro":INTRO[first_step(widget)].replace("il servizio","il "+widget["service_label"].lower())})
 @json_denied
 def slots_api(request,slug,booking_id=None):
     throttle(request,"availability:"+str(request.tenant.pk),120,60)
@@ -158,7 +167,7 @@ def get_visible(request,booking_id):
 def move_page(request,slug,booking_id):
     require_role(request,write=True)
     booking=get_visible(request,booking_id)
-    return render(request,"booking.html",{"widget":widget_data(request,booking),"moving":True})
+    return render(request,"booking.html",{"widget":widget_data(request,booking),"moving":True,"booking":booking})
 @require_POST
 @json_denied
 def move_api(request,slug,booking_id):
