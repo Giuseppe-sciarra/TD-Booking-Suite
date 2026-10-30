@@ -19,11 +19,15 @@ site. Self-hosted with Docker, every business sealed with its own key.
 | **Booking** — the note on the client at the top, the previous treatments before you start, *Register treatment* when you are done.<br>![Booking detail](docs/screenshots/02-booking-detail.png) | **Restaurant, tonight** — the tables of the day, intolerances in orange.<br>![Restaurant dashboard](docs/screenshots/03-restaurant-dashboard.png) |
 | **Booking page** — the 14 EU allergens plus lactose as chips, and the questions of a restaurant.<br>![Restaurant booking form](docs/screenshots/04-booking-form-restaurant.png) | **Intolerances and allergies** — on or off, add and remove items, a preview of what the client sees.<br>![Intolerances and allergies](docs/screenshots/05-allergens.png) |
 | **Tattoo studio** — area, size, colour or black and grey, adults only online.<br>![Tattoo booking form](docs/screenshots/07-booking-form-tattoo.png) | **Questions** — each service has its own: text, number, yes/no, list; optional or required.<br>![Booking questions](docs/screenshots/08-booking-questions.png) |
-| **Agenda** — bookings by period, intolerances in the row, CSV export.<br>![Agenda](docs/screenshots/06-agenda.png) | **Booking at the desk** — find the client by name, phone or email, or type a new one.<br>![New booking](docs/screenshots/09-new-booking-client-search.png) |
+| **Day agenda** — a column for each staff member at work, with their photo; a click on a free slot starts a booking with that person at that time.<br>![Agenda](docs/screenshots/06-agenda.png) | **Booking at the desk** — find the client by name, phone or email, or type a new one.<br>![New booking](docs/screenshots/09-new-booking-client-search.png) |
 | **Clients** — the address book with visits and the next booking.<br>![Clients](docs/screenshots/10-clients.png) | **Salon dashboard** — today, the next 7 days, bookings received, how they went.<br>![Salon dashboard](docs/screenshots/11-salon-dashboard.png) |
 | **Agency** — every business at a glance, and what needs attention.<br>![Agency dashboard](docs/screenshots/12-agency-dashboard.png) | **Agency clients** — logo, sector, contact person, numbers.<br>![Agency clients](docs/screenshots/13-agency-clients.png) |
-| **Agency client sheet** — company data, logo, contacts, setup and usage. Numbers only: the business's clients stay in its portal.<br>![Agency client](docs/screenshots/14-agency-client.png) | **Sign in** — password, authenticator app or passkey.<br>![Sign in](docs/screenshots/18-login.png) |
-| **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/15-dark-theme.png) | **On the phone** — the client record and the booking page.<br><img src="docs/screenshots/16-mobile-client.png" alt="Client record on a phone" width="49%"> <img src="docs/screenshots/17-mobile-booking.png" alt="Booking page on a phone" width="49%"> |
+| **Agency client sheet** — company data, logo, contacts, setup and usage. Numbers only: the business's clients stay in its portal.<br>![Agency client](docs/screenshots/14-agency-client.png) | **Sign in** — password, authenticator app or passkey; *Stay signed in* until you sign out.<br>![Sign in](docs/screenshots/18-login.png) |
+| **Week** — the seven days hour by hour, one colour per staff member, for everyone or one only.<br>![Week](docs/screenshots/19-agenda-week.png) | **Month** — how many appointments each day has and the first ones; a click opens the day.<br>![Month](docs/screenshots/20-agenda-month.png) |
+| **Staff member** — the photo, what they do with their own duration and price, their days and hours.<br>![Staff member](docs/screenshots/21-operator.png) | **Next 7 days** — from the dashboard, who comes and when, day by day.<br>![Next 7 days](docs/screenshots/22-next-7-days.png) |
+| **Emails to the clients** — which ones go, the reminder, the texts with their fields and a preview.<br>![Emails to the clients](docs/screenshots/23-client-emails.png) | **Logo and look** — the business's logo, colour and line, with a preview of the menu and the booking page.<br>![Logo and look](docs/screenshots/24-logo-look.png) |
+| **People and permissions** — the agency's only: roles, locations, resources, passwords.<br>![People and permissions](docs/screenshots/25-people.png) | **Dark theme** — automatic, light or dark.<br>![Dark theme](docs/screenshots/15-dark-theme.png) |
+| **On the phone** — the client record and the booking page.<br><img src="docs/screenshots/16-mobile-client.png" alt="Client record on a phone" width="49%"> <img src="docs/screenshots/17-mobile-booking.png" alt="Booking page on a phone" width="49%"> | |
 
 The data shown is a demo with made-up names and `example.com` addresses. The interface is in
 Italian.
@@ -59,7 +63,8 @@ Italian.
   included; each booking keeps its price like a receipt.
 - **The same client, one card**: found by email, then by phone. A client added at the desk with a
   phone number only finds their card again when they book online; two different emails stay two
-  people, even with the same phone.
+  people, even with the same phone, and another name on the same number (a mother and her
+  daughter) gets a card of its own.
 - **Import from the previous program** — client list and treatment history from Excel or CSV:
   pick what each column holds, check the preview, import. Existing cards only get the missing
   data; marketing consents stay to be confirmed.
@@ -82,7 +87,10 @@ Italian.
 **Business portal**
 - **Agenda by day, week and month**: a column per working staff member for the day, the week hour
   by hour with overlapping appointments side by side, the month with how full each day is; one
-  colour per staff member everywhere.
+  colour and one photo per staff member everywhere, and the agenda of one person only. Stays show on
+  each of their days, with arrival, "in house" and departure.
+- **Staff with photos** and what each one does, with their own duration and price when they differ
+  from the treatment's; their days and hours, their holidays.
 - **Price list kept by the business**: services and variants with their prices; the kind of
   booking stays with the agency.
 - Dashboard, agenda, bookings at the desk, clients, CSV export, marketing campaigns with confirmed
@@ -92,7 +100,8 @@ Italian.
   agency allows it the business picks which ones go, adds the reminder (2 hours to 3 days before)
   and writes them, with a preview. The client chooses whether to get them.
 - **Logo and look** kept by the business, with a preview; the dashboard shows who comes today and in
-  the next 7 days. Campaigns and the subscribers' CSV are switched on by the agency.
+  the next 7 days. Campaigns and the subscribers' CSV are switched on by the agency: without them,
+  Marketing is not in the menu.
 - People and roles, given by the agency: administrator, location manager, reception, location
   operator (only their own agenda and locations), marketing, read-only.
 - Mail through the business's own SMTP, Gmail or Microsoft 365, or the agency's; an outbox with
@@ -114,7 +123,8 @@ Italian.
 - PostgreSQL **row-level security** on every business table (forced, also for the table owner),
   and foreign keys that cannot point to another business's rows.
 - Two-step verification with **authenticator app or passkey**, recovery codes, password confirmation
-  for sensitive pages, rate limits, audit log.
+  for sensitive pages, rate limits, audit log. *Stay signed in* keeps a device in until
+  it signs out (or for the days in `TDBS_SESSION_REMEMBER_DAYS`).
 - GDPR export and erasure per client, retention rules per business, key rotation, encrypted
   backups.
 - **Nightly automatic update** of Python, Debian, libraries and PostgreSQL 17.x, with a
