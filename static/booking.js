@@ -48,7 +48,7 @@
   // 2.10.0: from the agenda, the operator of the free space clicked
   if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   pickers();
-  $("option-wrap").hidden=!s?.options.length;$("resource-wrap").hidden=!(s?.kind==="resource"||(s?.kind==="day"&&s?.resources.length));
+  $("option-wrap").hidden=!s?.options.length;$("resource-wrap").hidden=!((s?.kind==="resource"||s?.kind==="day")&&s?.resources.length);
   $("resource-label").textContent=s?.resource_label||(s?.kind==="day"?"Unità / camera":"Operatore / risorsa");$("departure-wrap").hidden=s?.kind!=="day";departure.required=s?.kind==="day";
   // 2.14.0: the desk also books a group bigger than the online limit, within the places
   const most=s?.max_party||1;party.max=config.internal&&most>1?1000:most;party.value=Math.min(Number(party.value)||1,Number(party.max));

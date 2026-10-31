@@ -177,6 +177,9 @@ class Location(Scoped):
     address=models.CharField(max_length=255,blank=True)
     phone=models.CharField(max_length=60,blank=True)
     active=models.BooleanField(default=True)
+    # 2.14.0: who gets "Il primo disponibile" (booking.ranked), and online no hole shorter than min_gap minutes
+    assign=models.CharField(max_length=8,default="alpha",choices=[("alpha","Il primo libero, in ordine di nome"),("last","L'operatore dell'ultima visita del cliente"),("even","Chi ha meno appuntamenti quel giorno"),("priority","L'ordine scelto per ogni operatore")])
+    min_gap=models.PositiveIntegerField(default=0)
     def __str__(self):return self.name
 class Resource(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
@@ -188,6 +191,11 @@ class Resource(Scoped):
     active=models.BooleanField(default=True)
     # 2.11.0: when its uploaded photo (ResourcePhoto) last changed, also the version in its address
     photo_at=models.DateTimeField(null=True,blank=True)
+    # 2.14.0: a cabin, a machine, a car taken together with the operator (never chosen alone); out of "Il primo
+    # disponibile"; its place in it when the location assigns by priority
+    secondary=models.BooleanField(default=False)
+    auto_excluded=models.BooleanField(default=False)
+    priority=models.PositiveIntegerField(default=0)
     def __str__(self):return self.name
     def photo_link(self,slug):
         """The uploaded photo, served by the program itself; otherwise the HTTPS address typed in, if any."""
@@ -225,6 +233,11 @@ class Service(Scoped):
     request_all=models.BooleanField(default=False)
     request_above=models.PositiveIntegerField(default=0)  # more people than this; 0 = never
     request_allergies=models.BooleanField(default=False)
+    # 2.14.0: work, posa, finish: the posa starts pause_start minutes in and lasts pause_minutes (0 = none); the
+    # operator is free during it (booking.posa). client_picks off: online the client does not choose with whom
+    pause_start=models.PositiveIntegerField(default=0)
+    pause_minutes=models.PositiveIntegerField(default=0)
+    client_picks=models.BooleanField(default=True)
     # 2.14.0: what the client needs before arriving (keys, meeting point), sent by the message Prima dell'arrivo
     instructions=models.TextField(blank=True,max_length=2000)
     preset=models.CharField(max_length=40,blank=True)
@@ -346,6 +359,10 @@ class Booking(Scoped):
     end=models.DateTimeField()
     busy_start=models.DateTimeField()
     busy_end=models.DateTimeField()
+    # 2.14.0: the posa, when the operator is free for another client; the cabin or machine taken with the operator
+    gap_start=models.DateTimeField(null=True,blank=True)
+    gap_end=models.DateTimeField(null=True,blank=True)
+    secondary=models.ForeignKey(Resource,null=True,blank=True,on_delete=models.PROTECT,related_name="+")
     party=models.PositiveIntegerField(default=1)
     status=models.CharField(max_length=15,default="confirmed",choices=[("pending","In attesa di conferma"),("confirmed","Confermata"),("arrived","Arrivato"),("in_progress","In corso"),("completed","Completata"),("cancelled","Annullata"),("no_show","Assente")])
     # 2.14.0: where it came from, and the tag of the link (?src=instagram); empty for the bookings made before

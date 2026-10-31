@@ -40,7 +40,8 @@ SERVICE_KINDS=[("capacity","Posti per fascia oraria: ristorante, sala, lezione d
 # which fields each kind of booking uses; the others are not shown at all
 FIELD_KINDS={"duration":{"resource","capacity"},"interval":{"resource","capacity"},"capacity":{"capacity","shift","day"},"max_party":{"capacity","shift","event","day"},
  "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"last_arrival":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
- "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"},"instructions":{"day","event"}}
+ "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"},"instructions":{"day","event"},
+ "pause_start":{"resource"},"pause_minutes":{"resource"},"client_picks":{"resource"}}
 KIND_LABELS={"duration":{"capacity":"Quanto resta occupato il posto (minuti)","resource":"Durata dell'appuntamento (minuti)"},
  "capacity":{"capacity":"Posti (coperti)","shift":"Posti totali del locale","day":"Unità disponibili"},
  "max_party":{"capacity":"Persone massime per prenotazione","shift":"Persone massime per prenotazione","event":"Posti massimi per prenotazione","day":"Ospiti massimi per prenotazione"}}
@@ -85,9 +86,17 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","active"]
-        labels={"name":"Nome della sede","active":"Attiva"}
-        help_texts={"name":"Per esempio Centro o Via degli Angeli"}
+        model=Location;fields=["name","address","phone","active","assign","min_gap"]
+        labels={"name":"Nome della sede","active":"Attiva","assign":"«Il primo disponibile» va a","min_gap":"Online, niente buchi più corti di (minuti)"}
+        help_texts={"name":"Per esempio Centro o Via degli Angeli","assign":"Chi riceve la prenotazione quando il cliente non sceglie con chi. Chi è segnato «Fuori da Il primo disponibile» non la riceve mai",
+            "min_gap":"0 = tutti gli orari liberi. Con 30, online non compaiono gli orari che lascerebbero meno di 30 minuti tra due appuntamenti dello stesso operatore; al banco si vedono tutti"}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        self.fields["min_gap"].required=False
+    def clean_min_gap(self):
+        v=self.cleaned_data["min_gap"] or 0
+        if v>240:raise ValidationError("Valore tra 0 e 240.")
+        return v
 WEEKDAYS=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
 def hour_field():return forms.TimeField(required=False,widget=forms.TimeInput(attrs={"type":"time"},format="%H:%M"))
 class ResourceForm(ScopedForm):
@@ -99,15 +108,19 @@ class ResourceForm(ScopedForm):
     services=forms.ModelMultipleChoiceField(queryset=Service.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     own_hours=forms.BooleanField(required=False,label="Ha giorni e orari suoi",help_text="Spento: lavora negli orari di apertura dell'attività. Le ferie e i giorni liberi si segnano in Chiusure e giorni speciali")
     class Meta:
-        model=Resource;fields=["name","location","capacity","description","photo_url","active"]
-        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva"}
-        help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno"}
+        model=Resource;fields=["name","location","capacity","description","photo_url","active","secondary","auto_excluded","priority"]
+        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva",
+            "secondary":"Si usa insieme all'operatore: cabina, lettino, macchinario, auto","auto_excluded":"Fuori da «Il primo disponibile»","priority":"Ordine in «Il primo disponibile» (1 = per primo)"}
+        help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno",
+            "secondary":"Il cliente non la sceglie e non ha una colonna in agenda: i servizi che la spuntano si prenotano solo se è libera lei (o un'altra spuntata) insieme all'operatore",
+            "auto_excluded":"Si prenota solo se il cliente o il banco la scelgono","priority":"Conta solo se la sede dà «Il primo disponibile» secondo l'ordine scelto"}
         widgets={"description":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
         from .presets import units,service_word
         from .prices import euro
-        self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active"])
+        self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active","secondary","auto_excluded","priority"])
+        self.fields["priority"].required=False
         new=self.is_new=self.instance._state.adding
         slug=getattr(self.tenant,"slug","")
         self.photo_preview=self.instance.photo_link(slug) if not new and self.instance.photo_at else ""
@@ -171,6 +184,7 @@ class ResourceForm(ScopedForm):
         boxes={str(w.data["value"]):w for w in self["services"].subwidgets}
         return [{"box":boxes.get(str(r["service"].pk)),"name":self.fields["services"].label_from_instance(r["service"]),
             "dur":self[r["dur"]] if "dur" in r else None,"price":self[r["price"]] if "price" in r else None} for r in self.rows]
+    def clean_priority(self):return self.cleaned_data["priority"] or 0
     def clean_photo_url(self):
         value=self.cleaned_data.get("photo_url","")
         if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
@@ -226,9 +240,11 @@ class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","instructions","resource_label","fields","active"]
-        labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
-        help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
+        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","instructions","resource_label","pause_start","pause_minutes","client_picks","fields","active"]
+        labels={"name":"Nome del servizio","active":"Attivo: prenotabile online","pause_start":"Lavoro prima della posa (minuti)","pause_minutes":"Tempo di posa (minuti)","client_picks":"Il cliente sceglie con chi"}
+        help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia","pause_start":"Per esempio 30 per l'applicazione del colore. Dopo la posa viene la finitura, fino alla fine della durata",
+            "pause_minutes":"0 = nessuna posa. Durante la posa il cliente resta, l'operatore è libero e si può prenotare con lui un servizio breve",
+            "client_picks":"Spento: online il cliente sceglie solo l'orario e il programma assegna la persona o il posto libero, per esempio il ponte dell'officina"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
         widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2}),"instructions":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,agency=False,**kw):
@@ -243,7 +259,7 @@ class ServiceForm(ScopedForm):
         from .presets import units
         one,many,_=units(getattr(self.tenant,"business_type",""))
         self.fields["resources"].label=many
-        self.fields["resources"].help_text=f"Quali {many.lower()} si possono prenotare con questo servizio"
+        self.fields["resources"].help_text=f"Quali {many.lower()} si possono prenotare con questo servizio"+(": le voci usate insieme all'operatore (cabine, macchinari) sono richieste, ne serve una libera" if Resource.objects.filter(active=True,secondary=True).exists() else "")
         if not new:self.initial["resources"]=ServiceResource.objects.filter(service=self.instance).values_list("resource_id",flat=True)
         # 2.8.0: with one location a new service starts with every operator ticked, instead of an error on saving
         elif not self.is_bound and Location.objects.filter(active=True).count()==1:self.initial["resources"]=list(Resource.objects.filter(active=True).values_list("pk",flat=True))
@@ -262,7 +278,8 @@ class ServiceForm(ScopedForm):
                 if kind not in kinds:self.fields.pop(name)
         # 2.14.0: allergies make a request only where the booking form asks about them
         if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
-        self.fields["request_above"].required=False
+        for name in ("request_above","pause_start","pause_minutes"):
+            if name in self.fields:self.fields[name].required=False
         for name in KIND_LABELS:
             if name in self.fields and kind in KIND_LABELS[name]:self.fields[name].label=KIND_LABELS[name][kind]
         for name in KIND_HELP:
@@ -282,11 +299,15 @@ class ServiceForm(ScopedForm):
         d=super().clean()
         kind=d.get("kind") or self.kind
         if d.get("price") is not None and not 0<=d["price"]<=100000:self.add_error("price","Prezzo tra 0 e 100.000 €.")
-        if d.get("request_above") is None:d["request_above"]=0
-        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600),"request_above":(0,1000)}
+        for name in ("request_above","pause_start","pause_minutes"):
+            if name in self.fields and d.get(name) is None:d[name]=0
+        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600),"request_above":(0,1000),"pause_start":(0,1440),"pause_minutes":(0,1440)}
         for key,(low,high) in bounds.items():
             if key in d and d[key] is not None and not low<=d[key]<=high:self.add_error(key,f"Valore tra {low} e {high}.")
         if kind=="resource" and "resources" in self.fields and not d.get("resources"):self.add_error("resources","Seleziona almeno una voce: se l'elenco è vuoto, creala prima nella pagina accanto a Servizi.")
+        elif kind=="resource" and d.get("resources") and all(r.secondary for r in d["resources"]):self.add_error("resources","Serve almeno una persona: cabine e macchinari si prenotano insieme a lei.")
+        if kind=="resource" and d.get("pause_minutes") and not (0<d.get("pause_start",0) and d["pause_start"]+d["pause_minutes"]<d.get("duration",0)):
+            self.add_error("pause_minutes","La posa sta dentro la durata: dopo un po' di lavoro e prima della finitura.")
         if kind=="day" and d.get("min_days") and d.get("max_days") and d["min_days"]>d["max_days"]:self.add_error("min_days","Le notti minime superano le massime.")
         if kind=="day" and d.get("min_days")==0 and d.get("checkin") and d.get("checkout") and d["checkout"]<=d["checkin"]:self.add_error("min_days","Con 0 notti la riconsegna è lo stesso giorno: l'ora di partenza deve venire dopo quella di arrivo.")
         location=d.get("location") or getattr(self.instance,"location",None)
