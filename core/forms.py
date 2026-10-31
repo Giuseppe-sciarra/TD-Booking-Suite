@@ -98,9 +98,9 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","capacity","active"]
-        labels={"name":"Nome della sede","active":"Attiva","capacity":"Coperti di tutto il locale"}
-        help_texts={"name":"Per esempio Centro o Via degli Angeli","capacity":"Per i ristoranti: il tetto che tutti i servizi della sede dividono, per esempio pranzo alla carta e menu di gruppo nella stessa sala. 0 vuol dire nessun limite"}
+        model=Location;fields=["name","address","phone","capacity","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age"]
+        labels={"name":"Nome della sede","active":"Attiva","capacity":"Coperti di tutto il locale","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
+        help_texts={"name":"Per esempio Centro o Via degli Angeli","capacity":"Per i ristoranti: il tetto che tutti i servizi della sede dividono, per esempio pranzo alla carta e menu di gruppo nella stessa sala. 0 vuol dire nessun limite","cin":"Strutture ricettive e case vacanze: compare nella pagina di prenotazione e nelle email","ross_code":"Per il file ISTAT dei movimenti, te lo dà l'ufficio regionale del turismo","tax_rate":"Vuoto se il comune non la chiede. Roma, B&B: 6","tax_nights":"0 = tutte. Roma: 10","tax_age":"0 = nessuna esenzione per età. Roma: 10"}
     def clean_capacity(self):
         val=self.cleaned_data.get("capacity") or 0
         if val>10000:raise ValidationError("Valore tra 0 e 10000.")

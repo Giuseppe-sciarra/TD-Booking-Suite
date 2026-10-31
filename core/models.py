@@ -159,6 +159,8 @@ class Tenant(models.Model):
     @property
     def logo_wide(self):return bool(self.logo) and self.logo_ratio>1.4
     @property
+    def stays(self):return self.business_type in ("hotel","casa_vacanze")
+    @property
     def asked_allergens(self):return list(self.allergens) if self.allergens_on else []
 class Membership(models.Model):
     tenant=models.ForeignKey(Tenant,on_delete=models.CASCADE)
@@ -189,6 +191,14 @@ class Location(Scoped):
     active=models.BooleanField(default=True)
     # 2.14.0: the covers of the whole place, shared by its restaurant services (booking.shared); 0 = no such limit
     capacity=models.PositiveIntegerField(default=0)
+    # 2.14.0: a hotel, B&B or holiday home (stays.py): the national and regional codes shown on the booking page and in
+    # the emails, and the tourist tax of its town: euro a person a night, nights taxed at most (0 = all), exempt under this age
+    cin=models.CharField(max_length=40,blank=True)
+    cir=models.CharField(max_length=40,blank=True)
+    ross_code=models.CharField(max_length=20,blank=True)  # the code the regional office gives for Ross1000 (ISTAT)
+    tax_rate=models.DecimalField(max_digits=6,decimal_places=2,null=True,blank=True)
+    tax_nights=models.PositiveSmallIntegerField(default=0)
+    tax_age=models.PositiveSmallIntegerField(default=0)
     def __str__(self):return self.name
 class Resource(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
@@ -207,6 +217,12 @@ class Resource(Scoped):
     busy=models.TextField(blank=True)
     busy_at=models.DateTimeField(null=True,blank=True)
     busy_error=models.CharField(max_length=200,blank=True)
+    # 2.14.0: a room or a holiday home (stays.py): its cleaning, and the calendars of the portals read as closures
+    # (addresses sealed: they hold the portal's secret), when last read and what went wrong
+    housekeeping=models.CharField(max_length=5,default="clean",choices=[("clean","Pulita"),("dirty","Da pulire"),("out","Fuori servizio")])
+    ical_in=models.TextField(blank=True)
+    ical_at=models.DateTimeField(null=True,blank=True)
+    ical_error=models.CharField(max_length=200,blank=True)
     def __str__(self):return self.name
     def photo_link(self,slug):
         """The uploaded photo, served by the program itself; otherwise the HTTPS address typed in, if any."""
@@ -266,6 +282,8 @@ class Service(Scoped):
     active=models.BooleanField(default=True)
     # 2.11.0: the price list, kept by the business itself; empty = no price shown
     price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
+    # 2.14.0: stays: rules for a period, [{"from","until","min","no_arrival":[weekdays],"no_departure":[...]}] (stays.restricted)
+    stay_rules=models.JSONField(default=list,blank=True)
     def __str__(self):return self.name
 class ServiceResource(Scoped):
     service=models.ForeignKey(Service,on_delete=models.CASCADE,related_name="resource_links")
@@ -304,6 +322,8 @@ class ExceptionDay(Scoped):
     start=models.TimeField(null=True,blank=True)
     end=models.TimeField(null=True,blank=True)
     label=models.CharField(max_length=100,blank=True)
+    # 2.14.0: nights taken by another portal (stays.refresh), replaced at every reading: the key of its calendar
+    feed=models.CharField(max_length=16,blank=True)
 class Occurrence(Scoped):
     rule=models.ForeignKey("ShiftRule",null=True,blank=True,on_delete=models.PROTECT)
     service=models.ForeignKey(Service,on_delete=models.PROTECT)

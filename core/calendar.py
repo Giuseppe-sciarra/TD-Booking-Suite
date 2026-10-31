@@ -87,8 +87,11 @@ def fits(tenant,start,end,service=None,resource=None,purpose="service"):
 def blocked_stay(tenant,start,end,service,resource=None):
     tz=ZoneInfo(tenant.timezone)
     first=start.astimezone(tz).date();last=(end-timedelta(microseconds=1)).astimezone(tz).date()
+    # 2.14.0: the nights of another portal (feed) leave its arrival day free for a departure, as a booking does
+    nights=covering(first,max(first,last-timedelta(days=1)))
     for selector in level_filters(service,resource):
-        if ExceptionDay.objects.filter(covering(first,last),purpose="service",closed=True,**selector).exists():return True
+        rows=ExceptionDay.objects.filter(purpose="service",closed=True,**selector)
+        if rows.filter(covering(first,last),feed="").exists() or rows.filter(nights).exclude(feed="").exists():return True
     return False
 def block_spans(tenant,first,last,resource=None,service=None):
     """2.14.0: the time blocks of an operator or a service (a pause, a turn closed for the night) on the days from first

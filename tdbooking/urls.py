@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import api,reports,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
+from core import api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
@@ -73,6 +73,9 @@ urlpatterns=[
  path("t/<slug:slug>/contacts/<uuid:contact_id>/unisci/",portal.contact_merge,name="contact_merge"),
  path("t/<slug:slug>/attesa/",portal.waitlist_view,name="waitlist"),
  path("t/<slug:slug>/richiami/",portal.recalls_view,name="recalls"),
+ path("t/<slug:slug>/alloggi/",stays.stays_view,name="stays"),
+ path("t/<slug:slug>/alloggi/file/<str:what>/",stays.stay_files,name="stay_files"),
+ path("t/<slug:slug>/alloggi/ospiti/<uuid:booking_id>/",stays.guests_view,name="stay_guests"),
  path("t/<slug:slug>/export/",portal.export,name="export"),
  path("t/<slug:slug>/catalog/exceptions/festivita/",portal.holidays_view,name="holidays"),
  path("t/<slug:slug>/agenda/blocca/",agenda.block_view,name="time_block_new"),
@@ -96,12 +99,14 @@ urlpatterns=[
  path("book/<slug:slug>/api/v1/bookings/",api.bookings,name="api_bookings"),
  path("book/<slug:slug>/api/v1/services/",api.services,name="api_services"),
  path("book/<slug:slug>/api/v1/availability/",api.availability,name="api_availability"),
+ path("book/<slug:slug>/calendario/<uuid:unit_id>/<str:token>.ics",stays.feed_view,name="unit_feed"),
  path("book/<slug:slug>/api/config/",wpconnect.config_view,name="public_config"),
  path("api/wordpress/connect/",wpconnect.connect_view,name="wp_connect"),
  path("action/<slug:slug>/<str:token>/",public.action_view,name="action"),
  path("action/<slug:slug>/<str:token>/one-click/",public.unsubscribe_oneclick,name="oneclick"),
  path("action/<slug:slug>/<str:token>/sposta/",public.move_public,name="move_public"),
  path("action/<slug:slug>/<str:token>/sposta/orari/",public.move_public_slots,name="move_public_slots"),
+ path("action/<slug:slug>/<str:token>/check-in/",stays.checkin_view,name="checkin"),
  path("action/<slug:slug>/<str:token>/calendario.ics",public.booking_ics,name="booking_ics"),
  path("action/<slug:slug>/feed/<str:token>/calendario.ics",public.operator_feed,name="operator_feed"),
 ]

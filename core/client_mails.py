@@ -77,6 +77,8 @@ def values(tenant,booking,data):
         "sede":s.get("location",""),"operatore":s.get("resource",""),"attivita":tenant.name,"istruzioni":booking.service.instructions,
         "link":f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/" if token else ""}
 
+def codes_line(location):return " · ".join(f"{k} {v}" for k,v in (("CIN",location.cin),("CIR",location.cir)) if v)
+
 # 2.14.0: the WhatsApp button of a booking and of the client card opens the chat with this text, with the fields of the
 # emails; the person at the desk sends it from WhatsApp, the program sends nothing
 WHATSAPP="Ciao {nome}, ti scriviamo da {attivita} per la prenotazione: {servizio}, {quando}."
@@ -119,6 +121,7 @@ def send(tenant,booking,kind):
     if kind in ("confirmed","accepted") and mails["confirmed"]["price"] and booking.snapshot.get("total"):
         from .prices import euro
         body+=f"\nPrezzo indicativo: {euro(booking.snapshot['total'])}, si paga in sede"
+    if codes:=codes_line(booking.location):body+="\n"+codes  # 2.14.0: the CIN is due wherever the stay is offered
     if kind=="cancelled" and booking.snapshot.get("cancel_reason")=="unconfirmed":body="Non abbiamo ricevuto la tua conferma.\n"+body
     if kind in ("reminder","reminder2"):
         # a reminder leaves at most 3 days before: its buttons last until the day after

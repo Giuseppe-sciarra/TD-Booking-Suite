@@ -1478,3 +1478,14 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .sign-pad{display:block;width:100%;max-width:640px;aspect-ratio:3/1;border:1px dashed var(--line);border-radius:var(--r-sm);background:#fff;touch-action:none;cursor:crosshair}
 .sign-img{display:block;max-width:260px;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm)}
 .sign-new{margin-top:12px}.sign-new>summary{list-style:none;display:inline-flex}.series-plan li{padding:4px 0}
+/* 2.14.0: Alloggi (stays.html) and the guests' form */
+.stay-day{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.stay-day input{width:auto}
+.grid.stay-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}.stay-row{margin-top:20px}
+.stay-list{list-style:none;margin:0;padding:0}.stay-list li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 0;border-bottom:1px solid var(--line)}.stay-list li:last-child{border-bottom:0}
+.stay-list li>a:first-child{flex:1 1 100%;color:var(--ink);text-decoration:none}.stay-list small{flex:1 1 auto;color:var(--muted)}.stay-list form{margin:0 0 0 auto}
+.stay-inline{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.stay-inline select,.stay-inline input{width:auto}
+.stay-missing{color:var(--warn);font-weight:600}.stay-codes{margin:4px 0 0;font-size:13px}
+.pill.room-dirty{background:var(--warn-soft);color:var(--warn)}.pill.room-out{background:var(--danger-soft);color:var(--danger)}.pill.room-clean{background:var(--ok-soft);color:var(--ok)}
+.feed-box{padding:14px 0;border-top:1px solid var(--line)}.feed-box h3{margin:0 0 6px}.feed-box input[readonly]{font-size:13px}
+.guests-form fieldset+fieldset{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+@media(max-width:850px){.grid.stay-grid{grid-template-columns:1fr}}
