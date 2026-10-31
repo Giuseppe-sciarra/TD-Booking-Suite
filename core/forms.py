@@ -85,9 +85,9 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","active"]
-        labels={"name":"Nome della sede","active":"Attiva"}
-        help_texts={"name":"Per esempio Centro o Via degli Angeli"}
+        model=Location;fields=["name","address","phone","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age"]
+        labels={"name":"Nome della sede","active":"Attiva","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
+        help_texts={"name":"Per esempio Centro o Via degli Angeli","cin":"Strutture ricettive e case vacanze: compare nella pagina di prenotazione e nelle email","ross_code":"Per il file ISTAT dei movimenti, te lo dà l'ufficio regionale del turismo","tax_rate":"Vuoto se il comune non la chiede. Roma, B&B: 6","tax_nights":"0 = tutte. Roma: 10","tax_age":"0 = nessuna esenzione per età. Roma: 10"}
 WEEKDAYS=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
 def hour_field():return forms.TimeField(required=False,widget=forms.TimeInput(attrs={"type":"time"},format="%H:%M"))
 class ResourceForm(ScopedForm):

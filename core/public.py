@@ -96,9 +96,9 @@ def booking_page(request,slug):
         widget["prefill"]={"service":str(e.service_id),"resource":str(e.resource_id or ""),"date":e.first.isoformat() if e.service.kind=="day" else day.isoformat(),
             "end_date":e.last.isoformat() if e.service.kind=="day" else "","party":e.party,"contact":{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
         widget["slots"]+="?attesa="+request.GET["attesa"]
-    from .client_mails import current
+    from .client_mails import current,codes_line
     return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)],"reminder":current(request.tenant)["reminder"]["on"],
-        "waitlist":True,"offer":bool(offer)})
+        "waitlist":True,"offer":bool(offer),"codes":[x for x in (codes_line(l) for l in Location.objects.filter(active=True).order_by("name")) if x]})
 def manual_booking(request,slug):
     require_role(request,write=True)
     widget=widget_data(request)
@@ -272,7 +272,8 @@ def manage(b):
         else f"Il termine per annullare o spostare online è scaduto ({human_minutes(cutoff)} prima dell'inizio)" if cutoff else "")
     if late:late+=f": per qualsiasi cosa chiama {b.location.phone}." if b.location.phone else ": per qualsiasi cosa contatta l'attività."
     return {"booking":b,"what":values(b.tenant,b,{}),"where":place(b),"late":late,"calendar":links(b) if b.status in ACCEPTED else None,
-        "can_move":not late and b.service.active and b.service.location.active}
+        "can_move":not late and b.service.active and b.service.location.active,
+        "checkin":b.service.kind=="day" and b.status in ("pending",)+ACCEPTED and b.end>timezone.now()}  # 2.14.0: stays.checkin_view
 def apply_action(request,obj):
     """Returns the title and text of the page that follows, when they are not the usual ones."""
     with transaction.atomic():

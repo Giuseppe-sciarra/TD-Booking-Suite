@@ -50,3 +50,10 @@ does not redistribute any of their code.
 | SMTP server of the agency or of the business | confirmation, invitation and campaign emails |
 | Google (Gmail API, OAuth) / Microsoft 365 (Graph) | sending emails from a Google or Microsoft mailbox |
 | Telegram Bot API | notifications to the staff |
+| Airbnb, Booking.com and other portals (iCal) | busy nights of each unit, read from the calendar links the business pastes in |
+
+## Bundled data
+
+| Data | Source | Terms |
+|------|--------|-------|
+| `core/data/alloggiati/` comuni, stati, documenti (31 Oct 2026) | Polizia di Stato, Alloggiati Web, Tabelle | published without a licence: open data by default (CAD art. 52 c.2) |

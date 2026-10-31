@@ -218,6 +218,8 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
         # 2.14.0: 0 nights minimum is the rental of a day, picked up and returned the same day (end>start below)
         if 0<=nights<service.min_days:raise BookingError(f"Durata minima: {service.min_days} giorni.")
         if nights>service.max_days:raise BookingError(f"Durata massima: {service.max_days} giorni.")
+        from .stays import restricted
+        if why:=restricted(service,day,end_day):raise BookingError(why)
         clock_in=service.checkin if isinstance(service.checkin,time) else time.fromisoformat(service.checkin)
         clock_out=service.checkout if isinstance(service.checkout,time) else time.fromisoformat(service.checkout)
         expected=local_datetime(day,clock_in,tz);end=local_datetime(end_day,clock_out,tz)
