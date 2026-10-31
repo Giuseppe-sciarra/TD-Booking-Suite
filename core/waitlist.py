@@ -16,6 +16,7 @@ from django.core import signing
 from django.db import transaction
 from django.db.models import Min,Q
 from django.utils import timezone
+from django.utils.translation import get_language
 from .models import Tenant,Service,Resource,Contact,WaitEntry,audit
 from .crypto import encrypt
 from .calendar import local_datetime
@@ -94,7 +95,7 @@ def inside(e,t):return (e.time_from is None or t>=e.time_from) and (e.time_to is
 
 def link(tenant,e,slot):
     token=signing.dumps({"e":str(e.pk),"d":slot["start"][:10]},salt=SALT)
-    return f"{settings.PUBLIC_ORIGIN}/book/{tenant.slug}/?attesa={token}"
+    return f"{settings.PUBLIC_ORIGIN}/book/{tenant.slug}/?attesa={token}"+(f"&lang={e.snapshot['lang']}" if e.snapshot.get("lang") else "")
 
 def run(now=None):
     """The worker's turn: the businesses with something due or a kept place that expires. Returns the emails queued."""
@@ -198,7 +199,7 @@ def add(tenant,data,actor=None,contact=None):
         e=WaitEntry(tenant=tenant,contact=contact,**w)
         text=tenant.privacy_text+"\n"+NOTICE
         e.snapshot={"consent":{"at":timezone.now().isoformat(),"channel":"desk" if actor else "public","text_sha256":hashlib.sha256(text.encode()).hexdigest()},
-            **({"actor":str(actor.pk)} if actor else {})}
+            **({"actor":str(actor.pk)} if actor else {}),**({"lang":get_language()} if not actor and get_language()!="it" else {})}
         e.pii=encrypt(tenant,pii,"wait:"+str(e.pk));e.save()
         audit(tenant,actor,"waitlist.added",e.pk,channel=e.snapshot["consent"]["channel"])
         return e,True

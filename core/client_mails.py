@@ -10,7 +10,8 @@ from datetime import datetime,timedelta,time
 from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.db import transaction
-from django.utils import timezone
+from django.utils import timezone,translation
+from django.utils.translation import gettext
 
 KINDS=[("confirmed","Conferma","Appena la prenotazione è fatta, online o da voi"),
        ("reminder","Promemoria","Prima dell'appuntamento, con i tasti Confermo e Non vengo"),
@@ -62,8 +63,8 @@ def fill(text,values):
     return re.sub(r"\{(\w+)\}",lambda m:values.get(m.group(1),m.group(0)),text)
 
 def when(start,end,stay):
-    if stay:return f"dal {start:%d/%m/%Y}, arrivo {start:%H:%M}, al {end:%d/%m/%Y}, partenza {end:%H:%M}"
-    return f"{WEEKDAYS[start.weekday()]} {start:%d/%m/%Y} alle {start:%H:%M}"
+    if stay:return gettext("dal {inizio}, arrivo {arrivo}, al {fine}, partenza {partenza}").format(inizio=f"{start:%d/%m/%Y}",arrivo=f"{start:%H:%M}",fine=f"{end:%d/%m/%Y}",partenza=f"{end:%H:%M}")
+    return gettext("{giorno} {data} alle {ora}").format(giorno=gettext(WEEKDAYS[start.weekday()]),data=f"{start:%d/%m/%Y}",ora=f"{start:%H:%M}")
 
 def values(tenant,booking,data):
     tz=ZoneInfo(tenant.timezone);s=booking.snapshot
@@ -101,6 +102,16 @@ def sample(tenant):
         "attivita":tenant.name,"link":f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/…/",
         "istruzioni":(service.instructions if service else "") or "Le chiavi sono nella cassetta accanto al portone, codice 1234."}
 
+def client_lang(fn):
+    """2.14.0: the email in the language of the client's booking page (snapshot lang of the booking or the waiting-list
+    entry): the standard texts translated, the business's own as written."""
+    from functools import wraps
+    @wraps(fn)
+    def wrapper(tenant,obj,*a,**kw):
+        with translation.override(obj.snapshot.get("lang","it")):return fn(tenant,obj,*a,**kw)
+    return wrapper
+
+@client_lang
 def send(tenant,booking,kind):
     """The email of this moment, if it goes and the client wants it: an email to write to and no "no" from him,
     on his card or on this booking. 2.14.0: the same text with an HTML part (logo and colour of the business); the
@@ -112,22 +123,23 @@ def send(tenant,booking,kind):
     mails=current(tenant);conf=mails[kind];data=booking.data
     if not conf["on"] or not data.get("email") or booking.snapshot.get("notices") is False:return None
     if booking.contact_id and not booking.contact.notices:return None
-    v=values(tenant,booking,data);body=fill(conf["body"],v);links=[]
+    v=values(tenant,booking,data);body=fill(gettext(conf["body"]),v);links=[]
     if kind in ("confirmed","accepted") and mails["confirmed"]["price"] and booking.snapshot.get("total"):
         from .prices import euro
-        body+=f"\nPrezzo indicativo: {euro(booking.snapshot['total'])}, si paga in sede"
-    if kind=="cancelled" and booking.snapshot.get("cancel_reason")=="unconfirmed":body="Non abbiamo ricevuto la tua conferma.\n"+body
+        body+="\n"+gettext("Prezzo indicativo: {prezzo}, si paga in sede").format(prezzo=euro(booking.snapshot['total']))
+    if kind=="cancelled" and booking.snapshot.get("cancel_reason")=="unconfirmed":body=gettext("Non abbiamo ricevuto la tua conferma.")+"\n"+body
     if kind in ("reminder","reminder2"):
         # a reminder leaves at most 3 days before: its buttons last until the day after
-        links=[(label,f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{action_token(tenant,what,booking.contact,booking,days=4)}/") for label,what in (("Confermo","confirm"),("Non vengo","decline"))]
-    if kind=="review":links=[("Lascia una recensione",conf["url"])]
-    payload={"to":data["email"],"subject":" ".join(fill(conf["subject"],v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
+        links=[(gettext(label),f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{action_token(tenant,what,booking.contact,booking,days=4)}/") for label,what in (("Confermo","confirm"),("Non vengo","decline"))]
+    if kind=="review":links=[(gettext("Lascia una recensione"),conf["url"])]
+    payload={"to":data["email"],"subject":" ".join(fill(gettext(conf["subject"]),v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
         "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":links,"color":contrast_color(tenant.brand_color)})}
     if kind in ("confirmed","accepted","moved"):
         from .ics import ics
         payload["ics"]=ics(booking)
     return queue(tenant,payload,booking.contact)
 
+@client_lang
 def offer(tenant,entry,slots,link,until=None):
     """2.14.0: Si è liberato un posto, to a client of the waiting list who left an email and did not say no to the
     emails about his bookings: the free times of the day, the link of the booking page on it and who takes the place."""
@@ -138,13 +150,13 @@ def offer(tenant,entry,slots,link,until=None):
     if not conf["on"] or not d.get("email") or not entry.contact.notices:return None
     tz=ZoneInfo(tenant.timezone);first=datetime.fromisoformat(slots[0]["start"]).astimezone(tz)
     if entry.service.kind=="day":quando=when(first,datetime.fromisoformat(slots[0]["end"]).astimezone(tz),True)
-    else:quando=f"{WEEKDAYS[first.weekday()]} {first:%d/%m/%Y} alle "+", ".join(datetime.fromisoformat(x["start"]).astimezone(tz).strftime("%H:%M") for x in slots[:6])+(" e altri orari" if len(slots)>6 else "")
+    else:quando=gettext("{giorno} {data} alle {ora}").format(giorno=gettext(WEEKDAYS[first.weekday()]),data=f"{first:%d/%m/%Y}",ora=", ".join(datetime.fromisoformat(x["start"]).astimezone(tz).strftime("%H:%M") for x in slots[:6]))+(gettext(" e altri orari") if len(slots)>6 else "")
     v={"nome":d.get("first_name",""),"servizio":entry.service.name,"quando":quando,"data":f"{first:%d/%m/%Y}","ora":f"{first:%H:%M}","sede":entry.service.location.name,
         "operatore":entry.resource.name if entry.resource else "","attivita":tenant.name,"istruzioni":"","link":link}
-    body=fill(conf["body"],v)+"\n"+(f"Il posto è tenuto per te fino alle {until.astimezone(tz):%H:%M} di {WEEKDAYS[until.astimezone(tz).weekday()]}, poi passa a chi viene dopo in lista." if until
-        else "Lo abbiamo scritto a tutti quelli in lista: lo prende chi prenota per primo. Se non c'è più, sulla pagina vedi cosa resta libero.")
-    return queue(tenant,{"to":d["email"],"subject":" ".join(fill(conf["subject"],v).split()),"body":body,
-        "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":[("Prenota",link)],"color":contrast_color(tenant.brand_color)})},entry.contact)
+    body=fill(gettext(conf["body"]),v)+"\n"+(gettext("Il posto è tenuto per te fino alle {ora} di {giorno}, poi passa a chi viene dopo in lista.").format(ora=f"{until.astimezone(tz):%H:%M}",giorno=gettext(WEEKDAYS[until.astimezone(tz).weekday()])) if until
+        else gettext("Lo abbiamo scritto a tutti quelli in lista: lo prende chi prenota per primo. Se non c'è più, sulla pagina vedi cosa resta libero."))
+    return queue(tenant,{"to":d["email"],"subject":" ".join(fill(gettext(conf["subject"]),v).split()),"body":body,
+        "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":[(gettext("Prenota"),link)],"color":contrast_color(tenant.brand_color)})},entry.contact)
 
 def clean(post,enabled=True,saved=None):
     """The emails as the business set them. Words, and whether the standard emails go, only while the agency lets it

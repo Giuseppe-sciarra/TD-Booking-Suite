@@ -1,0 +1,513 @@
+# TD Booking Suite: the client's pages and emails in English (2.14.0). Keys are the Italian texts.
+# After a change: python scripts/compile_messages.py (no GNU gettext needed)
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "{n} giorni"
+msgstr "{n} days"
+
+msgid "1 giorno"
+msgstr "1 day"
+
+msgid "{n} ore"
+msgstr "{n} hours"
+
+msgid "1 ora"
+msgstr "1 hour"
+
+msgid "{n} minuti"
+msgstr "{n} minutes"
+
+msgid "Trattamento"
+msgstr "Treatment"
+
+msgid "Visita"
+msgstr "Visit"
+
+msgid "Seduta"
+msgstr "Session"
+
+msgid "Servizio"
+msgstr "Service"
+
+msgid "Operazione non consentita."
+msgstr "Not allowed."
+
+msgid "Scegli giorno e orario"
+msgstr "Choose day and time"
+
+msgid "Scegli la sede, poi giorno e orario"
+msgstr "Choose the location, then day and time"
+
+msgid "Scegli il servizio, poi giorno e orario"
+msgstr "Choose the service, then day and time"
+
+msgid "Richiesta non valida."
+msgstr "Invalid request."
+
+msgid "Pagina scaduta. Ricarica e riprova."
+msgstr "Page expired. Reload and try again."
+
+msgid "Controlla i dati."
+msgstr "Please check your details."
+
+msgid "La tua prenotazione"
+msgstr "Your booking"
+
+msgid "Ci sarai?"
+msgstr "Will you be there?"
+
+msgid "Non puoi venire?"
+msgstr "Can't make it?"
+
+msgid "Conferma iscrizione"
+msgstr "Confirm subscription"
+
+msgid "Disiscriviti"
+msgstr "Unsubscribe"
+
+msgid "Conferma"
+msgstr "Confirm"
+
+msgid "Collegamento scaduto"
+msgstr "Link expired"
+
+msgid "Contatta l'attività per assistenza."
+msgstr "Please contact the business for help."
+
+msgid "Operazione completata"
+msgstr "Done"
+
+msgid "La tua richiesta è stata registrata."
+msgstr "Your request has been recorded."
+
+msgid "Operazione non disponibile"
+msgstr "Not available"
+
+msgid "La prenotazione è annullata"
+msgstr "The booking is cancelled"
+
+msgid "La prenotazione è già iniziata o conclusa"
+msgstr "The booking has already started or ended"
+
+msgid "Il termine per annullare o spostare online è scaduto ({tempo} prima dell'inizio)"
+msgstr "The time to cancel or move online has passed ({tempo} before the start)"
+
+msgid ": per qualsiasi cosa chiama {telefono}."
+msgstr ": for anything, call {telefono}."
+
+msgid ": per qualsiasi cosa contatta l'attività."
+msgstr ": for anything, contact the business."
+
+msgid "Collegamento scaduto."
+msgstr "Link expired."
+
+msgid "La prenotazione è già iniziata. Contatta l'attività."
+msgstr "The booking has already started. Please contact the business."
+
+msgid "Il termine per annullare online è scaduto ({tempo} prima dell'inizio). Contatta direttamente l'attività."
+msgstr "The time to cancel online has passed ({tempo} before the start). Please contact the business directly."
+
+msgid "Questa prenotazione non è più attiva o è già iniziata. Contatta l'attività."
+msgstr "This booking is no longer active or has already started. Please contact the business."
+
+msgid "Grazie, ti aspettiamo"
+msgstr "Thank you, see you soon"
+
+msgid "Abbiamo detto all'attività che ci sarai."
+msgstr "We told the business you will be there."
+
+msgid "Abbiamo avvisato l'attività"
+msgstr "We let the business know"
+
+msgid "Il termine per annullare online è scaduto, quindi la prenotazione la annulla l'attività."
+msgstr "The time to cancel online has passed, so the business will cancel the booking."
+
+msgid " Per essere sicuro chiama {telefono}."
+msgstr " To be sure, call {telefono}."
+
+msgid " Per essere sicuro chiamala."
+msgstr " To be sure, give them a call."
+
+msgid "Prenotazione annullata"
+msgstr "Booking cancelled"
+
+msgid "Grazie di averci avvisato: il posto torna libero per altri."
+msgstr "Thank you for letting us know: the place is free again for others."
+
+msgid "Questa conferma non è più valida."
+msgstr "This confirmation is no longer valid."
+
+msgid "Collegamento scaduto. Contatta l'attività."
+msgstr "Link expired. Please contact the business."
+
+msgid "Questa prenotazione non si sposta online. Contatta l'attività."
+msgstr "This booking cannot be moved online. Please contact the business."
+
+msgid "Spostamento non disponibile"
+msgstr "Move not available"
+
+msgid "Stesso servizio: scegli il nuovo giorno e l'orario"
+msgstr "Same service: choose the new day and time"
+
+msgid "Selezione non valida o non disponibile."
+msgstr "Invalid or unavailable choice."
+
+msgid "Compila correttamente nome, cognome, email e telefono."
+msgstr "Please fill in first name, last name, email and phone correctly."
+
+msgid "Email non valida."
+msgstr "Invalid email."
+
+msgid "Numero di telefono non valido, per esempio 333 123 4567."
+msgstr "Invalid phone number, for example +44 20 7946 0958."
+
+msgid "Data o ora non valida."
+msgstr "Invalid date or time."
+
+msgid "Seleziona la data di partenza."
+msgstr "Choose the departure date."
+
+msgid "La partenza viene prima dell'arrivo: scegli un'altra data di partenza."
+msgstr "The departure is before the arrival: choose another departure date."
+
+msgid "Data fuori dall'intervallo prenotabile."
+msgstr "Date outside the bookable range."
+
+msgid "Arrivo, partenza o soggiorno non consentiti dal calendario."
+msgstr "Arrival, departure or length of stay not allowed by the calendar."
+
+msgid "Disponibilità esaurita."
+msgstr "Fully booked."
+
+msgid "Nessuno è libero a quell'ora: scegli con chi."
+msgstr "Nobody is free at that time: choose with whom."
+
+msgid "Orario non disponibile. Aggiorna le disponibilità."
+msgstr "Time no longer available. Refresh the free times."
+
+msgid "Prenotazioni non disponibili."
+msgstr "Bookings not available."
+
+msgid "Le richieste online sono accettate soltanto negli orari indicati dall'attività."
+msgstr "Online requests are accepted only at the times set by the business."
+
+msgid "Conferma la richiesta di iscrizione alle comunicazioni di {attivita}:"
+msgstr "Confirm your request to receive news from {attivita}:"
+
+msgid "Se non hai richiesto l'iscrizione, ignora il messaggio."
+msgstr "If you did not ask to subscribe, ignore this message."
+
+msgid "dal {inizio}, arrivo {arrivo}, al {fine}, partenza {partenza}"
+msgstr "from {inizio}, arrival {arrivo}, to {fine}, departure {partenza}"
+
+msgid "{giorno} {data} alle {ora}"
+msgstr "{giorno} {data} at {ora}"
+
+msgid "lunedì"
+msgstr "Monday"
+
+msgid "martedì"
+msgstr "Tuesday"
+
+msgid "mercoledì"
+msgstr "Wednesday"
+
+msgid "giovedì"
+msgstr "Thursday"
+
+msgid "venerdì"
+msgstr "Friday"
+
+msgid "sabato"
+msgstr "Saturday"
+
+msgid "domenica"
+msgstr "Sunday"
+
+msgid "Prezzo indicativo: {prezzo}, si paga in sede"
+msgstr "Indicative price: {prezzo}, paid on site"
+
+msgid "Non abbiamo ricevuto la tua conferma."
+msgstr "We did not receive your confirmation."
+
+msgid "Confermo"
+msgstr "I'll be there"
+
+msgid "Non vengo"
+msgstr "I can't come"
+
+msgid "Lascia una recensione"
+msgstr "Leave a review"
+
+msgid "Prenota"
+msgstr "Book"
+
+msgid " e altri orari"
+msgstr " and other times"
+
+msgid "Il posto è tenuto per te fino alle {ora} di {giorno}, poi passa a chi viene dopo in lista."
+msgstr "The place is held for you until {ora} on {giorno}, then it goes to the next person on the list."
+
+msgid "Lo abbiamo scritto a tutti quelli in lista: lo prende chi prenota per primo. Se non c'è più, sulla pagina vedi cosa resta libero."
+msgstr "We told everyone on the list: whoever books first gets it. If it is gone, the page shows what is still free."
+
+msgid "Scegli un nuovo orario"
+msgstr "Choose a new time"
+
+msgid "Prenota da %(name)s"
+msgstr "Book with %(name)s"
+
+msgid "I tuoi recapiti"
+msgstr "Your details"
+
+msgid "Nome"
+msgstr "First name"
+
+msgid "Cognome"
+msgstr "Last name"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Telefono"
+msgstr "Phone"
+
+msgid "Prestazione"
+msgstr "Option"
+
+msgid "Operatore / risorsa"
+msgstr "Staff / resource"
+
+msgid "Persone"
+msgstr "People"
+
+msgid "Data"
+msgstr "Date"
+
+msgid "Partenza"
+msgstr "Departure"
+
+msgid "Orari di"
+msgstr "Times in"
+
+msgid "Ecco il giorno che aspettavi: scegli l'orario e conferma. Se nel frattempo l'ha preso qualcun altro, vedi cosa resta libero"
+msgstr "Here is the day you were waiting for: choose the time and confirm. If someone took it meanwhile, you see what is still free"
+
+msgid "Orari disponibili"
+msgstr "Available times"
+
+msgid "Scegli servizio e data."
+msgstr "Choose service and date."
+
+msgid "Non trovi l'orario che vuoi?"
+msgstr "Can't find the time you want?"
+
+msgid "Avvisami se si libera"
+msgstr "Tell me if a place frees up"
+
+msgid "Ti scriviamo per email appena si libera un posto per %(name)s in questo giorno, o fino al giorno che scegli. Nome ed email li prendiamo dai tuoi recapiti qui sopra, il telefono è facoltativo"
+msgstr "We email you as soon as a place frees up at %(name)s on this day, or up to the day you choose. Name and email come from your details above, the phone is optional"
+
+msgid "Fino al"
+msgstr "Until"
+
+msgid "facoltativo"
+msgstr "optional"
+
+msgid "Dalle"
+msgstr "From"
+
+msgid "Alle"
+msgstr "To"
+
+msgid "Avvisami per email se si libera un posto. Uso questi dati solo per l'avviso e li cancelliamo quando la data è passata"
+msgstr "Email me if a place frees up. These details are used only for the notice and deleted once the date has passed"
+
+msgid "Avvisami"
+msgstr "Notify me"
+
+msgid "Intolleranze o allergie?"
+msgstr "Intolerances or allergies?"
+
+msgid "Segna quelle di chi viene, le passiamo alla cucina. Altro? Scrivilo qui sotto"
+msgstr "Tick those of whoever is coming, we pass them to the kitchen. Anything else? Write it below"
+
+msgid "Vuoi dirci qualcosa?"
+msgstr "Anything you want to tell us?"
+
+msgid "Preferenze o richieste utili"
+msgstr "Preferences or useful requests"
+
+msgid "Come utilizziamo i tuoi dati"
+msgstr "How we use your data"
+
+msgid "Mandami per email la conferma, il promemoria e gli avvisi su questa prenotazione"
+msgstr "Email me the confirmation, the reminder and the notices about this booking"
+
+msgid "Mandami per email la conferma e gli avvisi su questa prenotazione"
+msgstr "Email me the confirmation and the notices about this booking"
+
+msgid "La conferma compare subito qui"
+msgstr "The confirmation appears right here"
+
+msgid "La disponibilità viene ricontrollata quando confermi"
+msgstr "Availability is checked again when you confirm"
+
+msgid "Conferma nuovo orario"
+msgstr "Confirm new time"
+
+msgid "Conferma prenotazione"
+msgstr "Confirm booking"
+
+msgid "Prenotazione confermata"
+msgstr "Booking confirmed"
+
+msgid "L'attività la conferma al più presto: ti scriviamo per email. Fino ad allora il posto resta tenuto per te"
+msgstr "The business will confirm it as soon as possible: we will email you. Until then the place is held for you"
+
+msgid "Aggiungi al calendario"
+msgstr "Add to calendar"
+
+msgid "File .ics"
+msgstr ".ics file"
+
+msgid "Gestisci, sposta o annulla"
+msgstr "Manage, move or cancel"
+
+msgid "Conserva questo link: ti arriva anche via email con il riepilogo"
+msgstr "Keep this link: you also get it by email with the summary"
+
+msgid "Cosa"
+msgstr "What"
+
+msgid "Quando"
+msgstr "When"
+
+msgid "Dove"
+msgstr "Where"
+
+msgid "Stato"
+msgstr "Status"
+
+msgid "In attesa della conferma dell'attività"
+msgstr "Waiting for the business to confirm"
+
+msgid "Fatto: la prenotazione è spostata. Ti abbiamo scritto il nuovo orario per email"
+msgstr "Done: the booking is moved. We emailed you the new time"
+
+msgid "Richiesta già registrata."
+msgstr "Request already recorded."
+
+msgid "Sposta"
+msgstr "Move"
+
+msgid "Annullare la prenotazione?"
+msgstr "Cancel the booking?"
+
+msgid "Annulla la prenotazione"
+msgstr "Cancel the booking"
+
+msgid "Un clic e l'attività sa che ci sarai."
+msgstr "One click and the business knows you will be there."
+
+msgid "Confermo, ci sarò"
+msgstr "Yes, I'll be there"
+
+msgid "Da qui puoi comunque avvisare l'attività."
+msgstr "From here you can still let the business know."
+
+msgid "La prenotazione viene annullata e il posto torna libero per qualcun altro."
+msgstr "The booking is cancelled and the place is free again for someone else."
+
+msgid "Conferma per completare l'operazione."
+msgstr "Confirm to complete."
+
+msgid "Pagina prenotazioni"
+msgstr "Booking page"
+
+msgid "Vai al contenuto"
+msgstr "Skip to content"
+
+msgid "Tema"
+msgstr "Theme"
+
+msgid "Automatico"
+msgstr "Automatic"
+
+msgid "Chiaro"
+msgstr "Light"
+
+msgid "Scuro"
+msgstr "Dark"
+
+msgid "Prenotazione confermata · {attivita}"
+msgstr "Booking confirmed · {attivita}"
+
+msgid "La prenotazione è confermata.\n{servizio}\n{quando}\nGestisci o annulla: {link}"
+msgstr "Your booking is confirmed.\n{servizio}\n{quando}\nManage or cancel: {link}"
+
+msgid "Prenotazione aggiornata · {attivita}"
+msgstr "Booking updated · {attivita}"
+
+msgid "Nuovo orario: {quando}.\nContatta l'attività per informazioni."
+msgstr "New time: {quando}.\nContact the business for information."
+
+msgid "Prenotazione annullata · {attivita}"
+msgstr "Booking cancelled · {attivita}"
+
+msgid "La prenotazione è stata annullata. Contatta l'attività per prenotare nuovamente."
+msgstr "The booking has been cancelled. Contact the business to book again."
+
+msgid "Richiesta ricevuta · {attivita}"
+msgstr "Request received · {attivita}"
+
+msgid "Abbiamo ricevuto la tua richiesta: {servizio}, {quando}.\nTi scriviamo appena la confermiamo. Fino ad allora il posto resta tenuto per te.\nPer annullarla: {link}"
+msgstr "We have received your request: {servizio}, {quando}.\nWe will write to you as soon as we confirm it. Until then the place is held for you.\nTo cancel it: {link}"
+
+msgid "La tua richiesta è confermata.\n{servizio}\n{quando}\nGestisci o annulla: {link}"
+msgstr "Your request is confirmed.\n{servizio}\n{quando}\nManage or cancel: {link}"
+
+msgid "Richiesta non confermata · {attivita}"
+msgstr "Request not confirmed · {attivita}"
+
+msgid "Ci dispiace, non possiamo confermare la tua richiesta: {servizio}, {quando}.\nContatta l'attività per trovare un'altra soluzione."
+msgstr "We are sorry, we cannot confirm your request: {servizio}, {quando}.\nContact the business to find another solution."
+
+msgid "Promemoria · {attivita}"
+msgstr "Reminder · {attivita}"
+
+msgid "Ciao {nome},\nti ricordiamo la prenotazione: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"
+msgstr "Hello {nome},\na reminder of your booking: {servizio}, {quando}.\nIf you cannot come, manage or cancel: {link}"
+
+msgid "A tra poco · {attivita}"
+msgstr "See you soon · {attivita}"
+
+msgid "Ciao {nome},\nti aspettiamo tra poco: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"
+msgstr "Hello {nome},\nsee you soon: {servizio}, {quando}.\nIf you cannot come, manage or cancel: {link}"
+
+msgid "Prima del tuo arrivo · {attivita}"
+msgstr "Before your arrival · {attivita}"
+
+msgid "Ciao {nome},\nti aspettiamo: {servizio}, {quando}.\n{istruzioni}\nPer gestire la prenotazione: {link}"
+msgstr "Hello {nome},\nwe look forward to seeing you: {servizio}, {quando}.\n{istruzioni}\nTo manage your booking: {link}"
+
+msgid "Com'è andata? · {attivita}"
+msgstr "How did it go? · {attivita}"
+
+msgid "Ciao {nome},\ngrazie di aver scelto {attivita}. Se ti va, lasciaci una recensione: per noi conta molto."
+msgstr "Hello {nome},\nthank you for choosing {attivita}. If you like, leave us a review: it means a lot to us."
+
+msgid "Si è liberato un posto · {attivita}"
+msgstr "A place is free · {attivita}"
+
+msgid "Ciao {nome},\nsi è liberato un posto che aspettavi: {servizio}, {quando}.\nPrenota da qui: {link}"
+msgstr "Hello {nome},\na place you were waiting for is free: {servizio}, {quando}.\nBook here: {link}"
+
+msgid "versione"
+msgstr "version"
+
+msgid "Codice sorgente"
+msgstr "Source code"
