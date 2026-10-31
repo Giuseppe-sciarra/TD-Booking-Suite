@@ -330,8 +330,9 @@ def sheet(request,slug):
     chosen=next((o for o in ops if str(o.pk)==request.GET.get("operatore")),None)
     if chosen:rows=rows.filter(resource=chosen)
     groups={}
+    from .tables import names
     for r in rows:
-        for _,x in days_of(request,r,tz,{},day,day):groups.setdefault(r.snapshot.get("resource") or x["service"],[]).append(x)
+        for _,x in days_of(request,r,tz,{},day,day):x["table"]=names(r);groups.setdefault(r.snapshot.get("resource") or x["service"],[]).append(x)
     back=reverse("bookings",args=[slug])+f"?data={day.isoformat()}"+(f"&sede={location.pk}" if location else "")+(f"&operatore={chosen.pk}" if chosen else "")
     return render(request,"agenda_print.html",{"day":day,"now":now,"location":location,"places":places,"ops":ops,"chosen":chosen,"back":back,
         "groups":[{"name":k,"rows":v} for k,v in sorted(groups.items())],"count":rows.count(),"one":units(t.business_type)[0],

@@ -2,8 +2,8 @@
 (() => {
  const $=id=>document.getElementById(id),config=JSON.parse($("widget-config").textContent);
  // 2.14.0: the client's page in English (?lang=en or the browser's language, html lang); keys are the Italian texts
- const T={en:{"Sede":"Location","Scegli la sede e la data.":"Choose the location and the date.","Scegli la sede":"Choose the location","Servizio":"Service","Scegli un ":"Choose a ","Persone":"People","Ospiti":"Guests","Persone / quantità":"People / quantity","Prestazione standard":"Standard","Qualsiasi unità libera":"Any free unit","Il primo disponibile":"First available","Unità / camera":"Unit / room","Operatore / risorsa":"Staff / resource","Arrivo":"Arrival","Data":"Date","Seleziona":"Select","Scegli le date per vedere le disponibilità.":"Choose the dates to see what is available.","Scegli la data per vedere gli orari liberi.":"Choose the date to see the free times.","Scegli servizio e data per vedere gli orari liberi.":"Choose service and date to see the free times.","Controllo delle disponibilità…":"Checking availability…","Impossibile verificare le disponibilità. Riprova.":"Availability could not be checked. Please try again.","Disponibilità non verificabile.":"Availability could not be checked."," · fino a ":" · up to "," ospiti":" guests","fino alle ":"until ","Scegli l'unità che preferisci.":"Choose the unit you prefer.","Scegli uno degli orari disponibili.":"Choose one of the available times.","Nessuna unità libera per tutte le date scelte.":"No unit is free for all the dates chosen.","Nessun orario disponibile: prova un'altra data.":"No times available: try another date.","Tutto pieno in queste date.":"Fully booked on these dates.","Tutto pieno in questo giorno.":"Fully booked on this day.","Non trovi l'orario che vuoi?":"Can't find the time you want?","Spunta la casella per ricevere l'avviso.":"Tick the box to get the notice.","Non è andata: riprova tra poco.":"It did not work: please try again shortly.","Fatto: ti scriviamo appena si libera un posto.":"Done: we will write to you as soon as a place frees up.","Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.":"No answer. Try again with the same details: the request is recognised.","Prenotazione non completata.":"Booking not completed.","Riferimento: ":"Reference: ","Richiesta inviata":"Request sent","Gestisci / annulla la richiesta":"Manage / cancel the request"}}[document.documentElement.lang]||{},t=s=>T[s]||s;
- const form=$("booking-form"),service=$("service"),option=$("option"),resource=$("resource"),party=$("party"),day=$("date"),departure=$("departure"),submit=$("booking-submit");
+ const T={en:{"Sede":"Location","Scegli la sede e la data.":"Choose the location and the date.","Scegli la sede":"Choose the location","Servizio":"Service","Scegli un ":"Choose a ","Persone":"People","Ospiti":"Guests","Persone / quantità":"People / quantity","Prestazione standard":"Standard","Qualsiasi unità libera":"Any free unit","Il primo disponibile":"First available","Unità / camera":"Unit / room","Operatore / risorsa":"Staff / resource","Arrivo":"Arrival","Data":"Date","Seleziona":"Select","Scegli le date per vedere le disponibilità.":"Choose the dates to see what is available.","Scegli la data per vedere gli orari liberi.":"Choose the date to see the free times.","Scegli servizio e data per vedere gli orari liberi.":"Choose service and date to see the free times.","Controllo delle disponibilità…":"Checking availability…","Impossibile verificare le disponibilità. Riprova.":"Availability could not be checked. Please try again.","Disponibilità non verificabile.":"Availability could not be checked."," · fino a ":" · up to "," ospiti":" guests","fino alle ":"until ","Scegli l'unità che preferisci.":"Choose the unit you prefer.","Scegli uno degli orari disponibili.":"Choose one of the available times.","Nessuna unità libera per tutte le date scelte.":"No unit is free for all the dates chosen.","Nessun orario disponibile: prova un'altra data.":"No times available: try another date.","Tutto pieno in queste date.":"Fully booked on these dates.","Tutto pieno in questo giorno.":"Fully booked on this day.","Non trovi l'orario che vuoi?":"Can't find the time you want?","Spunta la casella per ricevere l'avviso.":"Tick the box to get the notice.","Non è andata: riprova tra poco.":"It did not work: please try again shortly.","Fatto: ti scriviamo appena si libera un posto.":"Done: we will write to you as soon as a place frees up.","Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.":"No answer. Try again with the same details: the request is recognised.","Prenotazione non completata.":"Booking not completed.","Riferimento: ":"Reference: ","Richiesta inviata":"Request sent","Gestisci / annulla la richiesta":"Manage / cancel the request","Indifferente":"No preference"}}[document.documentElement.lang]||{},t=s=>T[s]||s;
+ const form=$("booking-form"),service=$("service"),option=$("option"),resource=$("resource"),party=$("party"),day=$("date"),departure=$("departure"),submit=$("booking-submit"),area=$("area");
  let selected=null,controller=null,sequence=0,busy=false,requestKey=crypto.randomUUID().replace(/-/g,""),forceOk=false;
  // 2.14.0: Forza at the desk: the time typed in for appointments and places, every date of the day for events
  const force=$("force"),forceAt=$("force-at"),label=submit.textContent;
@@ -57,6 +57,8 @@
   // one person per booking: no question to ask. Otherwise call it by what it counts
   $("party-wrap").hidden=most<=1;$("party-label").textContent=t(["shift","capacity","event"].includes(s?.kind)?"Persone":s?.kind==="day"?"Ospiti":"Persone / quantità");
   $("service-description").textContent=s?.description||"";groupNote();
+  // 2.14.0: the room of a restaurant (Sala, Dehors) or Indifferente; never the table
+  area.replaceChildren(new Option(t("Indifferente"),""),...(s?.areas||[]).map(a=>new Option(a.name,a.id)));$("area-wrap").hidden=!s?.areas?.length||!!config.editing;
   // nothing left to choose in the first block: skip it
   // the choices above the row only when there is something to choose; the row holds who, how many and when
   $("what-grid").hidden=$("service-wrap").hidden&&$("option-wrap").hidden;$("date-label").textContent=t(s?.kind==="day"?"Arrivo":"Data");
@@ -80,7 +82,7 @@
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=t($("service-label").textContent===t("Sede")?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.");return;}
   $("slot-status").textContent=t("Controllo delle disponibilità…");$("slots").setAttribute("aria-busy","true");
   try{
-   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,...(forcing()?{forza:"1"}:{})});
+   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,area:area.value,...(forcing()?{forza:"1"}:{})});
    const response=await fetch(config.slots+(config.slots.includes("?")?"&":"?")+query,{signal:controller.signal,credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error(t("Impossibile verificare le disponibilità. Riprova."));}
    if(seq!==sequence)return;
@@ -126,7 +128,7 @@
   }catch(e){$("wait-status").textContent=e.message;}finally{b.disabled=false;}
  });
  service.addEventListener("change",changeService);
- [option,resource,party,day,departure,force,forceAt].forEach(el=>el?.addEventListener("change",loadSlots));
+ [option,resource,party,day,departure,force,forceAt,area].forEach(el=>el?.addEventListener("change",loadSlots));
  // 2.12.0: with operators' photos, one face each to choose with whom; the select stays, for the keyboard and the logic
  function pickers(){
   const box=$("resource-pick"),s=current();if(!box)return;mark();
@@ -151,7 +153,7 @@
   try{
    const s=current(),answers={};
    document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
-   const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value};
+   const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value,area:area.value};
    if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
    if(config.walkin)payload.walkin=true;

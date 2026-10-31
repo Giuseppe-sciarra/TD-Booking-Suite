@@ -443,6 +443,34 @@
   if(d&&d.tagName==="DETAILS"){d.open=true;(d.querySelector("[name=service]")||d.querySelector("input:not([type=hidden]),textarea"))?.focus({preventScroll:true});}};
  window.addEventListener("hashchange",openTarget);openTarget();
  document.addEventListener("click",e=>{const a=e.target.closest('a[href^="#"]');if(a&&a.getAttribute("href")===location.hash)openTarget();});
+ // 2.14.0: Sale e tavoli. A table dragged on the plan stands there (percent of the plan, saved at once, CSSOM only);
+ // a booking picked (or dragged onto a table) and a table touched: the booking gets that table
+ document.querySelectorAll("[data-floor]").forEach(floor=>{
+  const err=document.querySelector("[data-floor-error]"),put=el=>{el.style.setProperty("--x",el.dataset.x+"%");el.style.setProperty("--y",el.dataset.y+"%");};
+  floor.querySelectorAll("[data-table]").forEach(put);
+  const post=async(url,body)=>{let r,out={};try{r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":csrf()},body:JSON.stringify(body),credentials:"same-origin"});out=await r.json();}catch{}
+   if(!r?.ok){err.textContent=out.error||"Non riuscito: ricarica la pagina.";err.hidden=false;}return !!r?.ok;};
+  const give=async(booking,table)=>{if(await post(floor.dataset.assign,{booking,tables:table?[table]:[]}))location.reload();};
+  let picked=null,chosen=null,drag=null;
+  const pick=id=>{picked=id;document.querySelectorAll("[data-pick]").forEach(x=>x.classList.toggle("picked",x.dataset.pick===picked));floor.classList.toggle("picking",!!picked);};
+  document.querySelectorAll("[data-pick]").forEach(b=>b.addEventListener("click",()=>{if(!b.dataset.dragged)pick(picked===b.dataset.pick?null:b.dataset.pick);delete b.dataset.dragged;}));
+  floor.addEventListener("click",e=>{const t=e.target.closest("[data-table]");if(!t||t.dataset.dragged){if(t)delete t.dataset.dragged;return;}
+   if(picked){give(picked,t.dataset.table);return;}
+   chosen=t.dataset.booking?t:null;floor.querySelectorAll("[data-table]").forEach(x=>x.classList.toggle("chosen",x===chosen));});
+  document.querySelector("[data-unseat]")?.addEventListener("click",()=>{if(chosen)give(chosen.dataset.booking,null);});
+  document.addEventListener("pointerdown",e=>{const el=e.target.closest("[data-pick]:not(:disabled),[data-floor][data-editable] [data-table]");if(!el||e.button>0)return;drag={el,id:e.pointerId,x:e.clientX,y:e.clientY,moved:false};});
+  document.addEventListener("pointermove",e=>{const d=drag;if(!d||e.pointerId!==d.id)return;
+   if(!d.moved&&Math.hypot(e.clientX-d.x,e.clientY-d.y)<6)return;
+   if(!d.moved){d.moved=true;try{d.el.setPointerCapture(d.id);}catch{}d.el.classList.add("dragging");}
+   if(d.el.dataset.table){const r=floor.getBoundingClientRect();d.el.dataset.x=Math.min(95,Math.max(0,(e.clientX-r.left)/r.width*100-4)).toFixed(1);d.el.dataset.y=Math.min(95,Math.max(0,(e.clientY-r.top)/r.height*100-4)).toFixed(1);put(d.el);}
+   else{d.el.style.setProperty("--dx",(e.clientX-d.x)+"px");d.el.style.setProperty("--dy",(e.clientY-d.y)+"px");}});
+  const drop=async e=>{const d=drag;if(!d||e.pointerId!==d.id)return;drag=null;if(!d.moved)return;
+   d.el.classList.remove("dragging");d.el.dataset.dragged="1";
+   if(d.el.dataset.table){post(floor.dataset.place,{table:d.el.dataset.table,x:d.el.dataset.x,y:d.el.dataset.y});return;}
+   d.el.style.setProperty("--dx","0px");d.el.style.setProperty("--dy","0px");
+   const t=document.elementFromPoint(e.clientX,e.clientY)?.closest("[data-table]");if(t)give(d.el.dataset.pick,t.dataset.table);};
+  document.addEventListener("pointerup",drop);document.addEventListener("pointercancel",drop);
+ });
 })();
 // 2.14.0: a consent signed on the tablet at the desk: the finger or the pen draws, the drawing goes as a PNG
 document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.querySelector(c.dataset.sign),x=c.getContext("2d");let on=false;x.lineWidth=3;x.lineCap="round";x.lineJoin="round";x.strokeStyle="#111";

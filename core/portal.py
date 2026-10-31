@@ -489,6 +489,8 @@ def booking_detail(request,slug,booking_id):
         entries=treatments(booking.contact);prefill=from_booking(booking,tz)
         # what was done before this appointment, the newest first: what the operator wants to know before starting
         ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ACCEPTED,**record_options(spec))
+    from .tables import names
+    ctx["table_names"]=names(booking)
     return render(request,"booking_detail.html",ctx)
 def test_due(booking):
     """2.14.0: the service wants a test done within so many days: what the desk must know, never a refusal."""
