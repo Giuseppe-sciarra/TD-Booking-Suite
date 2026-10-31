@@ -7,11 +7,17 @@ without appointments (a restaurant, a hotel) lists each day's bookings instead o
 the same time would not fit side by side. The list of bookings stays one click away (?vista=elenco)."""
 from datetime import date,datetime,time,timedelta
 from zoneinfo import ZoneInfo
-from django.shortcuts import render
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied,ValidationError
+from django.db import transaction
+from django.db.models import Q
+from django.shortcuts import render,redirect,get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
-from .calendar import windows,merge
-from .models import Booking,Location,Resource,Service,ServiceResource
-from .permissions import can,shown,visible_bookings
+from .calendar import windows,merge,minus,block_spans,blocked
+from .models import Booking,Location,Resource,Service,ServiceResource,Occurrence,TimeBlock,Tenant,audit
+from .permissions import can,require,shown,visible_bookings
+from .booking import OPEN
 from .presets import units
 
 STEP=15  # minutes in a row of the grid
@@ -37,7 +43,8 @@ def open_spans(tenant,day,op,memo=None,services=None):
     if services is None:services=list(Service.objects.filter(active=True,kind="resource",id__in=ServiceResource.objects.filter(resource=op).values("service_id")))
     spans=[]
     for s in services:spans+=windows(tenant,day,s,op,memo=memo)
-    return merge(spans)
+    # 2.14.0: his pauses, training and meetings are not bookable, greyed as the time he does not work
+    return minus(merge(spans),[(a,b) for a,b,_ in block_spans(tenant,day-timedelta(days=1),day,resource=op)])
 
 def services_of(ops):
     """The appointment services of each operator, in one query."""
@@ -116,11 +123,12 @@ def day_view(request):
     # 2.11.0: like the salon programs, the day shows who works: an operator off that day, with nothing booked,
     # leaves his column and is named above the agenda. On a day nobody works every column stays, greyed
     works=lambda op:any(b>start and a<end for a,b in spans[op.pk])  # windows() also looks at the nights around
-    off=[op for op in ops if not works(op) and not any(r.resource_id==op.pk for r in rows)]
+    blocks={op.pk:block_spans(t,day,day,resource=op) for op in ops}  # 2.14.0: Blocca orario
+    off=[op for op in ops if not works(op) and not any(r.resource_id==op.pk for r in rows) and not blocks[op.pk]]
     if len(off)<len(ops):ops=[op for op in ops if op not in off]
     else:off=[]
     # the frame of the day: the working time of anyone, and any booking outside it, in whole hours
-    edges=[(a.astimezone(tz),b.astimezone(tz)) for s in spans.values() for a,b in s]+[(r.start.astimezone(tz),r.end.astimezone(tz)) for r in rows]
+    edges=[(a.astimezone(tz),b.astimezone(tz)) for s in spans.values() for a,b in s]+[(r.start.astimezone(tz),r.end.astimezone(tz)) for r in rows]+[(a.astimezone(tz),b.astimezone(tz)) for op in ops for a,b,_ in blocks[op.pk]]
     edges=[(max(a,start),min(b,end)) for a,b in edges if b>start and a<end]
     first=min((a for a,_ in edges),default=datetime.combine(day,time(9),tz))
     last=max((b for _,b in edges),default=datetime.combine(day,time(19),tz))
@@ -129,10 +137,10 @@ def day_view(request):
     frame_b=min(frame_b,end);count=max(1,int((frame_b-frame_a).total_seconds()//60//STEP))
     row_of=lambda moment:max(1,min(count+1,int((moment.astimezone(tz)-frame_a).total_seconds()//60//STEP)+1))
     # one column per operator; bookings without one (made before operators existed) get their own
-    columns=[{"op":op,"name":op.name,"color":color[op.pk],"closed":[],"cells":[],"items":[]} for op in ops]
+    columns=[{"op":op,"name":op.name,"color":color[op.pk],"closed":[],"cells":[],"items":[],"blocks":[]} for op in ops]
     by_op={c["op"].pk:c for c in columns}
     loose=[r for r in rows if r.resource_id not in by_op]
-    if loose:columns.append({"op":None,"name":"Senza "+units(t.business_type)[0].lower(),"color":0,"closed":[],"cells":[],"items":[]})
+    if loose:columns.append({"op":None,"name":"Senza "+units(t.business_type)[0].lower(),"color":0,"closed":[],"cells":[],"items":[],"blocks":[]})
     writer=can(request,"booking.write") and day>=today
     now=timezone.now()
     for i,c in enumerate(columns,start=2):
@@ -153,6 +161,9 @@ def day_view(request):
             x=item(request,r,tz,color)
             x["row"]=row_of(max(x["start"],frame_a));x["row_end"]=max(x["row"]+1,row_of(min(x["end"],frame_b)))
             c["items"].append(x)
+        for a,b,blk in (blocks.get(c["op"].pk,[]) if c["op"] else []):
+            row=row_of(max(a,frame_a));c["blocks"].append({"block":blk,"row":row,"row_end":max(row+1,row_of(min(b,frame_b))),"label":blk.get_reason_display(),
+                "from":a.astimezone(tz).strftime("%H:%M"),"to":b.astimezone(tz).strftime("%H:%M")})
     hours=[{"row":n+1,"end":min(n+1+60//STEP,count+1),"label":(frame_a+timedelta(minutes=n*STEP)).strftime("%H:%M")} for n in range(count) if (n*STEP)%60==0]
     now_row=None
     if day==today and frame_a<=now.astimezone(tz)<frame_b:
@@ -266,3 +277,106 @@ def month_view(request):
         # a stay is on several days, counted once
         "weeks":weeks,"total":len({x["booking"].pk for w in weeks for c in w if c["inside"] for x in by_day.get(c["day"],[])}),"names":["Lun","Mar","Mer","Gio","Ven","Sab","Dom"]})
     return render(request,"agenda_month.html",ctx)
+
+def blockable(request):
+    """2.14.0: the operators, rooms and courts whose time this staff member may block: the ones he books for."""
+    rows=Resource.objects.filter(active=True,location__active=True).order_by("name")
+    m=getattr(request,"member",None)
+    if m and m.resources:return rows.filter(pk__in=m.resources)
+    if m and (m.locations or m.role=="operator"):return rows.filter(location_id__in=m.locations or [])
+    return rows
+
+def block_view(request,slug,block_id=None):
+    """2.14.0: Blocca orario from the agenda: a pause, training or meeting of an operator, once or every week. It takes
+    the time as a booking does, but it is not one: it counts in no number. The bookings already there are listed first."""
+    from .forms import TimeBlockForm
+    from .portal import listed
+    require(request,"booking.write")
+    allowed=blockable(request)
+    block=get_object_or_404(TimeBlock.objects.filter(resource__in=allowed),pk=block_id) if block_id else None
+    t=request.tenant;tz=ZoneInfo(t.timezone)
+    day=block.day if block else chosen_day(request,timezone.now().astimezone(tz).date())
+    back=reverse("bookings",args=[slug])+f"?vista=giorno&data={day.isoformat()}"
+    if block and request.method=="POST" and request.POST.get("remove"):
+        with transaction.atomic():
+            block.delete();audit(t,request.user,"agenda.unblock",block_id)
+        messages.success(request,"Blocco tolto: quell'orario si prenota di nuovo.");return redirect(back)
+    initial={"day":day}
+    if not block:
+        who=next((r for r in allowed if str(r.pk)==request.GET.get("operatore")),None)
+        if who:initial["resource"]=who.pk
+        try:a=time.fromisoformat(request.GET.get("ora",""));initial.update(start=a,end=(datetime.combine(day,a)+timedelta(hours=1)).time())
+        except ValueError:pass
+    form=TimeBlockForm(request.POST or None,instance=block,tenant=t,resources=allowed,initial=initial)
+    need_confirm=False
+    if request.method=="POST" and form.is_valid():
+        try:
+            with transaction.atomic():
+                Tenant.objects.select_for_update().get(pk=t.pk)
+                obj=form.save()
+                # the bookings of that operator under any of his blocks, from that day on
+                hit=[str(b.pk)[:8] for b in Booking.objects.filter(resource=obj.resource,status__in=OPEN,end__gt=timezone.now(),start__gte=datetime.combine(obj.day,time.min,tz))
+                    if blocked(t,b.busy_start,b.busy_end,obj.resource)]
+                if hit and not request.POST.get("confirm_conflicts"):
+                    raise ValidationError(f"In quell'orario ci sono già {len(hit)} prenotazioni: "+listed(hit)+". Restano valide: chiamale per spostarle. Conferma esplicitamente per bloccare lo stesso.")
+                audit(t,request.user,"agenda.block",obj.pk,kind=obj.reason,weekly=obj.weekly,conflicts=len(hit))
+            messages.success(request,"Orario bloccato: online e al banco non si prenota."+(f" {len(hit)} prenotazioni da ricontattare." if hit else ""))
+            return redirect(reverse("bookings",args=[slug])+f"?vista=giorno&data={obj.day.isoformat()}")
+        except ValidationError as ex:
+            form.add_error(None,ex.message);need_confirm="Conferma esplicitamente" in ex.message
+    one=units(t.business_type)[0].lower()
+    return render(request,"form.html",{"form":form,"title":"Blocca orario" if not block else "Orario bloccato","back":back,"back_label":"Torna all'agenda",
+        "description":f"Un periodo in cui l'{one} non si prenota: pausa, formazione, riunione. Toglie il posto come una prenotazione, ma non conta nei numeri. Al banco si passa sopra solo con Forza",
+        "need_confirm":need_confirm,"remove_label":"Togli il blocco" if block else ""})
+
+def turns(tenant,day):
+    """2.14.0: the turns of a restaurant on a day, open or closed for that day, with the people booked: the turns of the
+    services a turni and the lunch and the dinner of the places without time slots."""
+    tz=ZoneInfo(tenant.timezone);out=[]
+    services=list(Service.objects.filter(Q(kind="shift")|Q(kind="capacity",turnover=False),active=True,location__active=True).select_related("location").order_by("location__name","name"))
+    if not services:return None  # not a restaurant: no card
+    for s in services:
+        if s.kind=="shift":
+            first=datetime.combine(day,time.min,tz)
+            spans=[(o.start,o.end,o.rule.name if o.rule else "") for o in Occurrence.objects.filter(service=s,active=True,start__gte=first,start__lt=first+timedelta(days=1)).select_related("rule").order_by("start")]
+        else:spans=[(a,b,"") for a,b in windows(tenant,day,s) if a.astimezone(tz).date()==day]
+        for a,b,name in spans:
+            out.append({"service":s,"start":a,"end":b,"name":name or ("Pranzo" if a.astimezone(tz).hour<16 else "Cena"),
+                "closed":blocked(tenant,a,b,service=s) is not None,
+                "people":sum(Booking.objects.filter(service=s,status__in=OPEN,busy_start__lt=b,busy_end__gt=a).values_list("party",flat=True))})
+    return out
+
+def turn_switch(request,slug):
+    """2.14.0: Chiudi / Riapri a turn of the restaurant for one day, from the Dashboard. Closing it blocks the online page
+    and the desk (Forza aside); the bookings already there are listed first, to call back, and stay valid."""
+    require(request,"catalog.write")
+    if request.method!="POST":raise PermissionDenied
+    t=request.tenant;tz=ZoneInfo(t.timezone)
+    try:day=date.fromisoformat(request.POST.get("day",""));start=datetime.fromisoformat(request.POST.get("start",""))
+    except ValueError:raise PermissionDenied
+    turn=next((x for x in turns(t,day) or [] if str(x["service"].pk)==request.POST.get("service") and x["start"]==start),None)
+    if not turn:
+        messages.error(request,"Turno non trovato: ricarica la pagina.");return redirect("dashboard",slug)
+    s,a,b=turn["service"],turn["start"],turn["end"]
+    back=reverse("dashboard",args=[slug])+(f"?turni={day.isoformat()}" if day!=timezone.now().astimezone(tz).date() else "")+"#turni"
+    label=f"{turn['name']} delle {a.astimezone(tz).strftime('%H:%M')} di {day.strftime('%d/%m')}"
+    if request.POST.get("action")=="open":
+        with transaction.atomic():
+            gone=[x.pk for _,_,x in block_spans(t,day,day,service=s) if x.reason=="closed" and not x.weekly and x.day==day]
+            TimeBlock.objects.filter(pk__in=gone).delete();audit(t,request.user,"agenda.turn_open",s.pk,day=day.isoformat(),start=a.isoformat())
+        messages.success(request,f"{label}: di nuovo aperto, si prenota.");return redirect(back)
+    if turn["closed"]:return redirect(back)  # closed meanwhile, from another screen
+    held=Booking.objects.filter(service=s,status__in=OPEN,busy_start__lt=b,busy_end__gt=a).select_related("service","tenant").order_by("start")
+    if held.exists() and not request.POST.get("confirm"):
+        from .portal import to_call
+        return render(request,"remove_check.html",{"title":"Prima di chiudere: "+label,"rows":to_call(request,held),
+            "text":"Queste prenotazioni sono in questo turno. Chiudendolo restano valide: chiama i clienti per spostarle o annullarle. Online e al banco il turno non si prenota più.",
+            "action":reverse("turn_switch",args=[slug]),"fields":[("service",s.pk),("day",day.isoformat()),("start",a.isoformat()),("action","close")],"button":"Chiudi il turno","back":back})
+    with transaction.atomic():
+        Tenant.objects.select_for_update().get(pk=t.pk)
+        # shortcut: the hours of the turn are blocked for the service, so a turn overlapping them closes too; fine for
+        # back-to-back turns (19-21, 21-23), an occurrence flag would be needed for overlapping ones
+        TimeBlock.objects.create(tenant=t,service=s,day=day,start=a.astimezone(tz).time(),end=b.astimezone(tz).time(),reason="closed")
+        audit(t,request.user,"agenda.turn_closed",s.pk,day=day.isoformat(),start=a.isoformat(),bookings=held.count())
+    messages.success(request,f"{label}: chiuso, online e al banco non si prenota."+(f" {held.count()} prenotazioni restano, da ricontattare." if held.exists() else ""))
+    return redirect(back)

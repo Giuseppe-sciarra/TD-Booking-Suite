@@ -109,6 +109,9 @@ class Tenant(models.Model):
     notify_operators=models.BooleanField(default=False)
     summary_hour=models.PositiveSmallIntegerField(null=True,blank=True)
     summary_sent=models.DateField(null=True,blank=True)
+    # 2.14.0: the patron saint of the town, added to the public holidays (calendar.holidays): "06-29" and its name
+    patron_day=models.CharField(max_length=5,blank=True)
+    patron_name=models.CharField(max_length=60,blank=True)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -248,12 +251,15 @@ class Schedule(Scoped):
     end=models.TimeField()
     valid_from=models.DateField(null=True,blank=True)
     valid_until=models.DateField(null=True,blank=True)
+    # 2.14.0: 2 = alternate weeks, counted from the week of valid_from (week A; week B starts a week later)
+    every_weeks=models.PositiveSmallIntegerField(default=1)
 class ExceptionDay(Scoped):
     location=models.ForeignKey(Location,null=True,blank=True,on_delete=models.PROTECT)
     service=models.ForeignKey(Service,null=True,blank=True,on_delete=models.PROTECT)
     resource=models.ForeignKey(Resource,null=True,blank=True,on_delete=models.PROTECT)
     purpose=models.CharField(max_length=12,default="service",choices=Schedule._meta.get_field("purpose").choices)
     date=models.DateField()
+    until=models.DateField(null=True,blank=True)  # 2.14.0: a closure "dal … al …" on one row; empty = that day only
     closed=models.BooleanField(default=True)
     start=models.TimeField(null=True,blank=True)
     end=models.TimeField(null=True,blank=True)
@@ -265,6 +271,7 @@ class Occurrence(Scoped):
     end=models.DateTimeField()
     capacity=models.PositiveIntegerField(default=1)
     active=models.BooleanField(default=True)
+    series=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the dates made together by "ripeti ogni N settimane"
 class ShiftRule(Scoped):
     service=models.ForeignKey(Service,on_delete=models.PROTECT)
     name=models.CharField(max_length=100)
@@ -276,6 +283,25 @@ class ShiftRule(Scoped):
     valid_until=models.DateField(null=True,blank=True)
     active=models.BooleanField(default=True)
     def __str__(self):return self.name
+BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso")]
+class TimeBlock(Scoped):
+    """2.14.0: time taken off the agenda without a booking: an operator's pause, training or meeting (Blocca orario),
+    or a restaurant turn closed for one day (service). It takes the time as a booking does and is counted nowhere."""
+    resource=models.ForeignKey(Resource,null=True,blank=True,on_delete=models.CASCADE)
+    service=models.ForeignKey(Service,null=True,blank=True,on_delete=models.CASCADE)
+    day=models.DateField()
+    start=models.TimeField()
+    end=models.TimeField()  # before start: until the next day
+    weekly=models.BooleanField(default=False)
+    until=models.DateField(null=True,blank=True)  # the last week of a weekly block; empty = always
+    reason=models.CharField(max_length=10,choices=BLOCK_REASONS,default="break")
+    pii=models.TextField(blank=True)  # the note, sealed: it may say why someone is away
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:indexes=[models.Index(fields=["tenant","day"])]
+    def on(self,d):
+        return d==self.day or self.weekly and d>self.day and (d-self.day).days%7==0 and (self.until is None or d<=self.until)
+    @property
+    def note(self):return decrypt(self.tenant,self.pii,"block:"+str(self.pk)) if self.pii else ""
 class Contact(Scoped):
     email_index=models.CharField(max_length=64)
     pii=models.TextField()

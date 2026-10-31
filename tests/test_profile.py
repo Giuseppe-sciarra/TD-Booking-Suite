@@ -101,8 +101,10 @@ def test_the_administrator_sets_up_the_business_and_the_owner_runs_it(sample,set
     assert 'name="business_type"' not in page and "li imposta l&#x27;agenzia" in page or "li imposta l'agenzia" in page
     assert "<h2>Orari di apertura</h2>" in page and "<h2>Servizi</h2>" in page and "<h2>Sedi</h2>" not in page
     assert owner.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"medico","locations":"1","name_1":"Studio"}).status_code==403
-    for kind in ("locations","turns","occurrences"):
-        assert owner.get(f"/t/{t.slug}/catalog/{kind}/").status_code==403 and owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==403
+    # 2.14.0: turns and event dates are the owner's too; the locations stay the agency's
+    assert owner.get(f"/t/{t.slug}/catalog/locations/").status_code==403 and owner.get(f"/t/{t.slug}/catalog/locations/new/").status_code==403
+    for kind in ("turns","occurrences"):
+        assert owner.get(f"/t/{t.slug}/catalog/{kind}/").status_code==200 and owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==200
     for kind in ("schedules","exceptions","resources","services","options"):assert owner.get(f"/t/{t.slug}/catalog/{kind}/new/").status_code==200
     tabs=owner.get(f"/t/{t.slug}/catalog/schedules/").content.decode()
     assert ">Chiusure e giorni speciali</a>" in tabs and ">Servizi</a>" in tabs and ">Sedi</a>" not in tabs

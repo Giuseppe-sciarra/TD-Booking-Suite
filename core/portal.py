@@ -16,7 +16,7 @@ from .tenancy import scope
 from .middleware import require_role
 from .permissions import can,require,visible_bookings,shown
 from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,OPEN,ACCEPTED,MOVABLE,REASONS
-from .calendar import fits,blocked_stay
+from .calendar import fits,blocked_stay,blocked,covering,holidays
 from .crypto import index,tenant_key,encrypt
 from .mail import enqueue_campaign,campaign_contacts
 from .site import mail_ready
@@ -35,28 +35,29 @@ CATALOG={
 CATALOG_HELP={
  "locations":"I luoghi dove lavori. Ogni servizio e ogni risorsa appartiene a una sede: con più sedi, crea qui ognuna e poi i servizi di ciascuna",
  "schedules":"I giorni e gli orari in cui si può prenotare. Valgono per tutta l'attività, oppure solo per una sede, un servizio o una risorsa",
- "exceptions":"Ferie, festivi e aperture straordinarie: hanno la precedenza sugli orari di apertura",
+ "exceptions":"Ferie, festivi e aperture straordinarie, anche dal giorno al giorno: hanno la precedenza sugli orari di apertura",
  "services":"Quello che il cliente sceglie quando prenota in una sede: al ristorante il Tavolo, dal parrucchiere Taglio, Piega e Colore, in hotel la Camera. La sede è il luogo, il servizio è cosa si prenota lì, con posti, durata e preavviso",
  "resources":"Chi o cosa viene prenotato: operatori, cabine, camere, tavoli, campi. Ogni risorsa appartiene a una sede",
  "options":"Versioni dello stesso servizio con durata diversa, per esempio taglio corto o lungo",
  "turns":"I turni che si ripetono ogni settimana, per esempio pranzo e cena, con i coperti di ciascuno",
- "occurrences":"Date singole con posti limitati: un evento, un corso, un tour",
+ "occurrences":"Le date con posti limitati: un evento, un corso, un tour. Una data si può ripetere ogni settimana o ogni N settimane",
 }
 EDIT_TITLES={"locations":"sede","schedules":"fascia oraria","exceptions":"chiusura o giorno speciale","services":"servizio","resources":"risorsa","options":"variante","turns":"turno","occurrences":"data dell'evento"}
 EDIT_HELP={
  "locations":"Il nome con cui riconosci la sede, l'indirizzo e il telefono che compaiono nelle email di conferma",
  "schedules":"Un giorno della settimana con un orario di apertura. Per pranzo e cena crea due fasce. Le prenotazioni già fatte non vengono mai annullate",
- "exceptions":"Un giorno di chiusura o con un orario diverso dal solito: vale più degli orari di apertura. Le prenotazioni già fatte non vengono mai annullate",
+ "exceptions":"Uno o più giorni di chiusura, o con un orario diverso dal solito: valgono più degli orari di apertura. Le prenotazioni già fatte non vengono mai annullate",
  "services":"Quello che il cliente sceglie quando prenota. Compaiono solo le impostazioni che servono a questo tipo di prenotazione",
  "resources":"Una persona o una cosa che si prenota: un operatore, una cabina, una camera, un campo",
  "options":"La stessa prestazione con una durata diversa, per esempio Taglio corto e Taglio lungo",
  "turns":"Un turno che si ripete ogni settimana, per esempio la cena del venerdì dalle 19:30 alle 23:00, con i suoi coperti",
- "occurrences":"Una data dell'evento o del corso, con i posti disponibili",
+ "occurrences":"Una data dell'evento o del corso, con i posti disponibili. Con Ripeti crei in un colpo tutte le date della stagione",
 }
 # 2.10.0, every edition: the agency (the program's administrator) sets up type, locations and the technical side;
 # the business runs the day and keeps its opening hours, closing days and staff (operators, rooms) up to date.
 # 2.11.0: also its services with their variants and prices; the kind of booking of a service stays the agency's
-OWNER_CATALOG={"schedules","exceptions","resources","services","options"}
+# 2.14.0: and the turns of the restaurant and the dates of the events, everyday work there
+OWNER_CATALOG={"schedules","exceptions","resources","services","options","turns","occurrences"}
 def catalog_allowed(request,kind):return request.user.is_staff or kind in OWNER_CATALOG
 def catalog_kinds(tenant=None):
     """Pages appear only when a service actually uses them, with the names the business uses: a restaurant
@@ -350,8 +351,15 @@ def dashboard(request,slug):
     undo=visible_bookings(request,Booking.objects.filter(pk=uid(request.session.pop("undo",None)))).first() if request.session.get("undo") else None
     if undo and can_undo(undo):undo.shown=shown(request,undo.data)
     else:undo=None
+    # 2.14.0: the turns of a restaurant on a day (today, or the one picked), to close or open again for that day only
+    turn_day,turn_list=today,None
+    if can(request,"catalog.write"):
+        from .agenda import turns
+        try:turn_day=date.fromisoformat(request.GET.get("turni",""))
+        except ValueError:pass
+        turn_list=turns(request.tenant,turn_day)
     return render(request,"dashboard.html",{"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),
-        "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists()})
+        "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists(),"turns":turn_list,"turn_day":turn_day,"many_locations":Location.objects.filter(active=True).count()>1})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
     today=timezone.now().astimezone(tz).date()
@@ -690,12 +698,17 @@ def calendar_conflicts(tenant):
         valid=s.active and s.location_id==b.location_id and b.location.active and (not b.resource_id or b.resource.location_id==b.location_id) and (not b.resource_id or b.resource.active) and (not b.option_id or b.option.active)
         valid=valid and (not b.resource_id or (b.service_id,b.resource_id) in links)
         if s.kind=="day":
-            valid=valid and fits(tenant,b.start,b.start+timedelta(microseconds=1),s,purpose="arrival") and fits(tenant,b.end,b.end+timedelta(microseconds=1),s,purpose="departure") and not blocked_stay(tenant,b.start,b.end,s)
+            valid=valid and fits(tenant,b.start,b.start+timedelta(microseconds=1),s,purpose="arrival") and fits(tenant,b.end,b.end+timedelta(microseconds=1),s,purpose="departure") and not blocked_stay(tenant,b.start,b.end,s,b.resource)
         else:valid=valid and fits(tenant,b.busy_start,b.busy_end,s,b.resource)
+        # 2.14.0: a pause or a turn closed over a booking: to call back as the hours that change
+        valid=valid and not blocked(tenant,b.busy_start,b.busy_end,b.resource,s)
         if not valid:conflicts.append(b.pk)
     over=overbooked(rows)
     conflicts+=[b.pk for b in rows if b.pk in over and b.pk not in conflicts]
     return [str(pk)[:8] for pk in conflicts]
+def listed(refs):return ", ".join(refs[:10])+(" e altre" if len(refs)>10 else "")
+def unsettled(conflicts):
+    return f"La modifica lascia {len(conflicts)} prenotazioni da verificare: "+listed(conflicts)+". Conferma esplicitamente dopo averle controllate."
 def catalog(request,slug,kind):
     if kind not in CATALOG:raise PermissionDenied
     require_role(request,schedule=True)
@@ -729,8 +742,9 @@ def catalog_edit(request,slug,kind,item_id=None):
             if request.method=="POST" and agency and request.POST.get("kind"):extra["initial"]={}
             # 2.14.0: a business whose type changed engine (garages went from places to lifts) keeps adding services
             # with the engine its catalog already uses: an old garage has no lifts to book
+            # 2.14.0: also a business without a type: its turns (shift) or its dates (event), not an appointment
             kinds=list(Service.objects.filter(active=True).order_by("name").values_list("kind",flat=True))
-            if not agency and kinds and extra["initial"].get("kind") not in (None,*kinds):extra["initial"]["kind"]=kinds[0]
+            if not agency and kinds and extra["initial"].get("kind") not in kinds:extra["initial"]["kind"]=kinds[0]
     # 2.10.0: "Segna ferie" from an operator opens the closing day with that operator already chosen
     if kind in ("schedules","exceptions") and not instance and request.GET.get("resource"):
         res=Resource.objects.filter(pk=request.GET["resource"]).first() if re.fullmatch(r"[0-9a-f-]{36}",request.GET["resource"]) else None
@@ -741,15 +755,20 @@ def catalog_edit(request,slug,kind,item_id=None):
         try:
             with transaction.atomic():
                 Tenant.objects.select_for_update().get(pk=request.tenant.pk)
-                if kind=="occurrences" and instance and Booking.objects.filter(occurrence=instance,status__in=OPEN,end__gt=timezone.now()).exists():
-                    raise BookingError("Gestisci le prenotazioni future prima di modificare questo evento o turno.")
+                if kind=="occurrences" and instance:
+                    # 2.14.0: with "the next ones" every date of the series that changes is checked
+                    held=[str(pk)[:8] for pk in Booking.objects.filter(occurrence__in=form.targets(),status__in=OPEN,end__gt=timezone.now()).values_list("pk",flat=True)]
+                    if held:raise BookingError("Gestisci prima le prenotazioni di queste date, spostale o annullale: "+listed(held)+".")
                 obj=form.save()
                 if kind=="turns":
                     from .shifts import materialize
                     materialize(obj)
+                    # 2.14.0: the owner makes turns too: one outside the opening hours would never be offered, without a word
+                    dates=list(Occurrence.objects.filter(rule=obj,active=True).order_by("start")[:8])
+                    if dates and not any(fits(request.tenant,o.start,o.end,obj.service) for o in dates):
+                        raise BookingError("Il turno è fuori dagli orari di apertura di quel giorno: cambia l'ora o allarga gli orari in Orari di apertura.")
                 conflicts=calendar_conflicts(request.tenant)
-                if conflicts and not request.POST.get("confirm_conflicts"):
-                    raise BookingError(f"La modifica lascia {len(conflicts)} prenotazioni da verificare: "+", ".join(conflicts[:10])+(" e altre" if len(conflicts)>10 else "")+". Conferma esplicitamente dopo averle controllate.")
+                if conflicts and not request.POST.get("confirm_conflicts"):raise BookingError(unsettled(conflicts))
                 audit(request.tenant,request.user,"catalog."+kind,obj.pk,conflicts=len(conflicts))
             messages.success(request,"Salvato."+(f" {len(conflicts)} prenotazioni da ricontattare." if conflicts else ""))
             return redirect("catalog",slug,kind)
@@ -768,6 +787,7 @@ def calendar_remove(request,slug,kind,item_id):
     require(request,"catalog.write")
     if not catalog_allowed(request,kind):raise PermissionDenied
     model=CATALOG[kind][0]
+    if kind=="occurrences":return remove_dates(request,slug,item_id)
     if kind in REMOVABLE:
         # 2.6.0: every catalog item can be removed; what bookings point to is switched off and kept in the history
         from .profile import remove
@@ -799,6 +819,65 @@ def calendar_remove(request,slug,kind,item_id):
         messages.success(request,"Fascia rimossa.")
     except BookingError as ex:messages.error(request,str(ex))
     return redirect("catalog",slug,kind)
+def to_call(request,rows):
+    """2.14.0: the bookings a change leaves behind, as the Dashboard's Da chiamare: who, when, Chiama and WhatsApp."""
+    rows=list(rows)
+    for row in rows:
+        row.shown=shown(request,row.data);row.whatsapp=whatsapp(request.tenant,row.shown.get("phone",""),row) if not row.shown.get("masked") else ""
+    return rows
+def remove_dates(request,slug,item_id):
+    """2.14.0: an event date, or it and the next ones of its series. The bookings on them are listed before, to call
+    back, and stay valid: a date with bookings is switched off, as every catalog item, never deleted in silence."""
+    from .profile import remove
+    obj=get_object_or_404(Occurrence.objects,pk=item_id)
+    series=bool(obj.series and request.POST.get("series"))
+    dates=[obj,*Occurrence.objects.filter(series=obj.series,start__gt=obj.start).order_by("start")] if series else [obj]
+    held=Booking.objects.filter(occurrence__in=dates,status__in=OPEN,end__gt=timezone.now()).select_related("service","tenant").order_by("start")
+    if held.exists() and not request.POST.get("confirm"):
+        n=len(dates)
+        return render(request,"remove_check.html",{"title":"Prima di togliere "+("queste date" if n>1 else "questa data"),"rows":to_call(request,held),
+            "text":"Queste prenotazioni sono sulle date che stai togliendo. Restano valide e le date con prenotazioni restano nello storico, spente: chiama i clienti per spostarle o annullarle.",
+            "action":reverse("calendar_remove",args=[slug,"occurrences",obj.pk]),"fields":[("series","1")] if series else [],"button":f"Togli {n} date" if n>1 else "Togli la data","back":reverse("catalog",args=[slug,"occurrences"])})
+    with transaction.atomic():
+        Tenant.objects.select_for_update().get(pk=request.tenant.pk)
+        kept=sum(remove("occurrences",o) for o in dates)
+        audit(request.tenant,request.user,"catalog.removed",item_id,kind="occurrences",dates=len(dates),kept=kept)
+    messages.success(request,(f"Tolte {len(dates)} date." if len(dates)>1 else "Data tolta.")+(f" {kept} con prenotazioni restano nello storico, spente: le prenotazioni restano valide." if kept else ""))
+    return redirect("catalog",slug,"occurrences")
+def holidays_view(request,slug):
+    """2.14.0: the Italian public holidays of a year with Easter, Easter Monday and the patron saint, as closures of the
+    whole business in one click. Again on the same year it adds only what is missing; a holiday left unticked, or its
+    row removed afterwards, stays open (once a year is marked, the missing ones start unticked)."""
+    require(request,"catalog.write")
+    if not catalog_allowed(request,"exceptions"):raise PermissionDenied
+    t=request.tenant;today=timezone.now().astimezone(ZoneInfo(t.timezone)).date();data=request.POST
+    try:year=min(max(int(data.get("anno") or request.GET.get("anno") or today.year),today.year),today.year+2)
+    except ValueError:year=today.year
+    error="";need_confirm=False
+    if request.method=="POST":
+        try:patron=date.fromisoformat(data.get("patron_day","")) if data.get("patron_day") else None
+        except ValueError:patron=None;error="Data del santo patrono non valida."
+        t.patron_day=patron.strftime("%m-%d") if patron else ""
+        t.patron_name=" ".join(data.get("patron_name","").split())[:60] if patron else ""
+    whole=ExceptionDay.objects.filter(purpose="service",location=None,service=None,resource=None)
+    rows=[{"day":d,"name":n,"iso":d.isoformat(),"there":whole.filter(covering(d)).exists()} for d,n in holidays(year,t.patron_day,t.patron_name)]
+    chosen=set(data.getlist("day")) if request.method=="POST" else {r["iso"] for r in rows if not any(x["there"] for x in rows)}
+    if request.method=="POST" and not error:
+        try:
+            with transaction.atomic():
+                Tenant.objects.select_for_update().get(pk=t.pk)
+                t.save(update_fields=["patron_day","patron_name"])
+                made=[ExceptionDay.objects.create(tenant=t,date=r["day"],closed=True,label=r["name"]) for r in rows if r["iso"] in chosen and not r["there"]]
+                conflicts=calendar_conflicts(t)
+                if conflicts and not data.get("confirm_conflicts"):raise BookingError(unsettled(conflicts))
+                audit(t,request.user,"catalog.holidays",year,created=len(made),conflicts=len(conflicts))
+            messages.success(request,(f"Segnate {len(made)} festività del {year} come chiusure." if made else f"Le festività scelte del {year} erano già segnate.")+(f" {len(conflicts)} prenotazioni da ricontattare." if conflicts else ""))
+            return redirect("catalog",slug,"exceptions")
+        except BookingError as ex:
+            error=str(ex);need_confirm=True
+    for r in rows:r["ticked"]=r["iso"] in chosen
+    patron=next((r["day"] for r in rows if t.patron_day and r["day"].strftime("%m-%d")==t.patron_day),None)
+    return render(request,"holidays.html",{"rows":rows,"year":year,"years":range(today.year,today.year+3),"error":error,"need_confirm":need_confirm,"patron":patron,"patron_name":t.patron_name})
 def marketing(request,slug):
     require(request,"campaign.manage")
     # 2.13.0: the agency turns it on, the campaigns, the CSV of the subscribers or both

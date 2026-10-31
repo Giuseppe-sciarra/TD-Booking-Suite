@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup
+from core import identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
@@ -66,6 +66,10 @@ urlpatterns=[
  path("t/<slug:slug>/contacts/import/",portal.contacts_import,name="contacts_import"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/",portal.contact_detail,name="contact_detail"),
  path("t/<slug:slug>/export/",portal.export,name="export"),
+ path("t/<slug:slug>/catalog/exceptions/festivita/",portal.holidays_view,name="holidays"),
+ path("t/<slug:slug>/agenda/blocca/",agenda.block_view,name="time_block_new"),
+ path("t/<slug:slug>/agenda/blocca/<uuid:block_id>/",agenda.block_view,name="time_block"),
+ path("t/<slug:slug>/turni/",agenda.turn_switch,name="turn_switch"),
  path("t/<slug:slug>/catalog/<str:kind>/",portal.catalog,name="catalog"),
  path("t/<slug:slug>/catalog/<str:kind>/new/",portal.catalog_edit,name="catalog_new"),
  path("t/<slug:slug>/catalog/<str:kind>/<uuid:item_id>/",portal.catalog_edit,name="catalog_edit"),

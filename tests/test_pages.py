@@ -50,6 +50,8 @@ def pages(t,ids):
         out+=[f"{p}/catalog/{kind}/",f"{p}/catalog/{kind}/new/",f"{p}/catalog/{kind}/{ids[key]}/"]
     for kind in ("options","exceptions","turns"):out+=[f"{p}/catalog/{kind}/",f"{p}/catalog/{kind}/new/"]
     out.append(f"{p}/catalog/services/new/?preset=hotel")
+    # 2.14.0: holidays, Blocca orario
+    out+=[f"{p}/catalog/exceptions/festivita/",f"{p}/agenda/blocca/",f"{p}/agenda/blocca/?operatore={ids['resource']}&ora=10:00"]
     return out
 
 @pytest.mark.parametrize("role",["owner","manager","reception","operator","marketing","viewer"])
@@ -68,7 +70,8 @@ def test_every_page_for_every_role(world,role):
     p=f"/t/{t.slug}"
     if role=="owner":
         # 2.10.0: the owner keeps hours, closing days and staff, 2.11.0 services and prices too; type and locations are the agency's
-        agency_only=lambda x:any(f"{p}/catalog/{k}/" in x for k in ("locations","turns","occurrences"))
+        # 2.14.0: the turns of the restaurant and the dates of the events are the owner's too
+        agency_only=lambda x:f"{p}/catalog/locations/" in x
         # 2.13.0: people and permissions too
         must=[x for x in pages(t,ids) if not x.startswith("/platform/") and x not in (f"{p}/settings/",f"{p}/smtp/",f"{p}/members/") and not agency_only(x)]
         assert all(seen[x] in (200,302) for x in must),{x:seen[x] for x in must if seen[x] not in (200,302)}

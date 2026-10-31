@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% comment %}2.14.0: before taking away dates or closing a turn, the bookings there, to call back{% endcomment %}{% block content %}<p class="back"><a href="{{ back }}">Torna indietro</a></p>
+<div class="page-heading"><div><h1>{{ title }}</h1><p>{{ text }}</p></div></div>
+<section class="card"><div class="section-heading"><h2>Da chiamare <span class="count">{{ rows|length }}</span></h2></div><ul class="today-list">{% for row in rows %}{% include '_quick_row.html' with kind='call' %}{% endfor %}</ul>
+<form method="post" action="{{ action }}">{% csrf_token %}{% for k,v in fields %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}<input type="hidden" name="confirm" value="1"><div class="actions"><button class="primary">{{ button }}</button><a href="{{ back }}">Annulla</a></div></form></section>{% endblock %}

@@ -142,8 +142,8 @@ details{margin:20px 0}summary{cursor:pointer;font-size:15px;font-weight:600}
 /* 2.10.0: an operator's own working days, one row a day */
 .own-hours{border:0;border-top:1px solid var(--line);margin:24px 0 0;padding:16px 0 0}.own-hours legend{float:left;width:100%;font-weight:600;font-family:var(--head);font-size:17px;padding:0;margin-bottom:6px}.own-hours legend+*{clear:left}
 .own-hours>.check small{display:block;color:var(--muted);font-weight:400}
-.hours-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:6px 28px;margin:10px 0 4px}
-.hours-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}.hours-row .check{margin:0}.hours-row input[type=time]{width:100%;min-width:0}
+.hours-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,620px),1fr));gap:6px 28px;margin:10px 0 4px}
+.hours-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}.hours-and{color:var(--muted);font-size:13px;padding:0 4px}.hours-row .check{margin:0}.hours-row input[type=time]{width:100%;min-width:0}
 .hours-row input[type=time]{min-height:38px}.hours-row:has(input[type=checkbox]:not(:checked)) input[type=time]{opacity:.4}
 .custom-row{background:var(--bg);padding:14px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:12px}
 
@@ -1340,3 +1340,10 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .client-ok{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:4px;border-radius:50%;background:var(--ok-soft);color:var(--ok);font-size:12px;font-weight:700;vertical-align:1px}.client-ok.full{width:auto;height:auto;padding:4px 10px;border-radius:999px;gap:6px;font-size:13px}
 .declined-chip{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:12px;font-weight:600}
 .mail-group{margin:18px 0 0;font-size:18px}.mail-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}.mail-links .button{pointer-events:none}
+/* 2.14.0: Blocca orario in the agenda (greyed, with its reason), the holidays of a year, removing a block */
+.agenda-block{position:relative;z-index:1;margin:1px 3px;padding:3px 8px;border-radius:7px;border:1px dashed var(--line);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 14%,var(--paper)) 0 6px,var(--paper) 6px 12px);color:var(--muted);font-size:12.5px;line-height:1.3;display:flex;flex-direction:column;overflow:hidden}
+.agenda-block strong{font-weight:600;color:var(--ink)}.agenda-block small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}a.agenda-block:hover{text-decoration:none;border-color:var(--muted)}
+.holiday-list .check{margin:0;align-items:center}.holiday-list .check small{display:block;color:var(--muted);font-weight:400}
+.remove-form{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+@media(max-width:560px){.hours-row{display:flex;flex-wrap:wrap}.hours-row .check{flex-basis:100%}.hours-row input[type=time]{flex:1 1 30%}}
+#id_repeat_days{display:flex;flex-wrap:wrap;gap:2px 16px}

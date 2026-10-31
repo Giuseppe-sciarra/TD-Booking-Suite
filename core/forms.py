@@ -1,9 +1,11 @@
-import json,re
+import json,re,uuid
+from datetime import timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Location,Resource,Service,ServiceResource,Option,Schedule,ExceptionDay,Occurrence,Tenant,Campaign,ShiftRule
+from .models import Location,Resource,Service,ServiceResource,Option,Schedule,ExceptionDay,Occurrence,Tenant,Campaign,ShiftRule,TimeBlock,BLOCK_REASONS
+from .calendar import local_datetime
 
 LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nome","location":"Sede","active":"Attivo","kind":"Tipo di prenotazione","description":"Descrizione","address":"Indirizzo","phone":"Telefono",
  "duration":"Durata (minuti)","interval":"Ogni quanti minuti si può prenotare","capacity":"Posti disponibili","max_party":"Persone massime per prenotazione",
@@ -143,25 +145,26 @@ class ResourceForm(ScopedForm):
                 row.update(dur=dur,price=price)
             self.rows.append(row)
         if not Service.objects.filter(kind="day").exists():del self.fields["capacity"]
-        # working days: one span a day here; with two spans a day (a lunch break) they stay in Orari di apertura
-        rows=[] if new else list(Schedule.objects.filter(resource=self.instance,purpose="service"))
-        self.split_hours=len({r.weekday for r in rows})<len(rows)
+        # working days: up to two spans a day here (2.14.0: the lunch break); more, or alternate weeks, stay in Orari di apertura
+        rows=[] if new else list(Schedule.objects.filter(resource=self.instance,purpose="service").order_by("weekday","start"))
+        self.split_hours=any(sum(r.weekday==d for r in rows)>2 for d in range(7)) or any(r.every_weeks>1 for r in rows)
         # working days only where someone works; hours already set stay visible, never deleted unseen
         self.hours=self.appointments or bool(rows)
         self.grid_fields=["own_hours"]
         for d in range(7):
             mine=[r for r in rows if r.weekday==d]
             self.fields[f"day_{d}"]=forms.BooleanField(required=False,label=WEEKDAYS[d])
-            self.fields[f"start_{d}"]=hour_field();self.fields[f"end_{d}"]=hour_field()
+            for name in ("start","end","start2","end2"):self.fields[f"{name}_{d}"]=hour_field()
             self.initial[f"day_{d}"]=bool(mine) if rows else d<5
             self.initial[f"start_{d}"]=mine[0].start if mine else "09:00";self.initial[f"end_{d}"]=mine[0].end if mine else "18:00"
-            self.grid_fields+=[f"day_{d}",f"start_{d}",f"end_{d}"]
+            if len(mine)>1:self.initial[f"start2_{d}"]=mine[1].start;self.initial[f"end2_{d}"]=mine[1].end
+            self.grid_fields+=[f"day_{d}",f"start_{d}",f"end_{d}",f"start2_{d}",f"end2_{d}"]
         self.initial["own_hours"]=bool(rows)
         for name in self.grid_fields:
             self.fields[name].in_grid=True  # drawn as a week grid, not in the field list
             if self.split_hours:self.fields[name].disabled=True
     @property
-    def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"]} for d in range(7)] if self.hours else []
+    def hours_rows(self):return [{"on":self[f"day_{d}"],"start":self[f"start_{d}"],"end":self[f"end_{d}"],"start2":self[f"start2_{d}"],"end2":self[f"end2_{d}"]} for d in range(7)] if self.hours else []
     @property
     def treatment_rows(self):
         """One row a service, as the week grid: the tick, and for appointments the operator's duration and price."""
@@ -186,6 +189,9 @@ class ResourceForm(ScopedForm):
             if not days:raise ValidationError("Spunta almeno un giorno di lavoro, o spegni Ha giorni e orari suoi.")
             for n in days:
                 if not d.get(f"start_{n}") or not d.get(f"end_{n}") or d[f"end_{n}"]<=d[f"start_{n}"]:raise ValidationError(f"{WEEKDAYS[n]}: l'orario di fine viene dopo quello di inizio.")
+                a,b=d.get(f"start2_{n}"),d.get(f"end2_{n}")
+                if (a or b) and (not a or not b or b<=a):raise ValidationError(f"{WEEKDAYS[n]}: la seconda fascia vuole inizio e fine, con la fine dopo l'inizio.")
+                if a and a<d[f"end_{n}"] and d[f"start_{n}"]<b:raise ValidationError(f"{WEEKDAYS[n]}: le due fasce si sovrappongono.")
         return d
     def save(self,commit=True):
         obj=super().save(commit)
@@ -209,7 +215,9 @@ class ResourceForm(ScopedForm):
             Schedule.objects.filter(resource=obj,purpose="service").delete()
             if d.get("own_hours"):
                 for n in range(7):
-                    if d.get(f"day_{n}"):Schedule.objects.create(tenant=self.tenant,resource=obj,weekday=n,start=d[f"start_{n}"],end=d[f"end_{n}"])
+                    if d.get(f"day_{n}"):
+                        Schedule.objects.create(tenant=self.tenant,resource=obj,weekday=n,start=d[f"start_{n}"],end=d[f"end_{n}"])
+                        if d.get(f"start2_{n}"):Schedule.objects.create(tenant=self.tenant,resource=obj,weekday=n,start=d[f"start2_{n}"],end=d[f"end2_{n}"])
         return obj
 def default_kind(tenant):
     from .presets import PRESETS
@@ -330,13 +338,41 @@ class CalendarForm(ScopedForm):
         return d
 class ScheduleForm(CalendarForm):
     class Meta:
-        model=Schedule;fields=["purpose","location","service","resource","weekday","start","end","valid_from","valid_until"]
-        help_texts={"start":"Per esempio 12:00","end":"Per esempio 15:00. Per pranzo e cena crea due fasce","valid_from":"Vuoto: da subito","valid_until":"Vuoto: sempre"}
+        model=Schedule;fields=["purpose","location","service","resource","weekday","start","end","valid_from","valid_until","every_weeks"]
+        labels={"every_weeks":"Ogni quante settimane"}
+        help_texts={"start":"Per esempio 12:00","end":"Per esempio 15:00. Per pranzo e cena crea due fasce","valid_from":"Vuoto: da subito","valid_until":"Vuoto: sempre",
+            "every_weeks":"1 ogni settimana. 2 per le settimane alterne: conta dalla settimana di Valido dal (settimana A); per la settimana B crea le fasce con Valido dal una settimana dopo"}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        self.fields["every_weeks"].required=False  # empty: every week, as before
+    def clean(self):
+        d=super().clean()
+        d["every_weeks"]=d.get("every_weeks") or 1
+        if not 1<=d["every_weeks"]<=4:raise ValidationError("Ogni quante settimane: da 1 a 4.")
+        if d["every_weeks"]>1 and not d.get("valid_from"):raise ValidationError("Per le settimane alterne scrivi in Valido dal il giorno da cui contare.")
+        return d
 class ExceptionForm(CalendarForm):
     class Meta:
-        model=ExceptionDay;fields=["purpose","location","service","resource","date","closed","start","end","label"]
-        help_texts={"closed":"Togli la spunta per un orario speciale e scrivilo in Inizio e Fine","label":"Per esempio Ferie o Natale: lo vedi solo tu"}
+        model=ExceptionDay;fields=["purpose","location","service","resource","date","until","closed","start","end","label"]
+        help_texts={"until":"Vuoto: solo quel giorno. Due settimane di ferie sono una riga sola","closed":"Togli la spunta per un orario speciale, uguale per ogni giorno, e scrivilo in Inizio e Fine","label":"Per esempio Ferie o Natale: lo vedi solo tu"}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        self.fields["date"].label="Dal giorno";self.fields["until"].label="Al giorno"
+    def clean(self):
+        d=super().clean()
+        if d.get("until") and d.get("date"):
+            if d["until"]<d["date"]:raise ValidationError("Il giorno di fine viene prima di quello di inizio.")
+            if (d["until"]-d["date"]).days>366:raise ValidationError("Al massimo un anno su una riga.")
+            if d["until"]==d["date"]:d["until"]=None  # a range of one day is a single date
+        return d
+REPEAT=[(0,"Non si ripete"),(1,"Ogni settimana"),(2,"Ogni 2 settimane"),(3,"Ogni 3 settimane"),(4,"Ogni 4 settimane")]
 class OccurrenceForm(ScopedForm):
+    """2.14.0: a date can repeat every N weeks until a day, on its weekday or on the ones ticked (a series); a date of a
+    series changes alone or with the next ones."""
+    repeat=forms.TypedChoiceField(choices=REPEAT,coerce=int,required=False,empty_value=0,label="Ripeti")
+    repeat_until=forms.DateField(required=False,label="Fino al",widget=forms.DateInput(attrs={"type":"date"},format="%Y-%m-%d"),help_text="L'ultimo giorno della serie, al massimo due anni dopo la prima data")
+    repeat_days=forms.TypedMultipleChoiceField(choices=list(enumerate(WEEKDAYS)),coerce=int,required=False,widget=forms.CheckboxSelectMultiple,label="Nei giorni",help_text="Vuoto: lo stesso giorno della settimana della prima data")
+    scope=forms.ChoiceField(choices=[("one","Solo questa data"),("series","Questa e le successive della serie")],initial="one",required=False,widget=forms.RadioSelect,label="Cosa cambia")
     class Meta:
         model=Occurrence;fields=["service","start","end","capacity","active"]
         labels={"capacity":"Posti per questa data","active":"Attiva"}
@@ -344,12 +380,47 @@ class OccurrenceForm(ScopedForm):
         super().__init__(*a,**kw)
         self.fields["service"].queryset=Service.objects.filter(kind="event")
         only_one(self.fields["service"],Service.objects.filter(kind="event"))
+        self.is_new=self.instance._state.adding;self.was=self.instance.start
+        if self.is_new:self.fields.pop("scope")
+        else:
+            for name in ("repeat","repeat_until","repeat_days"):self.fields.pop(name)
+            if not self.instance.series:self.fields.pop("scope")
     def clean(self):
         d=super().clean()
         if d.get("service") and d["service"].kind not in ("event","shift"):raise ValidationError("Seleziona un servizio evento.")
         if d.get("end") and d.get("start") and (d["end"]<=d["start"] or (d["end"]-d["start"]).days>7):raise ValidationError("Durata evento non valida.")
         if d.get("capacity",0)<1:raise ValidationError("Capienza positiva richiesta.")
+        if d.get("repeat") and d.get("start"):
+            first=d["start"].astimezone(ZoneInfo(self.tenant.timezone)).date()
+            if not d.get("repeat_until") or d["repeat_until"]<=first:raise ValidationError("Scrivi in Fino al l'ultimo giorno della serie, dopo la prima data.")
+            if (d["repeat_until"]-first).days>730:raise ValidationError("Una serie arriva al massimo a due anni dalla prima data.")
         return d
+    def targets(self):
+        """The dates a change reaches: this one, and with "the next ones" the rest of its series."""
+        later=Occurrence.objects.filter(series=self.instance.series,start__gt=self.was).exclude(pk=self.instance.pk) if not self.is_new and self.cleaned_data.get("scope")=="series" else Occurrence.objects.none()
+        return [self.instance,*later.order_by("start")]
+    def save(self,commit=True):
+        d=self.cleaned_data;tz=ZoneInfo(self.tenant.timezone)
+        dates=self.targets()[1:]
+        obj=super().save(commit)
+        a,b=obj.start.astimezone(tz),obj.end.astimezone(tz)
+        def place(o,day):
+            o.start=local_datetime(day,a.time(),tz);o.end=local_datetime(day+(b.date()-a.date()),b.time(),tz,fold=1)
+            o.capacity=obj.capacity;o.active=obj.active
+            if o.start and o.end:o.save()  # an hour that does not exist that day (summer time) is skipped
+        if d.get("repeat"):
+            obj.series=uuid.uuid4();obj.save(update_fields=["series"])
+            monday=a.date()-timedelta(days=a.date().weekday())
+            while monday<=d["repeat_until"]:
+                for wd in sorted(set(d.get("repeat_days") or [a.date().weekday()])):
+                    day=monday+timedelta(days=wd)
+                    if a.date()<day<=d["repeat_until"]:place(Occurrence(tenant=self.tenant,service=obj.service,series=obj.series),day)
+                monday+=timedelta(weeks=d["repeat"])
+        elif dates:
+            # the next dates of the series move as this one: the same days later or earlier, the new hours and places
+            shift=a.date()-self.was.astimezone(tz).date()
+            for o in dates:place(o,o.start.astimezone(tz).date()+shift)
+        return obj
 class CampaignForm(ScopedForm):
     class Meta:model=Campaign;fields=["name","subject","body","scheduled"]
     def clean_subject(self):
@@ -448,6 +519,34 @@ class SMTPForm(forms.Form):
         if any(c in value for c in "\r\n<>\"@"):raise forms.ValidationError("Solo il nome, senza a capo, virgolette o indirizzi.")
         return value
 
+class TimeBlockForm(ScopedForm):
+    """2.14.0: Blocca orario from the agenda: an operator is not bookable for a while (pause, training, meeting), once or
+    every week. The note is sealed with the business key, as the notes of a booking."""
+    note=forms.CharField(required=False,max_length=200,label="Nota",help_text="Facoltativa, per esempio il nome del corso: la vede solo lo staff")
+    class Meta:
+        model=TimeBlock;fields=["resource","day","start","end","reason","weekly","until"]
+        labels={"day":"Giorno","reason":"Motivo","weekly":"Ogni settimana, lo stesso giorno alla stessa ora","until":"Fino al"}
+        help_texts={"end":"Se viene prima dell'inizio, il blocco arriva al giorno dopo","until":"Solo se si ripete. Vuoto: ogni settimana, senza fine"}
+    def __init__(self,*a,resources=None,**kw):
+        super().__init__(*a,**kw)
+        f=self.fields["resource"];f.queryset=resources;f.required=True;f.empty_label=None
+        from .presets import units
+        f.label=units(getattr(self.tenant,"business_type",""))[0]
+        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0]!="closed"]
+        if self.instance.pii:self.initial["note"]=self.instance.note
+        self.order_fields(["resource","day","start","end","reason","note","weekly","until"])
+    def clean(self):
+        d=super().clean()
+        if d.get("start") and d.get("start")==d.get("end"):raise ValidationError("Inizio e fine devono essere differenti.")
+        if d.get("weekly") and d.get("until") and d.get("day") and d["until"]<d["day"]:raise ValidationError("Fino al viene prima del giorno del blocco.")
+        return d
+    def save(self,commit=True):
+        from .crypto import encrypt
+        obj=super().save(commit=False)
+        if not obj.weekly:obj.until=None
+        note=" ".join(self.cleaned_data.get("note","").split())
+        obj.pii=encrypt(self.tenant,note,"block:"+str(obj.pk)) if note else ""
+        obj.save();return obj
 class ShiftForm(ScopedForm):
     class Meta:
         model=ShiftRule

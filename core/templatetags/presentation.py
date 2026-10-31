@@ -11,8 +11,9 @@ def status_name(v):
 def row_label(o):
  if hasattr(o,"name"):return o.name
  hm=lambda t:t.strftime("%H:%M") if t else ""
- if hasattr(o,"weekday"):return o.get_weekday_display()+", "+hm(o.start)+"–"+hm(o.end)
- if hasattr(o,"closed"):return o.date.strftime("%d/%m/%Y")+", "+("chiuso" if o.closed else hm(o.start)+"–"+hm(o.end))+(", "+o.label if o.label else "")
+ # 2.14.0: alternate weeks, and closures from one day to another, said as such
+ if hasattr(o,"weekday"):return o.get_weekday_display()+", "+hm(o.start)+"–"+hm(o.end)+(f", ogni {o.every_weeks} settimane dal {o.valid_from:%d/%m/%Y}" if o.every_weeks>1 and o.valid_from else "")
+ if hasattr(o,"closed"):return (f"Dal {o.date:%d/%m/%Y} al {o.until:%d/%m/%Y}" if o.until and o.until>o.date else o.date.strftime("%d/%m/%Y"))+", "+("chiuso" if o.closed else hm(o.start)+"–"+hm(o.end))+(", "+o.label if o.label else "")
  if hasattr(o,"start"):return o.service.name+", "+o.start.strftime("%d/%m/%Y %H:%M")
  return str(o.pk)
 

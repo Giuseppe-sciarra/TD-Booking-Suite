@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import Tenant,Service,Resource,ServiceResource,Option,Occurrence,Booking,Contact,ActionToken,Delivery,audit
 from .crypto import encrypt,index,tenant_key,token_hash
-from .calendar import windows,fits,local_datetime,blocked_stay
+from .calendar import windows,fits,local_datetime,blocked_stay,blocked
 from .middleware import operational
 UTC=TZ.utc
 class BookingError(ValueError):pass
@@ -52,7 +52,9 @@ def length(service,option=None,resource=None):
         own=ServiceResource.objects.filter(service=service,resource=resource).values_list("duration",flat=True).first()
         if own:return own
     return service.duration
-def capacity_available(service,start,end,party,resource=None,occurrence=None,exclude=None):
+def capacity_available(service,start,end,party,resource=None,occurrence=None,exclude=None,blocks=True):
+    # 2.14.0: an operator's pause, a turn closed for the night: the time is taken as by a booking (Forza says it apart)
+    if blocks and blocked(service.tenant,start,end,resource,service):return False
     rows=Booking.objects.filter(status__in=HOLDING,busy_start__lt=end,busy_end__gt=start)
     if exclude:rows=rows.exclude(pk=exclude)
     if resource:rows=rows.filter(resource=resource);cap=1;party=1
@@ -66,7 +68,7 @@ def capacity_available(service,start,end,party,resource=None,occurrence=None,exc
     for _,delta in sorted(events,key=lambda x:(x[0],x[1])):
         occupied+=delta
         if occupied+party>cap:return False
-    return party<=cap and (not occurrence or service.kind!="shift" or capacity_available(service,start,end,party,exclude=exclude))
+    return party<=cap and (not occurrence or service.kind!="shift" or capacity_available(service,start,end,party,exclude=exclude,blocks=False))
 def linked(service):
     """The active operators, rooms or units of a service, in name order."""
     return Resource.objects.filter(active=True,location=service.location,id__in=ServiceResource.objects.filter(service=service).values("resource_id")).order_by("name")
@@ -243,7 +245,9 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
         bs=start-before;be=end+after
         if start<now-timedelta(minutes=1):issues.append("nel passato")
         if not fits(tenant,bs,be,service,resource):issues.append("fuori dall'orario di apertura")
-        if not capacity_available(service,bs,be,party,resource,occurrence,exclude):
+        block=blocked(tenant,bs,be,resource,service)
+        if block:issues.append(f"nell'orario bloccato di {resource.name} ({block.get_reason_display().lower()})" if block.resource_id else "in un turno chiuso")
+        if not capacity_available(service,bs,be,party,resource,occurrence,exclude,blocks=False):
             issues.append(f"sovrapposta a un altro appuntamento di {resource.name}" if resource else f"oltre i posti disponibili ({occurrence.capacity if occurrence else service.capacity})")
     else:
         slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk)
