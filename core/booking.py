@@ -91,7 +91,7 @@ def capacity_available(service,start,end,party,resource=None,occurrence=None,exc
     # 2.14.0: an operator's pause, a turn closed for the night: the time is taken as by a booking (Forza says it apart)
     if blocks and blocked(service.tenant,start,end,resource,service):return False
     rows=Booking.objects.filter(status__in=HOLDING,busy_start__lt=end,busy_end__gt=start)
-    if exclude:rows=rows.exclude(pk=exclude)
+    if exclude:rows=rows.exclude(pk__in=exclude if isinstance(exclude,list) else [exclude])  # a list: the services of a visit being moved
     # 2.14.0: a cabin or a machine is also taken by the bookings that need it next to their operator
     if resource:rows=rows.filter(Q(resource=resource)|Q(secondary=resource));cap=1;party=1
     elif occurrence:rows=rows.filter(occurrence=occurrence);cap=occurrence.capacity
@@ -213,7 +213,7 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
     if gap:a=local_datetime(day,time(0),tz);a,b=a-timedelta(days=1),a+timedelta(days=2)
     result=[]
     for res in resources:
-        near=list(Booking.objects.filter(resource=res,status__in=HOLDING,busy_start__lt=b,busy_end__gt=a).exclude(pk=exclude).values_list("busy_start","busy_end")) if gap else []
+        near=list(Booking.objects.filter(resource=res,status__in=HOLDING,busy_start__lt=b,busy_end__gt=a).exclude(pk__in=exclude if isinstance(exclude,list) else [exclude]).values_list("busy_start","busy_end")) if gap else []
         for start,end,event in candidates(tenant,service,day,option,res,desk,force,party):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
             if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk,gap=posa(service,start,end,res)) and not (pace and paced(service,start,party,exclude)) and support(service,bs,be,exclude,pool) is not False and not (gap and holes(near,bs,be,gap))):
@@ -223,6 +223,95 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
         # "Il primo disponibile": one slot per time, the first free resource; cut after this, or many operators hide the evening
         seen=set();result=[x for x in result if not (x["start"] in seen or seen.add(x["start"]))]
     return result[:500]
+VISIT_MAX=5
+def visit_services(first,extra):
+    """2.14.0: the services added after the first to a visit (ids, a list or "a,b"): appointments of the same location."""
+    ids=[str(x) for x in (extra.split(",") if isinstance(extra,str) else extra if isinstance(extra,list) else []) if x]
+    if len(ids)>VISIT_MAX-1:raise BookingError(f"Al massimo {VISIT_MAX} servizi in una visita.")
+    rest=[choice(Service,x,active=True,location=first.location) for x in ids]
+    if any(x.kind!="resource" for x in [first,*rest]):raise BookingError("Più servizi nella stessa visita solo per gli appuntamenti con un operatore.")
+    return [first,*rest]
+def piece(tenant,service,option,r,start,taken,exclude,desk,day,cache):
+    """2.14.0: one service of a visit at an exact time with r: (service,option,r,start,end,bs,be,gap,second), or None.
+    taken: the services of the visit already placed, not saved yet: their operator and cabin are busy for them.
+    cache: what the database said for this day, asked once (opening windows, cabins, operator free at a time)."""
+    end=start+timedelta(minutes=length(service,option,r))
+    bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
+    clash=lambda x:any(x.pk in (p[2].pk,p[8] and p[8].pk) and bs<p[6] and p[5]<be for p in taken)
+    if clash(r):return None
+    key=(service.pk,r.pk,start)
+    if key not in cache:
+        if ("w",service.pk,r.pk) not in cache:cache[("w",service.pk,r.pk)]=windows(tenant,day,service,r,memo=cache)
+        cache[key]=any(a<=bs and be<=b for a,b in cache[("w",service.pk,r.pk)]) and capacity_available(service,bs,be,1,r,exclude=exclude,online=not desk,gap=posa(service,start,end,r))
+    if not cache[key]:return None
+    if ("need",service.pk) not in cache:cache[("need",service.pk)]=list(linked(service,True))
+    need=cache[("need",service.pk)]
+    second=next((x for x in need if not clash(x) and capacity_available(service,bs,be,1,x,exclude=exclude)),False) if need else None
+    return None if second is False else (service,option,r,start,end,bs,be,posa(service,start,end,r) or (None,None),second)
+def chain(tenant,items,first,start,split,day,wait,exclude,desk,allowed,cache):
+    """2.14.0: a visit from start, its first service with first; each next one as soon as the previous ends, waiting at
+    most wait; split: also with other operators (first stays the first choice). The services placed, or None."""
+    plan=[piece(tenant,*items[0],first,start,[],exclude,desk,day,cache)]
+    if not plan[0]:return None
+    for service,option in items[1:]:
+        if ("ops",service.pk) not in cache:cache[("ops",service.pk)]=ranked(service,[r for r in linked(service) if allowed is None or str(r.pk) in allowed],day)
+        mine=cache[("ops",service.pk)]
+        ops=([first] if first in mine else [])+([r for r in mine if r!=first] if split else [])
+        t=plan[-1][4];found=None
+        while t<=plan[-1][4]+wait and not found:
+            found=next((x for r in ops if (x:=piece(tenant,service,option,r,t,plan,exclude,desk,day,cache))),None);t+=timedelta(minutes=5)
+        if not found:return None
+        plan.append(found)
+    return plan
+def visit_slots(tenant,items,day,resource=None,exclude=None,desk=False,allowed=None):
+    """2.14.0: the times a visit of several services (items: [(service, option)]) can start: the first service's free
+    times as available finds them, then the others one after the other (chain); one per time, as "Il primo disponibile".
+    The location says if the services may go to different operators (visit_split) and the longest wait between two."""
+    service,option=items[0];place=service.location
+    ops=[resource] if resource else ranked(service,[r for r in linked(service) if allowed is None or str(r.pk) in allowed],day)
+    firsts={r:available(tenant,service.pk,day,option and option.pk,r.pk,1,exclude,desk=desk) for r in ops}
+    wait=timedelta(minutes=place.visit_wait);out={}
+    # the first service's times are free already (available)
+    cache={(service.pk,r.pk,datetime.fromisoformat(x["start"]).astimezone(UTC)):True for r in ops for x in firsts[r]}
+    for split in {"same":(False,),"split":(True,),"need":(False,True)}[place.visit_split]:
+        for r in ops:
+            for slot in firsts[r]:
+                if slot["start"] not in out and (plan:=chain(tenant,items,r,datetime.fromisoformat(slot["start"]).astimezone(UTC),split,day,wait,exclude,desk,allowed,cache)):out[slot["start"]]=plan
+    tz=ZoneInfo(tenant.timezone)
+    return [{"start":k,"end":plan[-1][4].astimezone(tz).isoformat(),"resource":str(plan[0][2].pk),"resource_name":" + ".join(dict.fromkeys(p[2].name for p in plan)),"occurrence":"","plan":plan} for k,plan in sorted(out.items())]
+def visit_rows(booking):
+    """2.14.0: the services of a booking's visit in order (the cancelled ones only when it is cancelled too); [booking] alone."""
+    if not booking.visit:return [booking]
+    rows=Booking.objects.filter(visit=booking.visit).select_related("service").order_by("start")
+    return list(rows if booking.status=="cancelled" else rows.exclude(status="cancelled")) or [booking]
+def visit_plan(tenant,first,option,extra,data,exclude=None,desk=False,allowed=None):
+    """The services placed for the time asked (data["start"], data["resource"] for the first), or why not."""
+    items=[(x,None) for x in visit_services(first,extra)];items[0]=(first,option)
+    try:start=datetime.fromisoformat(str(data["start"]))
+    except (KeyError,ValueError):raise BookingError(gettext("Data o ora non valida."))
+    if start.tzinfo is None:raise BookingError("Fuso orario mancante.")
+    resource=details(first,None,data.get("resource") or None)[1]
+    slots=visit_slots(tenant,items,start.astimezone(ZoneInfo(tenant.timezone)).date(),resource,exclude,desk,allowed)
+    plan=next((x["plan"] for x in slots if datetime.fromisoformat(x["start"])==start),None)
+    if not plan:raise BookingError(gettext("Orario non disponibile. Aggiorna le disponibilità."))
+    return plan
+def create_visit(tenant,data,actor,origin,source,wait,allowed):
+    """2.14.0: several services in one visit: the time checked for the whole visit, then one booking per service tied by
+    visit; a request when one of them asks for it; one email to the client and one notice to the staff, for the visit."""
+    import uuid
+    if data.get("walkin") is True or data.get("force") is True:raise BookingError("Più servizi insieme si prenotano su un orario libero, senza forzare.")
+    first=choice(Service,data.get("service"),active=True,location__active=True)
+    plan=visit_plan(tenant,first,details(first,data.get("option"))[0],data.get("extra"),data,desk=actor is not None,allowed=allowed)
+    vid=uuid.uuid4();key=str(data["request_key"]);made=[]
+    for i,p in enumerate(plan):
+        b,_=create_booking(tenant,data if i==0 else {**data,"request_key":f"{key[:58]}-v{i}"},actor,origin,source,wait if i==0 else "",visit=(vid,p,first))
+        made.append(b)
+    if any(b.status=="pending" for b in made):Booking.objects.filter(visit=vid,status="confirmed").update(status="pending");made[0].status="pending"
+    from .client_mails import send
+    from .notify import notify_staff
+    send(tenant,made[0],"requested" if made[0].status=="pending" else "confirmed")
+    notify_staff(tenant,made[0],"requested" if made[0].status=="pending" else "created")
+    return made[0],True
 def normalize_phone(value):
     """2.6.1: Italian numbers as people write them. 333 123 4567, 06 1234567, 0039..., +39... all become +39...;
     a foreign number keeps its own prefix. Empty when it cannot be a phone number."""
@@ -380,11 +469,13 @@ def queue(tenant,payload,contact=None,campaign=None):
     delivery=Delivery(tenant=tenant,contact=contact,campaign=campaign,next_attempt=timezone.now())
     delivery.payload=encrypt(tenant,payload,"delivery:"+str(delivery.pk));delivery.save()
     return delivery
-def create_booking(tenant,data,actor=None,origin="public",source="",wait="",series=None):
+def create_booking(tenant,data,actor=None,origin="public",source="",wait="",series=None,visit=None,allowed=None):
     """origin and source (2.14.0): the channel of an online booking, from the signed ticket of its page (public.py);
     the staff's bookings are the desk's, or of a client without appointment (walkin: now, already in progress).
     wait: the waiting-list entry whose link opened the page: the place kept for it is its own (waitlist.claim).
-    series (2.14.0): a date repeated from the desk: tied to the others, without its own email and notice."""
+    series (2.14.0): a date repeated from the desk: tied to the others, without its own email and notice.
+    data["extra"] (2.14.0): more services in the same visit (create_visit); visit: (id, the service placed, the first
+    service, whose questions the client answered), the email and the notice are the visit's. allowed: staff_resources."""
     # All inventory writers take the same stable tenant row lock.
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
@@ -398,16 +489,19 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if existing:
             if existing.request_fingerprint!=fingerprint:raise BookingError("Richiesta già usata con dati differenti.")
             return existing,False
-        service=choice(Service,data.get("service"),active=True,location__active=True)
+        if data.get("extra") and not visit:return create_visit(tenant,data,actor,origin,source,wait,allowed)
+        service=visit[1][0] if visit else choice(Service,data.get("service"),active=True,location__active=True)
         staff=actor is not None
         walkin=staff and data.get("walkin") is True
-        pii=personal(data,service,staff,walkin)
+        pii=personal(data,visit[2] if visit else service,staff,walkin)
         from .waitlist import claim,booked
         if wait:claim(tenant,wait)
         when={**data,"start":timezone.now().replace(second=0,microsecond=0).isoformat()} if walkin else data
-        start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=staff and (walkin or data.get("force") is True),prefer=last_operator(tenant,service,pii,data,staff))
-        gap,second=kit(service,start,end,bs,be,resource,issues)
-        overrun(issues,data)
+        if visit:(_,option,resource,start,end,bs,be,gap,second),party,event,issues=visit[1],1,None,[]
+        else:
+            start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=staff and (walkin or data.get("force") is True),prefer=last_operator(tenant,service,pii,data,staff))
+            gap,second=kit(service,start,end,bs,be,resource,issues)
+            overrun(issues,data)
         known_by_phone=None
         if staff:
             # 2.7.0: the client picked from the card, or found by email or phone, or a new card
@@ -448,7 +542,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if contact:contact.save()
         status="in_progress" if walkin else "pending" if not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
-            status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
+            status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,visit=visit and visit[0],snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in (visit[2] if visit else service).fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
         # 2.14.0: the language of the client's page, for the emails that follow (client_mails.send)
@@ -466,7 +560,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         from django.conf import settings
         from .client_mails import send
         # 2.14.0: the appointments imported from the old program were already agreed: no email, no notice to the staff
-        if not walkin and not series and booking.origin!="import":send(tenant,booking,"requested" if status=="pending" else "confirmed")
+        if not walkin and not series and not visit and booking.origin!="import":send(tenant,booking,"requested" if status=="pending" else "confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
             booking.snapshot["consent_request"]={"text":tenant.consent_text,"requested":timezone.now().isoformat(),"source":"booking"}
@@ -475,7 +569,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
             record(tenant,contact,"requested","booking",actor,tenant.consent_text,booking.pk)
             queue(tenant,{"to":pii["email"],"subject":gettext("Conferma iscrizione")+" · "+tenant.name,"body":gettext("Conferma la richiesta di iscrizione alle comunicazioni di {attivita}:").format(attivita=tenant.name)+f"\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\n"+gettext("Se non hai richiesto l'iscrizione, ignora il messaggio.")},contact)
         from .notify import notify_staff
-        if not series and booking.origin!="import":notify_staff(tenant,booking,"requested" if status=="pending" else "created")
+        if not series and not visit and booking.origin!="import":notify_staff(tenant,booking,"requested" if status=="pending" else "created")
         booked(tenant,booking,wait)
         from .api import emit
         emit(tenant,booking,"created")
@@ -486,6 +580,7 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         booking=choice(Booking,booking_id,status__in=MOVABLE)
+        if booking.visit and data.get("visit") is True:return move_visit(tenant,booking,data,actor,desk)
         service=choice(Service,data.get("service",booking.service_id),active=True,location__active=True)
         # 2.14.0: moving is the desk's, with the desk's rules and Forza
         *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=desk,force=desk and data.get("force") is True)
@@ -525,6 +620,27 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         emit(tenant,booking,"moved")
         audit(tenant,actor,"booking.moved",booking.pk,**({"forced":issues} if issues else {}))
         return booking
+def move_visit(tenant,booking,data,actor,desk):
+    """2.14.0: a visit moves whole (data["visit"]): its services in the same order from the new time, as visit_slots
+    places them; dragged in the agenda one service moves alone. One email and one notice, for the visit."""
+    rows=[b for b in visit_rows(booking) if b.status in MOVABLE]
+    plan=visit_plan(tenant,rows[0].service,rows[0].option,[str(b.service_id) for b in rows[1:]],data,[b.pk for b in rows],desk)
+    from .prices import stamp
+    from .waitlist import freed
+    from .api import emit
+    for b,(_,_,r,start,end,bs,be,gap,second) in zip(rows,plan):
+        left=(b.start,b.end)
+        b.start,b.end,b.busy_start,b.busy_end,b.resource,(b.gap_start,b.gap_end),b.secondary=start,end,bs,be,r,gap,second
+        b.snapshot.update(resource=r.name,secondary=second.name if second else "");b.snapshot.pop("forced",None)
+        for name in REARM:b.snapshot.pop(name,None)
+        stamp(b);b.save()
+        ActionToken.objects.filter(booking=b,kind="cancel",used=False).update(expires=b.end+timedelta(days=30))
+        ActionToken.objects.filter(booking=b,kind__in=("confirm","decline"),used=False).update(expires=timezone.now())
+        freed(tenant,*left);emit(tenant,b,"moved");audit(tenant,actor,"booking.moved",b.pk,visit=str(b.visit))
+    from .client_mails import send
+    from .notify import notify_staff
+    send(tenant,rows[0],"moved");notify_staff(tenant,rows[0],"moved")
+    return Booking.objects.get(pk=booking.pk)
 def can_undo(booking,now=None):
     """2.14.0: the last change of status can be taken back for a few minutes, where it was made."""
     last=booking.snapshot.get("undo")
@@ -560,6 +676,11 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False,
         # back from cancelled: the client's link to cancel works again
         if old=="cancelled":ActionToken.objects.filter(booking=booking,kind="cancel").update(used=False)
         booking.save(update_fields=["status","snapshot","pii"])
+        if booking.visit and not quiet and (status in ("cancelled","confirmed") or undo):
+            # 2.14.0: a visit is accepted, cancelled, put back or undone whole; the email and the notice below are the visit's
+            for other in Booking.objects.filter(visit=booking.visit,status=old).exclude(pk=booking.pk):
+                try:change_status(tenant,other,status,actor,reason,note,undo,quiet=True)
+                except BookingError:pass
         if old in HOLDING and status not in HOLDING:
             from .waitlist import freed
             freed(tenant,booking.start,booking.end)  # 2.14.0: the place given up, to the waiting list

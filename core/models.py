@@ -202,6 +202,9 @@ class Location(Scoped):
     # 2.14.0: who gets "Il primo disponibile" (booking.ranked), and online no hole shorter than min_gap minutes
     assign=models.CharField(max_length=8,default="alpha",choices=[("alpha","Il primo libero, in ordine di nome"),("last","L'operatore dell'ultima visita del cliente"),("even","Chi ha meno appuntamenti quel giorno"),("priority","L'ordine scelto per ogni operatore")])
     min_gap=models.PositiveIntegerField(default=0)
+    # 2.14.0: a visit of several services (booking.visit_slots): who does them, and the longest wait between two
+    visit_split=models.CharField(max_length=5,default="need",choices=[("same","Stesso operatore"),("split","Divisibile tra operatori"),("need","Divisibile solo se serve")])
+    visit_wait=models.PositiveSmallIntegerField(default=15)
     def __str__(self):return self.name
 class Resource(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
@@ -422,6 +425,7 @@ class Booking(Scoped):
     origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata")])
     source=models.CharField(max_length=30,blank=True)
     series=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the dates repeated together from the desk (Ripeti)
+    visit=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the services of one visit, one after the other
     pii=models.TextField()
     snapshot=models.JSONField(default=dict)
     request_key=models.CharField(max_length=64)

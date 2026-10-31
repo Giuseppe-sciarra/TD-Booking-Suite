@@ -408,6 +408,7 @@ def bookings(request,slug):
     for row in mark(request,page):row.shown=shown(request,row.data)
     return render(request,"bookings.html",{"page":page,"start":a.date(),"end":(b-timedelta(days=1)).date(),"agenda":agenda})
 def booking_detail(request,slug,booking_id):
+    from .booking import visit_rows
     require(request,"booking.read")
     booking=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service","resource"),pk=booking_id)
     from .presets import record
@@ -483,7 +484,9 @@ def booking_detail(request,slug,booking_id):
         "today_ok":day<=timezone.now().astimezone(tz).date(),"test_due":test_due(booking),"plan":plan,
         "series_next":Booking.objects.filter(series=booking.series,start__gt=booking.start,status__in=OPEN).count() if booking.series else 0,
         "repeatable":booking.service.kind in ("resource","capacity") and bool(booking.contact_id) and booking.status in OPEN,
-        "class_list":booking.service.kind in ("capacity","event")}
+        "class_list":booking.service.kind in ("capacity","event"),
+        # 2.14.0: the services of the same visit, moved and cancelled together
+        "visit":[b for b in visit_rows(booking)] if booking.visit else []}
     if spec and can(request,"notes.read"):
         from .clients import treatments,from_booking
         entries=treatments(booking.contact);prefill=from_booking(booking,tz)

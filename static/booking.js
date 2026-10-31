@@ -45,8 +45,20 @@
    wrap.append(label,input);holder.append(wrap);
   }
  }
+ // 2.14.0: more services in the same visit, one after the other: the appointments of the same location
+ const visitAdd=$("visit-add");let extras=config.editing?.extra||[];
+ function visitPick(){
+  const s=current(),wrap=$("visit-wrap");if(!wrap)return;
+  const more=s?.kind==="resource"&&!config.walkin&&!config.editing?config.services.filter(x=>x.kind==="resource"&&x.location===s.location&&x.id!==s.id):[];
+  wrap.hidden=!more.length&&!extras.length;visitAdd.hidden=!more.length||extras.length>=4;$("visit-add-label").hidden=visitAdd.hidden;
+  select(visitAdd,more.map(x=>({id:x.id,name:x.name+(x.price?" · "+x.price:"")})),t("Nessun altro servizio"));
+  $("visit-list").replaceChildren(...extras.map((x,i)=>{const chip=document.createElement("span");chip.className="pill";chip.textContent="+ "+x.name;
+   if(!config.editing){const b=document.createElement("button");b.type="button";b.className="ghost small";b.textContent="×";b.setAttribute("aria-label",t("Togli ")+x.name);b.addEventListener("click",()=>{extras.splice(i,1);visitPick();loadSlots();});chip.append(b);}
+   return chip;}));
+ }
+ visitAdd?.addEventListener("change",()=>{const x=config.services.find(v=>v.id===visitAdd.value);if(x){extras.push({id:x.id,name:x.name});visitPick();loadSlots();}});
  function changeService(){
-  const s=current();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
+  const s=current();if(!config.editing)extras=[];visitPick();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
   // 2.10.0: from the agenda, the operator of the free space clicked
   if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   pickers();
@@ -80,7 +92,7 @@
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=t($("service-label").textContent===t("Sede")?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.");return;}
   $("slot-status").textContent=t("Controllo delle disponibilità…");$("slots").setAttribute("aria-busy","true");
   try{
-   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,...(forcing()?{forza:"1"}:{})});
+   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,...(forcing()?{forza:"1"}:{}),...(extras.length?{extra:extras.map(x=>x.id).join(",")}:{})});
    const response=await fetch(config.slots+(config.slots.includes("?")?"&":"?")+query,{signal:controller.signal,credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error(t("Impossibile verificare le disponibilità. Riprova."));}
    if(seq!==sequence)return;
@@ -155,6 +167,7 @@
    if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
    if(config.walkin)payload.walkin=true;
+   if(extras.length)Object.assign(payload,{extra:extras.map(x=>x.id),visit:true});
    if(forcing()){payload.force=true;if(forceOk)payload.force_ok=true;}
    // Persist only a fingerprint and random idempotency key, never personal fields.
    let cacheKey="";
@@ -187,6 +200,7 @@
   service.value=config.editing.service;changeService();option.value=config.editing.option;resource.value=config.editing.resource;party.value=config.editing.party;
   // 2.14.0: the client moving from his link keeps service, operator and people: he chooses only when
   if(config.locked)["resource-wrap","party-wrap"].forEach(id=>{$(id).hidden=true;});
+  if(config.editing.extra)service.disabled=true;  // 2.14.0: a visit moves with its services
   loadSlots();
  }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
  // 2.14.0: from the waiting list's link: how many, the departure and who, then the times of that day

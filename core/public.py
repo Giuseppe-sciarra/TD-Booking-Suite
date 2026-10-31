@@ -66,9 +66,16 @@ def widget_data(request,booking=None,wait=None):
     if not internal and translation.get_language()!="it":result.update({k:result[k]+"?lang="+translation.get_language() for k in ("slots","submit","wait")})
     if booking:
         result["submit"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-api/"
-        result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party}
+        result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party,**visiting(booking)}
         result["slots"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-slots/"
     return result
+def visiting(b):
+    """2.14.0: a booking of a visit moves with the visit: its first service, with whom, and the services after it."""
+    from .booking import visit_rows
+    rows=[x for x in visit_rows(b) if x.status in MOVABLE]
+    if len(rows)<2:return {}
+    return {"service":str(rows[0].service_id),"option":str(rows[0].option_id or ""),"resource":"" if rows[0].snapshot.get("any_resource") else str(rows[0].resource_id or ""),
+        "extra":[{"id":str(x.service_id),"name":x.snapshot.get("service") or x.service.name} for x in rows[1:]]}
 def staff_resources(request):
     """Resource ids a staff member is limited to in the portal, None when there is no such limit."""
     m=getattr(request,"member",None)
@@ -164,6 +171,12 @@ def free_slots(request,params,exclude=None,desk=False,force=False):
                 "description":u.description,"photo":u.photo_link(request.tenant.slug),"capacity":u.capacity,"occurrence":""} for u in units]
         start,end,*_=bounds(request.tenant,service,data,exclude=exclude,desk=desk)
         return [{"start":start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),"end":end.isoformat(),"resource":"","resource_name":"","occurrence":""}]
+    if params.get("extra"):
+        # 2.14.0: several services in one visit: the times the whole visit fits; moving it, its services are left out
+        from .booking import visit_slots,visit_services,details
+        if exclude and (v:=Booking.objects.get(pk=exclude).visit):exclude=list(Booking.objects.filter(visit=v).values_list("pk",flat=True))
+        items=[(x,None) for x in visit_services(service,params["extra"])];option,resource,_=details(service,params.get("option") or None,params.get("resource") or None);items[0]=(service,option)
+        return [{k:v for k,v in x.items() if k!="plan"} for x in visit_slots(request.tenant,items,day,resource,exclude,desk,staff_resources(request))]
     return available(request.tenant,service.pk,day,params.get("option"),params.get("resource"),params.get("party",1),exclude=exclude,allowed=staff_resources(request),desk=desk,force=force)
 @csrf_exempt
 @require_POST
@@ -217,7 +230,7 @@ def submit(request,actor,ticket=None):
     try:
         data=json_body(request)
         if actor is None:throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
-        booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src")),"wait":ticket.get("wait","")} if ticket else {}))
+        booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src")),"wait":ticket.get("wait","")} if ticket else {"allowed":staff_resources(request)}))
         if actor:return JsonResponse({"redirect":f"/t/{request.tenant.slug}/bookings/{booking.pk}/"})
         own=f"/action/{request.tenant.slug}/{booking.data['cancel_token']}/"
         # 2.14.0: the confirmed booking into the client's calendar (a request waits for the business's yes)
@@ -342,8 +355,9 @@ def manage_token(token):
 def same(b,params):
     """What the client keeps when he moves: service, variant, operator (or whoever is free, if he chose so), people;
     he chooses only the day, the time and, for a stay, the dates."""
+    v=visiting(b)  # 2.14.0: a visit moves whole
     return {"service":str(b.service_id),"option":str(b.option_id or ""),"resource":"" if b.snapshot.get("any_resource") else str(b.resource_id or ""),
-        "party":b.party,**{k:params.get(k) or "" for k in ("date","start","end_date","occurrence")}}
+        "party":b.party,**{k:params.get(k) or "" for k in ("date","start","end_date","occurrence")},**({**v,"extra":",".join(x["id"] for x in v["extra"]),"visit":True} if v else {})}
 def move_public(request,slug,token):
     """2.14.0: Sposta from the client's link: the public page's rules, the checks of move_booking, until the cutoff."""
     throttle(request,"action",60,60)
@@ -358,8 +372,9 @@ def move_public(request,slug,token):
     except BookingError as ex:return render(request,"message.html",{"title":_("Spostamento non disponibile"),"text":str(ex),"public":True},status=400)
     own_lang(request,b)
     widget=widget_data(request)
-    widget["services"]=[{**x,"options":[],"resources":[]} for x in widget["services"] if x["id"]==str(b.service_id)]
-    widget.update(submit=request.path,slots=request.path+"orari/",editing={"service":str(b.service_id),"option":"","resource":"","party":b.party},locked=True)
+    v=visiting(b)
+    widget["services"]=[{**x,"options":[],"resources":[]} for x in widget["services"] if x["id"]==v.get("service",str(b.service_id))]
+    widget.update(submit=request.path,slots=request.path+"orari/",editing={"service":v.get("service",str(b.service_id)),"option":"","resource":"","party":b.party,**({"extra":v["extra"]} if v else {})},locked=True)
     return render(request,"booking.html",{"widget":widget,"moving":True,"public":True,"booking":b,"manage":f"/action/{slug}/{token}/","intro":_("Stesso servizio: scegli il nuovo giorno e l'orario")})
 @json_denied
 def move_public_slots(request,slug,token):
