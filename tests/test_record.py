@@ -144,7 +144,7 @@ def test_allergens_in_the_booking_form(sample):
 
 def test_allergens_page(sample):
     t,o,s=sample
-    owner,_=client_as(t,staff=True)  # 2.10.0: what the form asks is set up by the agency
+    owner,_=client_as(t,staff=True)  # the agency keeps it, also after 2.14.0
     url=f"/t/{t.slug}/setup/allergie/"
     owner.post(url,{"action":"toggle","on":"1"})
     t.refresh_from_db();assert t.allergens_on and t.allergens==ALLERGENS and len(ALLERGENS)==15
@@ -153,8 +153,14 @@ def test_allergens_page(sample):
     t.refresh_from_db();assert t.allergens[-1]=="Vegano" and t.allergens.count("Vegano")==1 and "Lupini" not in t.allergens
     reception,_=member(t,"reception")  # no catalog.write
     assert reception.post(url,{"action":"toggle","on":"0"}).status_code==403
+    # 2.14.0: the owner keeps the list, as asked in 2.7.x: from the card in Configura l'attività
     real_owner,_=client_as(t)
-    assert real_owner.post(url,{"action":"toggle","on":"0"}).status_code==403
+    assert f'href="{url}"' in real_owner.get(f"/t/{t.slug}/setup/").content.decode()
+    assert real_owner.post(url,{"action":"add","name":"Kiwi"}).status_code==302 and real_owner.post(url,{"action":"toggle","on":"0"}).status_code==302
+    t.refresh_from_db();assert not t.allergens_on and t.allergens[-1]=="Kiwi"
+    assert Audit.raw.filter(tenant=t,action="allergens.add").count()==2
+    no_catalog,_=member(t,"manager")  # can_schedule off: no catalog.write
+    assert no_catalog.get(url).status_code==403
 
 def test_restaurant_starts_with_allergens_and_questions(sample):
     t,o,s=sample

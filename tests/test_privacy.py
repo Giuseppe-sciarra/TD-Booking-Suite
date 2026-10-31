@@ -103,6 +103,38 @@ def test_retention_unlinks_old_bookings(sample):
         assert Contact.objects.filter(email_index__startswith="erased:").count()==1
         assert apply_retention(t,apply=False,now=later)["bookings"]==0
 
+def test_worker_runs_retention_once_a_day_and_the_agency_sees_it(sample,monkeypatch):
+    # 2.14.0: no cron to remember: mail_worker runs the same command as by hand, every business once a day
+    from django.core.management import call_command
+    from core.privacy import run_retention
+    from tests.test_phase2 import staff_client
+    t,o,s=sample
+    with scope(t):
+        b,_=create_booking(t,payload(s))
+        old=timezone.now()-timedelta(days=t.retention_days+1)
+        Booking.objects.filter(pk=b.pk).update(start=old-timedelta(hours=1),end=old)
+    monkeypatch.setattr("core.management.commands.mail_worker.worker_once",lambda:{})
+    call_command("mail_worker","--once")
+    with scope(t):assert Booking.objects.get(pk=b.pk).contact_id is None
+    t.refresh_from_db();o.refresh_from_db()
+    assert t.retention_at and o.retention_at and not t.retention_error
+    assert run_retention()==0  # once a day
+    assert run_retention(timezone.now()+timedelta(days=1,minutes=1))==2
+    # one business failing stops neither the others nor the next rounds; the agency sees it on its dashboard
+    def boom(tenant,**kw):
+        if tenant.pk==t.pk:raise RuntimeError("dati")
+        return {"bookings":0,"contacts":0,"treatments":0,"deliveries":0}
+    monkeypatch.setattr("core.management.commands.retention.apply_retention",boom)
+    Tenant.objects.update(retention_at=None)
+    assert run_retention()==1
+    t.refresh_from_db();o.refresh_from_db()
+    assert t.retention_at is None and t.retention_error=="RuntimeError" and o.retention_at
+    c,_=staff_client();page=c.get("/platform/").content.decode()
+    assert "Pulizia dei dati non riuscita (RuntimeError)" in page and "dati)" not in page and "Pulizia dei dati scaduti: ultima il" in page
+    Tenant.objects.filter(pk=t.pk).update(retention_error="",retention_at=timezone.now()-timedelta(days=3))
+    page=c.get("/platform/").content.decode()
+    assert "Pulizia dei dati ferma dal" in page and "non riuscita" not in page
+
 def test_contact_page_permissions(sample):
     t,o,s=sample
     with scope(t):b,_=create_booking(t,payload(s));cid=b.contact_id

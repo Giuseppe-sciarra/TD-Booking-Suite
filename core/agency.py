@@ -101,6 +101,10 @@ def attention(t,u,now=None):
     if t.maintenance:items.append(("warn","In manutenzione tecnica"))
     if u["issues"]:items.append(("danger",f"{u['issues']} invi{'o' if u['issues']==1 else 'i'} email da verificare"))
     if t.marketing_requested and not t.marketing_enabled:items.append(("info","Ha chiesto di attivare il marketing"))
+    # 2.14.0: the retention the worker runs every day (privacy.run_retention): failed, or stopped with the worker
+    if t.retention_error:items.append(("danger","Pulizia dei dati non riuscita ("+t.retention_error+"): vedi il log del worker"))
+    elif now-(t.retention_at or t.created)>timedelta(days=2):
+        items.append(("warn","Pulizia dei dati ferma"+(" dal "+timezone.localtime(t.retention_at).strftime("%d/%m/%Y") if t.retention_at else ": mai eseguita")+", controlla il worker"))
     if not u["last_login"]:items.append(("info","Nessuno ha ancora fatto accesso"))
     elif not u["bookings_30"] and (now-t.created).days>=30:items.append(("info","Nessuna prenotazione negli ultimi 30 giorni"))
     return items
@@ -138,7 +142,8 @@ def dashboard(request):
     b30,prev=total("bookings_30"),total("bookings_prev")
     totals={"clients":len(tenants),"active":sum(t.status=="active" for t in tenants),"trial":sum(t.status=="trial" for t in tenants),
             "suspended":sum(t.status=="suspended" for t in tenants),"bookings_30":b30,"trend":round((b30-prev)*100/prev) if prev else None,
-            "upcoming":total("upcoming"),"sent_30":total("sent_30"),"users":total("users"),"contacts":total("contacts")}
+            "upcoming":total("upcoming"),"sent_30":total("sent_30"),"users":total("users"),"contacts":total("contacts"),
+            "retention_at":max((t.retention_at for t in tenants if t.retention_at),default=None)}
     rank={"danger":0,"warn":1,"info":2}
     # one entry per client, the most urgent first
     alerts=sorted(((min((l for l,_ in t.attention),key=rank.get),t,[x for _,x in t.attention]) for t in tenants if t.attention),key=lambda x:(rank[x[0]],x[1].name))

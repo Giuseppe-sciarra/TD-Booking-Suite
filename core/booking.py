@@ -74,12 +74,13 @@ def candidates(tenant,service,day,option=None,resource=None):
         return
     if service.kind=="day":return
     whole=service.kind=="capacity" and not service.turnover
+    last=timedelta(minutes=service.last_arrival if service.kind=="capacity" else 0)  # 2.14.0: no table offered at closing time
     for a,b in windows(tenant,day,service,resource):
         tick=a
         while tick<b:
             # without time slots a booking holds its places until the window closes: lunch and dinner each have their seats
             end=b-after if whole else tick+duration
-            if tick.astimezone(tz).date()==day and lead<=tick<=horizon and tick-before>=a and end+after<=b:
+            if tick.astimezone(tz).date()==day and lead<=tick<=horizon and tick-before>=a and end+after<=b and tick<=b-last:
                 yield tick,end,None
             tick+=timedelta(minutes=service.interval)
 def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None):
@@ -175,13 +176,15 @@ def bounds(tenant,service,data,exclude=None):
         try:end_day=date.fromisoformat(str(data["end_date"]))
         except (ValueError,KeyError):raise BookingError("Seleziona la data di partenza.")
         nights=(end_day-day).days
-        if nights<max(1,service.min_days):raise BookingError(f"Durata minima: {service.min_days} giorni.")
+        # 2.14.0: 0 nights minimum is the rental of a day, picked up and returned the same day (end>start below)
+        if 0<=nights<service.min_days:raise BookingError(f"Durata minima: {service.min_days} giorni.")
         if nights>service.max_days:raise BookingError(f"Durata massima: {service.max_days} giorni.")
         clock_in=service.checkin if isinstance(service.checkin,time) else time.fromisoformat(service.checkin)
         clock_out=service.checkout if isinstance(service.checkout,time) else time.fromisoformat(service.checkout)
         expected=local_datetime(day,clock_in,tz);end=local_datetime(end_day,clock_out,tz)
         if not expected or not end or start!=expected.astimezone(UTC):raise BookingError("Ora di arrivo non valida.")
         end=end.astimezone(UTC)
+        if end<=start:raise BookingError("La partenza viene prima dell'arrivo: scegli un'altra data di partenza.")
         if not timezone.now()+timedelta(minutes=service.lead_minutes)<=start<=timezone.now()+timedelta(days=service.horizon_days):raise BookingError("Data fuori dall'intervallo prenotabile.")
         if not fits(tenant,start,start+timedelta(microseconds=1),service,purpose="arrival") or not fits(tenant,end,end+timedelta(microseconds=1),service,purpose="departure") or blocked_stay(tenant,start,end,service):
             raise BookingError("Arrivo, partenza o soggiorno non consentiti dal calendario.")

@@ -46,6 +46,19 @@ def values(tenant,booking,data):
         "sede":s.get("location",""),"operatore":s.get("resource",""),"attivita":tenant.name,
         "link":f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/" if token else ""}
 
+# 2.14.0: the WhatsApp button of a booking and of the client card opens the chat with this text, with the fields of the
+# emails; the person at the desk sends it from WhatsApp, the program sends nothing
+WHATSAPP="Ciao {nome}, ti scriviamo da {attivita} per la prenotazione: {servizio}, {quando}."
+def whatsapp(tenant,phone,booking=None):
+    """The wa.me link to this phone (an Italian number without prefix is +39), empty without a usable number.
+    With a booking, the business's text filled with it; without, an empty chat."""
+    from urllib.parse import quote
+    from .booking import normalize_phone
+    number=normalize_phone(phone)[1:]
+    if not number:return ""
+    text=fill(tenant.whatsapp_text or WHATSAPP,values(tenant,booking,booking.data)) if booking else ""
+    return f"https://wa.me/{number}"+(f"?text={quote(text)}" if text else "")
+
 def sample(tenant):
     """The values of the preview: a booking tomorrow at 10:30 with the first service, operator and location."""
     from .models import Service,Resource,Location

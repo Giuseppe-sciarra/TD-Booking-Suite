@@ -20,6 +20,7 @@ from .calendar import fits,blocked_stay
 from .crypto import index,tenant_key,encrypt
 from .mail import enqueue_campaign,campaign_contacts
 from .site import mail_ready
+from .client_mails import whatsapp
 CATALOG={
  "locations":(Location,LocationForm,"Sedi"),
  "schedules":(Schedule,ScheduleForm,"Orari di apertura"),
@@ -112,8 +113,8 @@ def setup(request,slug):
         "counts":range(1,6),"max_locations":MAX_LOCATIONS,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
-        # questions and allergies shape the services: the agency's, like the services themselves (2.10.0)
-        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":can_profile(request) and (t.business_type=="ristorante" or t.allergens_on),
+        # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
+        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":t.business_type=="ristorante" or t.allergens_on,
         # 2.13.0: ready colours of Logo e aspetto, the same in app.css
         "swatches":["#7a55ad","#be185d","#b91c1c","#c2410c","#a16207","#15803d","#0f766e","#1d4ed8","#334155"]})
 
@@ -162,9 +163,9 @@ def recommended_view(request,slug):
     return redirect(reverse("setup",args=[slug])+"#consigliati")
 
 def allergens_view(request,slug):
-    """2.8.0: the allergies and intolerances the booking form asks about, as the business wants them."""
+    """2.8.0: the allergies and intolerances the booking form asks about, as the business wants them: since 2.14.0
+    kept by whoever keeps the services (the owner, staff with the permission, the agency)."""
     require(request,"catalog.write")
-    if not can_profile(request):raise PermissionDenied
     from .presets import ALLERGENS
     t=request.tenant
     if request.method=="POST":
@@ -364,7 +365,9 @@ def booking_detail(request,slug,booking_id):
         # 2.8.0: the note kept on the client card shows on every booking, as the main booking software do
         "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else "",
         # 2.12.0: a room is not "with": it has its own word, Camera, Alloggio, Mezzo
-        "unit":__import__("core.presets",fromlist=["units"]).units(request.tenant.business_type)[0]}
+        "unit":__import__("core.presets",fromlist=["units"]).units(request.tenant.business_type)[0],
+        # 2.14.0: a chat with the client about this booking, for whoever sees the phone (masked: no number, no button)
+        "whatsapp":whatsapp(request.tenant,data.get("phone",""),booking)}
     if spec and can(request,"notes.read"):
         from .clients import treatments,from_booking
         entries=treatments(booking.contact);prefill=from_booking(booking,ZoneInfo(request.tenant.timezone))
@@ -544,8 +547,11 @@ def contact_detail(request,slug,contact_id):
     from .prices import discount_label
     upcoming=sorted((b for b in rows if b.start>timezone.now() and b.status=="confirmed"),key=lambda b:b.start)[:3]
     for b in upcoming:b.shown=shown(request,b.data)
-    ctx={"contact":contact,"data":shown(request,raw),"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
+    data=shown(request,raw)
+    ctx={"contact":contact,"data":data,"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
         "upcoming":upcoming,"discount":discount_label(contact),
+        # 2.14.0: WhatsApp with the text about the next booking, or an empty chat
+        "whatsapp":whatsapp(request.tenant,data.get("phone",""),upcoming[0] if upcoming else None),
         # 2.12.0: prices (and so what was spent and the discount) exist only for appointments; a hotel counts stays
         "priced":Service.objects.filter(kind="resource").exists(),
         "visits_word":"Soggiorni" if set(Service.objects.filter(active=True).values_list("kind",flat=True))=={"day"} else "Visite",
@@ -671,6 +677,10 @@ def catalog_edit(request,slug,kind,item_id=None):
         if not instance:
             extra["initial"]=initial(preset)
             if request.method=="POST" and agency and request.POST.get("kind"):extra["initial"]={}
+            # 2.14.0: a business whose type changed engine (garages went from places to lifts) keeps adding services
+            # with the engine its catalog already uses: an old garage has no lifts to book
+            kinds=list(Service.objects.filter(active=True).order_by("name").values_list("kind",flat=True))
+            if not agency and kinds and extra["initial"].get("kind") not in (None,*kinds):extra["initial"]["kind"]=kinds[0]
     # 2.10.0: "Segna ferie" from an operator opens the closing day with that operator already chosen
     if kind in ("schedules","exceptions") and not instance and request.GET.get("resource"):
         res=Resource.objects.filter(pk=request.GET["resource"]).first() if re.fullmatch(r"[0-9a-f-]{36}",request.GET["resource"]) else None

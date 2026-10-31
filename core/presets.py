@@ -1,11 +1,12 @@
 """Activity presets: they pre-fill an editable service and, in profile.py, a whole catalog.
 
-kind is the booking engine: capacity, resource, day (stays and rentals), event (dated occurrences).
+kind is the booking engine: capacity, resource, day (stays and rentals), event (dated occurrences); the fifth, shift
+(fixed weekly turns), is set on a service by the agency and no preset starts with it.
 """
 from datetime import time
 
 PRESETS={
- "ristorante":{"label":"Ristorante / Pizzeria","kind":"capacity","resource_label":"","hint":"Posti per fascia oraria, il tavolo occupa una durata.","defaults":{"duration":90,"interval":15,"capacity":30,"max_party":12,"turnover":False}},
+ "ristorante":{"label":"Ristorante / Pizzeria","kind":"capacity","resource_label":"","hint":"Posti per fascia oraria, il tavolo occupa una durata.","defaults":{"duration":90,"interval":15,"capacity":30,"max_party":12,"turnover":False,"last_arrival":60}},
  "parrucchiere":{"label":"Parrucchiere / Estetista","kind":"resource","resource_label":"Operatore","hint":"Operatori con agenda propria, prestazioni con durata.","defaults":{"interval":15,"max_party":1}},
  "medico":{"label":"Studio medico / Fisioterapia","kind":"resource","resource_label":"Professionista","hint":"Professionisti con agenda propria, visite con durata.","defaults":{"interval":15,"max_party":1}},
  "consulenza":{"label":"Consulenze professionali","kind":"resource","resource_label":"Consulente","hint":"Appuntamenti con professionisti, in studio o in videochiamata.","defaults":{"interval":30,"max_party":1}},
@@ -15,10 +16,11 @@ PRESETS={
  "autoscuola":{"label":"Autoscuola","kind":"resource","resource_label":"Istruttore","hint":"Lezioni di guida con istruttori e tipi di lezione.","defaults":{"interval":30,"max_party":1}},
  "campo":{"label":"Campi sportivi / Sale","kind":"resource","resource_label":"Campo o sala","hint":"Padel, tennis, calcetto, sale riunioni con calendario proprio.","defaults":{"interval":30,"max_party":10}},
  "corso":{"label":"Corsi / Lezioni","kind":"capacity","resource_label":"","hint":"Lezioni a orari fissi con capienza, per esempio yoga massimo 12.","defaults":{"duration":60,"interval":60,"capacity":12,"max_party":4}},
- "officina":{"label":"Officina / Gommista","kind":"capacity","resource_label":"","hint":"Capienza uguale ai ponti o alle postazioni disponibili.","defaults":{"duration":60,"interval":30,"capacity":2,"max_party":1}},
+ # 2.14.0: the lifts are the limit, whatever the job: two lifts, two cars at the same time (before, 2 per service)
+ "officina":{"label":"Officina / Gommista","kind":"resource","resource_label":"Ponte","hint":"Ponti o postazioni con agenda propria: un veicolo alla volta su ognuno, qualunque sia l'intervento.","defaults":{"interval":30,"max_party":1}},
  "hotel":{"label":"Hotel / B&B","kind":"day","resource_label":"Camera","hint":"Camere con ospiti massimi, notti, check-in e check-out.","defaults":{"min_days":1,"max_days":30,"checkin":time(15),"checkout":time(10),"max_party":6}},
  "casa_vacanze":{"label":"Casa vacanze / Appartamenti","kind":"day","resource_label":"Alloggio","hint":"Alloggi con ospiti massimi e soggiorno minimo.","defaults":{"min_days":2,"max_days":30,"checkin":time(16),"checkout":time(10),"max_party":8}},
- "noleggio":{"label":"Noleggio bici, mezzi, attrezzatura","kind":"day","resource_label":"Mezzo","hint":"Mezzi noleggiabili a giorni con ritiro e riconsegna.","defaults":{"min_days":1,"max_days":366,"checkin":time(9),"checkout":time(19),"max_party":1}},
+ "noleggio":{"label":"Noleggio bici, mezzi, attrezzatura","kind":"day","resource_label":"Mezzo","hint":"Mezzi noleggiabili a giorni con ritiro e riconsegna, anche in giornata.","defaults":{"min_days":0,"max_days":366,"checkin":time(9),"checkout":time(19),"max_party":1}},
  "evento":{"label":"Evento / Serata","kind":"event","resource_label":"","hint":"Posti per ogni data dell'evento.","defaults":{"capacity":100,"max_party":10}},
  "tour":{"label":"Tour / Esperienze","kind":"event","resource_label":"","hint":"Partenze a orari fissi con posti per ogni data.","defaults":{"capacity":20,"max_party":10}},
 }
@@ -116,6 +118,7 @@ UNITS={
  "hotel":("Camera","Camere","Le camere che si prenotano, con quanti ospiti ci stanno, descrizione e foto"),
  "casa_vacanze":("Alloggio","Alloggi","Gli appartamenti o le case che si prenotano, con quanti ospiti ci stanno"),
  "noleggio":("Mezzo","Mezzi","Bici, auto o attrezzature che si noleggiano, una per una"),
+ "officina":("Ponte","Ponti","I ponti o le postazioni dell'officina: ognuno tiene un veicolo alla volta, qualunque sia l'intervento"),
 }
 DEFAULT_UNITS=("Operatore o postazione","Operatori e postazioni","Chi o cosa si prenota uno alla volta, con la sua agenda: un operatore, una cabina, una camera, un campo")
 # 2.10.0: what the client books, in the words of the business: a salon books treatments

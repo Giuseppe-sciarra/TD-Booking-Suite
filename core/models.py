@@ -97,6 +97,11 @@ class Tenant(models.Model):
     # 2.13.0: the agency lets the business choose which emails go to its clients and write them (client_mails.py)
     client_mails_enabled=models.BooleanField(default=False)
     client_mails=models.JSONField(default=dict,blank=True)
+    # 2.14.0: the text of the WhatsApp button on a booking and on the client card (client_mails.whatsapp); empty = standard
+    whatsapp_text=models.TextField(blank=True)
+    # 2.14.0: the retention the worker runs once a day (privacy.run_retention): when it last went through, and why not
+    retention_at=models.DateTimeField(null=True,blank=True)
+    retention_error=models.CharField(max_length=200,blank=True)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -196,6 +201,9 @@ class Service(Scoped):
     # 2.6.1: places by capacity. True: a place is free again after `duration` (time slots, table turnover).
     # False: the customer picks the arrival time and the places count for the whole opening window (lunch, dinner)
     turnover=models.BooleanField(default=True)
+    # 2.14.0: places by capacity: the last arrival, minutes before each opening window closes (lunch 12-15 with 60:
+    # last at 14:00); 0 = until closing, as before
+    last_arrival=models.PositiveIntegerField(default=0)
     preset=models.CharField(max_length=40,blank=True)
     resource_label=models.CharField(max_length=60,blank=True)  # "Operatore", "Stanza", "Campo"...
     fields=models.JSONField(default=list,blank=True)

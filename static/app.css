@@ -403,6 +403,7 @@ img.client-logo.lg,img.client-logo.xl{padding:4px}
 .alerts strong{display:block;font-size:14px}.alerts span{display:block;font-size:13px;color:var(--muted)}
 .alerts .danger a{border-left-color:var(--danger)}.alerts .warn a{border-left-color:var(--warn)}
 .all-good{font:600 17px var(--head);color:var(--ok);margin:6px 0 4px}
+.retention-run{margin:12px 0 0;font-size:13px}
 
 .client-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
 .client-search{flex:1 1 280px}.client-search input{background:var(--paper)}

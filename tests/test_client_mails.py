@@ -138,3 +138,32 @@ def test_the_owner_sets_logo_and_look(sample,settings):
 
 def test_fill_keeps_unknown_fields():
     assert fill("{nome} {x}",{"nome":"Ada"})=="Ada {x}"
+
+# 2.14.0: WhatsApp click-to-chat, with the owner's text; the program sends nothing
+def test_whatsapp_link_numbers():
+    from core.client_mails import whatsapp
+    t=Tenant(name="Salone")
+    assert whatsapp(t,"06 1234567")=="https://wa.me/39061234567" and whatsapp(t,"0044 20 7946 0958")=="https://wa.me/442079460958"
+    assert whatsapp(t,"•••")=="" and whatsapp(t,"")==""  # a masked or missing phone: no button
+
+def test_whatsapp_button_with_the_owners_text(sample):
+    from urllib.parse import quote
+    from tests.test_phase2 import member
+    t,o,s=sample
+    with scope(t):b,_=create_booking(t,payload(s,phone="333 123 4567"))
+    owner,u=client_as(t);p=f"/t/{t.slug}"
+    standard=quote("Ciao Mario, ti scriviamo da Salone Test per la prenotazione: Servizio, ")
+    assert f'href="https://wa.me/393331234567?text={standard}' in owner.get(f"{p}/bookings/{b.pk}/").content.decode()
+    r=owner.post(f"{p}/notifications/",{"action":"whatsapp","whatsapp_text":"Ciao {nome}, ti aspettiamo il {data} alle {ora} in {sede}."})
+    assert r.status_code==302 and r["Location"].endswith("#whatsapp")
+    start=timezone.localtime(b.start)
+    mine=quote(f"Ciao Mario, ti aspettiamo il {start:%d/%m/%Y} alle {start:%H:%M} in Centro.")
+    assert f"https://wa.me/393331234567?text={mine}" in owner.get(f"{p}/bookings/{b.pk}/").content.decode()
+    assert f"https://wa.me/393331234567?text={mine}" in owner.get(f"{p}/contacts/{b.contact_id}/").content.decode()  # the next booking
+    viewer,_=member(t,"viewer")  # no phone shown, no button
+    assert "wa.me" not in viewer.get(f"{p}/bookings/{b.pk}/").content.decode()
+    assert "al massimo 1000 caratteri" in owner.post(f"{p}/notifications/",{"action":"whatsapp","whatsapp_text":"a\x07b"},follow=True).content.decode()
+    owner.post(f"{p}/notifications/",{"action":"whatsapp","whatsapp_text":""})
+    t.refresh_from_db();assert t.whatsapp_text==""
+    with scope(t):change_status(t,Booking.objects.get(pk=b.pk),"cancelled")
+    assert 'href="https://wa.me/393331234567"' in owner.get(f"{p}/contacts/{b.contact_id}/").content.decode()  # nothing in programma: empty chat

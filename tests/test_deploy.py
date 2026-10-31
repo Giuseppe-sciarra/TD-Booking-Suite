@@ -78,6 +78,11 @@ def test_web_is_published_straight_on_the_host(tmp_path,extra,host_ip,port):
     assert len(ports)==1 and ports[0]["host_ip"]==host_ip and ports[0]["published"]==port and ports[0]["target"]==8000
     assert all("ports" not in cfg["services"][x] for x in ("db","worker"))
 
+def test_stay_signed_in_until_sign_out_by_default():
+    # 2.14.0: 2.13.0 promised "until Esci", but compose.yaml still handed 30 days to web and worker
+    assert "TDBS_SESSION_REMEMBER_DAYS: ${TDBS_SESSION_REMEMBER_DAYS:-0}" in (ROOT/"compose.yaml").read_text()
+    assert "# TDBS_SESSION_REMEMBER_DAYS=0" in (ROOT/".env.example").read_text()
+
 def test_no_bundled_proxy_left():
     text="\n".join((ROOT/f).read_text() for f in ("compose.yaml","image-lock.json","scripts/configure.py"))
     assert "caddy" not in text.lower() and "SITE_ADDRESS" not in text

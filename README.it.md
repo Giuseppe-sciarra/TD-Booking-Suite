@@ -78,7 +78,7 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   chilometri, attesa o consegna e auto di cortesia in officina; orario di arrivo, letto, culla e
   animali in hotel… Nessuna domanda sulla salute nel modulo online, tranne gli allergeni del
   ristorante.
-- **Intolleranze e allergie** per i ristoranti, gestite dall'attività; dati sulla salute visibili
+- **Intolleranze e allergie** per i ristoranti, un elenco che gestisce l'amministratore dell'attività (o l'agenzia); dati sulla salute visibili
   solo a chi vede le note, mai nelle notifiche, cancellati con i dati del cliente.
 - Email di conferma con il link per gestire o annullare la prenotazione.
 - **Plugin WordPress**: si collega il sito con un codice monouso e nasce la pagina *Prenota* con
@@ -127,7 +127,8 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   attività.
 - Verifica in due passaggi con **app Authenticator o passkey**, codici di recupero, conferma della
   password per le pagine sensibili, limiti ai tentativi, registro delle attività. *Resta collegato*
-  tiene dentro un dispositivo finché non preme Esci (o i giorni di `TDBS_SESSION_REMEMBER_DAYS`).
+  tiene dentro un dispositivo finché non preme Esci, senza scadenza di serie (un limite in giorni si
+  mette in `TDBS_SESSION_REMEMBER_DAYS`).
 - Export e cancellazione GDPR per cliente, regole di conservazione per attività, rotazione delle
   chiavi, backup cifrati.
 - **Aggiornamento automatico ogni notte** di Python, Debian, librerie e PostgreSQL 17.x,

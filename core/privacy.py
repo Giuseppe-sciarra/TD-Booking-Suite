@@ -103,3 +103,21 @@ def apply_retention(tenant,apply=False,now=None):
         ActionToken.objects.filter(expires__lt=now).delete()
         audit(tenant,None,"retention.applied",**report)
     return report
+
+def run_retention(now=None):
+    """2.14.0: the retention of every business once a day, from the worker (mail_worker), instead of a cron the installer
+    had to remember: the same command as by hand. When it last went through, or why not, stays on the business for the
+    agency's dashboard; a failed one is tried again at the next round. Returns how many went through."""
+    import io,logging
+    from django.core.management import call_command
+    from django.db.models import Q
+    now=now or timezone.now();done=0
+    for t in Tenant.objects.filter(Q(retention_at__isnull=True)|Q(retention_at__lte=now-timedelta(days=1))).order_by("created"):
+        try:
+            call_command("retention",tenant=t.slug,apply=True,stdout=io.StringIO())
+            Tenant.objects.filter(pk=t.pk).update(retention_at=now,retention_error="");done+=1
+        except Exception as ex:  # one business that fails does not stop the others
+            # the dashboard gets the kind of error only: the details, maybe with data, stay in the worker's log
+            logging.getLogger(__name__).exception("Conservazione dei dati non riuscita: %s",t.slug)
+            Tenant.objects.filter(pk=t.pk).update(retention_error=type(ex).__name__[:200])
+    return done

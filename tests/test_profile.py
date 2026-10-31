@@ -1,6 +1,6 @@
 """2.6.0 — business profile in one go, WordPress plugin that connects itself, Gmail and Microsoft 365
 sending, SMTP envelope, catalog forms per kind of booking, plans on one row, free months."""
-import base64,json,smtplib
+import base64,json,secrets,smtplib
 from datetime import datetime,time,timedelta
 from zoneinfo import ZoneInfo
 import pytest
@@ -560,3 +560,75 @@ def test_an_operator_has_what_she_does_and_her_own_days(sample):
         assert not Schedule.objects.filter(resource=giulia).exists() and ServiceResource.objects.filter(resource=giulia).count()==2
     # a closing day for her alone starts from her card
     assert f'value="{giulia.pk}" selected' in owner.get(f"/t/{t.slug}/catalog/exceptions/new/?resource={giulia.pk}").content.decode()
+
+# ---------- 2.14.0: preset logic
+def next_day(weekdays):
+    day=timezone.localdate()+timedelta(days=1)
+    while day.weekday() not in weekdays:day+=timedelta(days=1)
+    return day
+
+def test_restaurant_stops_arrivals_before_closing(sample):
+    from core.booking import available
+    t,o,s=sample
+    apply_profile(t,"ristorante",["Centro"])
+    owner,_=client_as(t)
+    with scope(t):
+        tavolo=Service.objects.get(active=True);day=next_day(range(1,7))
+        times=[x["start"][11:16] for x in available(t,tavolo.pk,day,party=2)]
+        # lunch 12-15 and dinner 19-23:30: the last table at 14:00 and at 22:30
+        assert tavolo.last_arrival==60 and "14:00" in times and "14:15" not in times and times[-1]=="22:30"
+    page=owner.get(f"/t/{t.slug}/catalog/services/{tavolo.pk}/").content.decode()
+    assert 'name="last_arrival"' in page and "Ultimo arrivo" in page
+    assert "ultimo arrivo 60 minuti prima della chiusura" in owner.get(f"/t/{t.slug}/catalog/services/").content.decode()
+    with scope(t):
+        Service.objects.filter(pk=tavolo.pk).update(last_arrival=0)  # the value of every service from before: until closing, as ever
+        assert [x["start"][11:16] for x in available(t,tavolo.pk,day,party=2)][-1]=="23:15"
+
+def test_garage_lifts_take_any_job(sample):
+    from core.booking import available,create_booking
+    from core.calendar import local_datetime
+    t,o,s=sample
+    apply_profile(t,"officina",["Officina"])
+    with scope(t):
+        assert list(Resource.objects.filter(active=True).order_by("name").values_list("name",flat=True))==["Ponte 1","Ponte 2"]
+        tagliando=Service.objects.get(name="Tagliando");gomme=Service.objects.get(name="Cambio gomme")
+        assert tagliando.kind==gomme.kind=="resource" and all(ServiceResource.objects.filter(service=x).count()==2 for x in (tagliando,gomme))
+        day=next_day(range(5));start=local_datetime(day,time(9),ZoneInfo(t.timezone)).isoformat()
+        for n,svc in enumerate((tagliando,gomme)):
+            create_booking(t,{"service":str(svc.pk),"start":start,"party":1,"first_name":"Auto","last_name":str(n),"email":f"a{n}@example.invalid",
+                "phone":"+39333000000"+str(n),"answers":{"targa":"AB12"+str(n)+"CD"},"request_key":secrets.token_urlsafe(24)})
+        # two lifts, two cars: at 9 nothing is left for either job (before: two per service, four cars)
+        for svc in (tagliando,gomme):assert datetime.fromisoformat(start) not in [datetime.fromisoformat(x["start"]) for x in available(t,svc.pk,day)]
+        assert Booking.objects.values("resource").distinct().count()==2
+
+def test_an_old_garage_keeps_adding_services_with_places(sample):
+    t,o,s=sample  # s: a capacity service, as garages had before 2.14.0
+    t.business_type="officina";t.save()
+    owner,_=client_as(t)
+    page=owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
+    assert 'name="capacity"' in page and 'name="resources"' not in page
+    apply_profile(t,"officina",["Officina"])
+    assert 'name="resources"' in owner.get(f"/t/{t.slug}/catalog/services/new/").content.decode()
+
+def test_rental_picked_up_and_returned_the_same_day(sample):
+    import json
+    from django.forms.models import model_to_dict
+    from core.booking import bounds,create_booking,BookingError
+    from core.calendar import local_datetime
+    from core.forms import ServiceForm
+    t,o,s=sample
+    apply_profile(t,"noleggio",["Centro"])
+    owner,_=client_as(t);tz=ZoneInfo(t.timezone);day=timezone.localdate()+timedelta(days=2)
+    with scope(t):
+        bici=Service.objects.get(active=True);assert bici.min_days==0
+        b,_=create_booking(t,{"service":str(bici.pk),"start":local_datetime(day,time(9),tz).isoformat(),"end_date":day.isoformat(),"party":1,"first_name":"Gita",
+            "last_name":"Fuori","email":"g@example.invalid","phone":"+393330000001","request_key":secrets.token_urlsafe(24)})
+        assert b.end-b.start==timedelta(hours=10) and b.resource_id
+        # a hotel still wants a night; 0 nights with the departure before the arrival is refused, in the form too
+        camera=Service.objects.create(tenant=t,location=bici.location,name="Camera",kind="day",min_days=1,checkin=time(15),checkout=time(10),lead_minutes=0)
+        for svc,error in ((camera,"Durata minima"),(Service.objects.create(tenant=t,location=bici.location,name="Sala",kind="day",min_days=0,checkin=time(15),checkout=time(10),lead_minutes=0),"prima dell'arrivo")):
+            with pytest.raises(BookingError,match=error):bounds(t,svc,{"start":local_datetime(day,time(15),tz).isoformat(),"end_date":day.isoformat()})
+        data={k:v for k,v in model_to_dict(bici).items() if v is not None};data.update(checkout="08:00",fields=json.dumps(bici.fields))
+        f=ServiceForm(data,instance=bici,tenant=t)
+        assert not f.is_valid() and "la riconsegna è lo stesso giorno" in str(f.errors)
+    assert "in giornata" in owner.get(f"/t/{t.slug}/bookings/{b.pk}/").content.decode()

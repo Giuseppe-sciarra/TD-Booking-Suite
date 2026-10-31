@@ -34,7 +34,7 @@ PROFILES={
  "autoscuola":{"services":[("Lezione di guida",{"duration":60})],"units":2,"hours":[(MON_SAT,"08:00","19:00")]},
  "campo":{"services":[("Campo per un'ora",{"duration":60}),("Campo per un'ora e mezza",{"duration":90})],"units":2,"hours":[(WEEK,"08:00","23:00")]},
  "corso":{"services":[("Lezione",{})],"hours":[(MON_FRI,"09:00","10:00"),(MON_FRI,"18:00","21:00"),(range(5,6),"10:00","12:00")]},
- "officina":{"services":[("Tagliando",{"duration":60}),("Cambio gomme",{"duration":30})],"hours":[(MON_FRI,"08:00","12:30"),(MON_FRI,"14:00","18:00")]},
+ "officina":{"services":[("Tagliando",{"duration":60}),("Cambio gomme",{"duration":30})],"units":2,"hours":[(MON_FRI,"08:00","12:30"),(MON_FRI,"14:00","18:00")]},
  "hotel":{"services":[("Camera",{})],"units":3,"day":True},
  "casa_vacanze":{"services":[("Appartamento",{})],"units":2,"day":True},
  "noleggio":{"services":[("Noleggio bici",{})],"units":4,"day":True},

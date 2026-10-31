@@ -19,11 +19,12 @@ def row_label(o):
 @register.filter
 def service_summary(s):
  """2.6.0: what a service is, in words, under its name in the list."""
- if s.kind=="capacity" and not s.turnover:return f"{s.capacity} coperti per ogni pranzo e cena, il cliente sceglie l'ora di arrivo"
- if s.kind=="capacity":return f"A turni: {s.capacity} posti, ogni posto si libera dopo {s.duration} minuti"
+ last=f", ultimo arrivo {s.last_arrival} minuti prima della chiusura" if s.kind=="capacity" and s.last_arrival else ""
+ if s.kind=="capacity" and not s.turnover:return f"{s.capacity} coperti per ogni pranzo e cena, il cliente sceglie l'ora di arrivo"+last
+ if s.kind=="capacity":return f"A turni: {s.capacity} posti, ogni posto si libera dopo {s.duration} minuti"+last
  if s.kind=="shift":return f"Turni: {s.capacity} posti totali, i coperti di ogni turno sono in Turni del ristorante"
  if s.kind=="resource":return f"Appuntamento di {s.duration} minuti"+(" con "+s.resource_label.lower() if s.resource_label else "")+(" · "+euro(s.price) if s.price is not None else "")
- if s.kind=="day":return f"A notti: da {s.min_days} a {s.max_days}, arrivo alle {s.checkin.strftime('%H:%M') if hasattr(s.checkin,'strftime') else s.checkin}"
+ if s.kind=="day":return f"A notti: {f'da {s.min_days} a' if s.min_days else 'anche in giornata, fino a'} {s.max_days}, arrivo alle {s.checkin.strftime('%H:%M') if hasattr(s.checkin,'strftime') else s.checkin}"
  if s.kind=="event":return "Evento con date: i posti sono in Eventi con data"
  return ""
 
@@ -32,7 +33,7 @@ def nights(booking):
     """2.12.0: how long a stay is, "3 notti" or "1 notte", counted in the business's time zone."""
     from django.utils import timezone
     n=(timezone.localtime(booking.end).date()-timezone.localtime(booking.start).date()).days
-    return f"{n} nott{'e' if n==1 else 'i'}"
+    return f"{n} nott{'e' if n==1 else 'i'}" if n else "in giornata"  # 2.14.0: a rental picked up and returned the same day
 
 @register.filter
 def photo_link(resource,slug):
@@ -88,6 +89,7 @@ ICONS.update({
  "inbox":'<path d="M3.5 13.5 6 5h12l2.5 8.5V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1 2.5h5l1-2.5h5"/>',
  "tag":'<path d="M3.5 12.5V4H12l8.5 8.5-8 8z"/><circle cx="8" cy="8.5" r="1.3"/>',
  "plug":'<path d="M9 3v4M15 3v4M6.5 7h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 15.5V21"/>',
+ "chat":'<path d="M5 19.5 6.2 16A7.5 7.5 0 1 1 9 18.6z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/>',
  "user":'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.9-4 3.8-6 7.5-6s6.6 2 7.5 6"/>'})
 @register.simple_tag
 def icon(name):

@@ -252,6 +252,15 @@ def notifications_view(request,slug):
                     audit(t,request.user,"client_mails.saved",on=[k for k,v in mails.items() if v["on"]])
                 messages.success(request,"Email ai clienti salvate.")
                 return redirect(reverse("notifications",args=[slug])+"#clienti")
+            elif action=="whatsapp":
+                # 2.14.0: the owner's text of the WhatsApp button; empty, or the standard one, goes back to the standard
+                from .client_mails import WHATSAPP
+                text=request.POST.get("whatsapp_text","").replace("\r\n","\n").strip()
+                if len(text)>1000 or any(ord(c)<32 and c!="\n" for c in text):raise ValueError("Messaggio WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
+                Tenant.objects.filter(pk=tenant.pk).update(whatsapp_text="" if text==WHATSAPP else text)
+                audit(tenant,request.user,"whatsapp.saved",tenant.pk)
+                messages.success(request,"Messaggio WhatsApp salvato.")
+                return redirect(reverse("notifications",args=[slug])+"#whatsapp")
             elif action=="test":
                 if not (tenant.notify_email or tenant.telegram):raise ValueError("Configura prima un indirizzo email o Telegram.")
                 text="Prova notifiche · "+tenant.name+"\nSe leggi questo messaggio, le notifiche funzionano."
@@ -265,4 +274,4 @@ def notifications_view(request,slug):
     now=cm.current(tenant)
     mails=[{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k]} for k,label,help in cm.KINDS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
-        "mails":mails,"mail_fields":cm.FIELDS,"hours":cm.HOURS,"sample":cm.sample(tenant)})
+        "mails":mails,"mail_fields":cm.FIELDS,"hours":cm.HOURS,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP})

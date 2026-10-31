@@ -77,7 +77,7 @@ Italian.
   area, size, style and adults only at the tattoo studio; licence plate, model, mileage, wait or
   drop off and courtesy car at the garage; arrival time, bed, cot and pets at the hotel… No health
   questions online, apart from the restaurant's allergens.
-- **Intolerances and allergies** for restaurants, edited by the business; health data seen only by
+- **Intolerances and allergies** for restaurants, a list the business owner (or the agency) edits; health data seen only by
   who reads the notes, never in notifications, erased with the client's data.
 - Confirmation email with a link to manage or cancel the booking.
 - **WordPress plugin**: connect the site with a one-time code, a *Book* page is created with
@@ -124,7 +124,7 @@ Italian.
   and foreign keys that cannot point to another business's rows.
 - Two-step verification with **authenticator app or passkey**, recovery codes, password confirmation
   for sensitive pages, rate limits, audit log. *Stay signed in* keeps a device in until
-  it signs out (or for the days in `TDBS_SESSION_REMEMBER_DAYS`).
+  it signs out, with no time limit by default (a limit in days goes in `TDBS_SESSION_REMEMBER_DAYS`).
 - GDPR export and erasure per client, retention rules per business, key rotation, encrypted
   backups.
 - **Nightly automatic update** of Python, Debian, libraries and PostgreSQL 17.x, with a

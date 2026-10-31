@@ -10,6 +10,8 @@ class Command(BaseCommand):
             if time.time()-last_refresh>3600:
                 from django.core.management import call_command
                 call_command("refresh_turns");last_refresh=time.time()
+                from core.privacy import run_retention  # 2.14.0: every business once a day, without a cron
+                if done:=run_retention():self.stdout.write(f"Conservazione dei dati applicata a {done} attività.")
             if time.time()-last_remind>300:
                 from core.client_mails import remind  # 2.13.0: the reminders to the clients, every 5 minutes
                 if remind():self.stdout.write("Promemoria accodati ai clienti.")

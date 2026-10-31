@@ -11,6 +11,7 @@ LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nom
  "checkin":"Ora di arrivo (check-in)","checkout":"Ora di partenza (check-out)","min_days":"Notti minime","max_days":"Notti massime",
  "cancel_cutoff_minutes":"Annullamento online fino a (minuti prima)","resource_label":"Come si chiamano le risorse",
  "service":"Servizio","resource":"Risorsa","purpose":"A cosa si applica","weekday":"Giorno","start":"Inizio","end":"Fine","valid_from":"Valido dal","valid_until":"Valido fino al",
+ "last_arrival":"Ultimo arrivo (minuti prima della chiusura)",
  "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato","price":"Prezzo (€)"}
 # 2.6.0: one plain line under every field, with an example
 HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 19:00, 19:30",
@@ -21,15 +22,16 @@ HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 1
  "cancel_cutoff_minutes":"Fino a quando il cliente annulla da solo dal link nell'email. 0 vuol dire fino all'inizio, 1440 fino al giorno prima",
  "resource_label":"La parola che vede il cliente: Operatore, Cabina, Camera, Campo",
  "description":"Facoltativa: compare sotto il nome nella pagina prenotazioni",
- "min_days":"Per esempio 2 se non accetti soggiorni di una notte sola","max_days":"Il soggiorno più lungo prenotabile online",
+ "min_days":"Per esempio 2 se non accetti soggiorni di una notte sola. 0 per il noleggio in giornata: ritiro e riconsegna lo stesso giorno","max_days":"Il soggiorno più lungo prenotabile online",
  "checkin":"Da che ora arriva il cliente","checkout":"Entro che ora libera la camera o riconsegna",
+ "last_arrival":"Per esempio 60: con il pranzo dalle 12 alle 15 l'ultimo arrivo è alle 14, con la cena fino alle 23:30 alle 22:30. 0 vuol dire fino alla chiusura",
  "address":"Compare nelle email di conferma","phone":"Compare nelle email di conferma",
  "price":"Facoltativo, per esempio 25 o 25,50. Compare in agenda, nelle prenotazioni e nella scheda del cliente, con il suo sconto se ne ha uno"}
 SERVICE_KINDS=[("capacity","Posti per fascia oraria: ristorante, sala, lezione di gruppo"),("shift","Turni fissi, per esempio pranzo e cena, con i coperti di ciascuno"),
  ("resource","Appuntamento con una persona o una risorsa: parrucchiere, studio, campo"),("day","A notti o giorni: camere, appartamenti, noleggio"),("event","Evento o corso in date precise")]
 # which fields each kind of booking uses; the others are not shown at all
 FIELD_KINDS={"duration":{"resource","capacity"},"interval":{"resource","capacity"},"capacity":{"capacity","shift","day"},"max_party":{"capacity","shift","event","day"},
- "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
+ "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"last_arrival":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
  "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"}}
 KIND_LABELS={"duration":{"capacity":"Quanto resta occupato il posto (minuti)","resource":"Durata dell'appuntamento (minuti)"},
  "capacity":{"capacity":"Posti (coperti)","shift":"Posti totali del locale","day":"Unità disponibili"},
@@ -210,7 +212,7 @@ class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","max_party","turnover","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
+        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
@@ -263,11 +265,12 @@ class ServiceForm(ScopedForm):
         d=super().clean()
         kind=d.get("kind") or self.kind
         if d.get("price") is not None and not 0<=d["price"]<=100000:self.add_error("price","Prezzo tra 0 e 100.000 €.")
-        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(1,366),"cancel_cutoff_minutes":(0,525600)}
+        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600)}
         for key,(low,high) in bounds.items():
             if key in d and d[key] is not None and not low<=d[key]<=high:self.add_error(key,f"Valore tra {low} e {high}.")
         if kind=="resource" and "resources" in self.fields and not d.get("resources"):self.add_error("resources","Seleziona almeno una voce: se l'elenco è vuoto, creala prima nella pagina accanto a Servizi.")
         if kind=="day" and d.get("min_days") and d.get("max_days") and d["min_days"]>d["max_days"]:self.add_error("min_days","Le notti minime superano le massime.")
+        if kind=="day" and d.get("min_days")==0 and d.get("checkin") and d.get("checkout") and d["checkout"]<=d["checkin"]:self.add_error("min_days","Con 0 notti la riconsegna è lo stesso giorno: l'ora di partenza deve venire dopo quella di arrivo.")
         location=d.get("location") or getattr(self.instance,"location",None)
         if d.get("resources") and any(r.location_id!=getattr(location,"pk",None) for r in d["resources"]):self.add_error("resources","Le risorse devono appartenere alla sede del servizio.")
         return d
