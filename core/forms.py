@@ -139,18 +139,19 @@ class ResourceForm(ScopedForm):
     feed_new=forms.BooleanField(required=False,label="Cambia il link del calendario",help_text="Il link di prima smette di funzionare: serve se è finito in mani sbagliate")
     busy_url=forms.CharField(required=False,max_length=2000,label="Calendario esterno da segnare come occupato",help_text="L'indirizzo segreto .ics del suo calendario Google, Outlook o iCloud: ogni 15 minuti i suoi impegni diventano orari occupati, senza titoli. Vuoto: nessuno")
     class Meta:
-        model=Resource;fields=["name","location","capacity","description","photo_url","active","feed_names","secondary","auto_excluded","priority"]
+        model=Resource;fields=["name","location","capacity","description","photo_url","active","feed_names","secondary","group","auto_excluded","priority"]
         labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva","feed_names":"Nel calendario anche il nome del cliente",
-            "secondary":"Si usa insieme all'operatore: cabina, lettino, macchinario, auto","auto_excluded":"Fuori da «Il primo disponibile»","priority":"Ordine in «Il primo disponibile» (1 = per primo)"}
+            "secondary":"Si usa insieme all'operatore: cabina, lettino, macchinario, auto","group":"Gruppo","auto_excluded":"Fuori da «Il primo disponibile»","priority":"Ordine in «Il primo disponibile» (1 = per primo)"}
         help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno",
             "secondary":"Il cliente non la sceglie e non ha una colonna in agenda: i servizi che la spuntano si prenotano solo se è libera lei (o un'altra spuntata) insieme all'operatore",
+            "group":"Solo per cabine e macchinari, per esempio Cabina o Laser: un servizio che spunta voci di gruppi diversi ne vuole una libera per ogni gruppo. Vuoto: tutte nello stesso gruppo",
             "auto_excluded":"Si prenota solo se il cliente o il banco la scelgono","priority":"Conta solo se la sede dà «Il primo disponibile» secondo l'ordine scelto"}
         widgets={"description":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
         from .presets import units,service_word
         from .prices import euro
-        self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active","secondary","auto_excluded","priority"])
+        self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active","secondary","group","auto_excluded","priority"])
         self.fields["priority"].required=False
         new=self.is_new=self.instance._state.adding
         slug=getattr(self.tenant,"slug","")
@@ -194,10 +195,14 @@ class ResourceForm(ScopedForm):
                 # written as in Italy, 35,50: the same as the price list shows it
                 self.fields[price]=forms.DecimalField(required=False,min_value=0,max_value=100000,max_digits=8,decimal_places=2,label=f"Prezzo di {s.name}",localize=True,
                     widget=forms.TextInput(attrs={"placeholder":euro(s.price).replace(" €","") if s.price is not None else "—","inputmode":"decimal","maxlength":"10"}))
-                for name in (dur,price):self.fields[name].in_grid=True
+                # 2.14.0: his own posa (work before it, posa), as his duration; empty = the service's
+                at,pause=f"pa_{s.pk}",f"pm_{s.pk}"
+                for name,label,ph in ((at,"Lavoro prima della posa",s.pause_start),(pause,"Posa",s.pause_minutes)):
+                    self.fields[name]=forms.IntegerField(required=False,min_value=0,max_value=1440,label=f"{label} di {s.name}",widget=forms.NumberInput(attrs={"placeholder":str(ph),"inputmode":"numeric","step":"5"}))
+                for name in (dur,price,at,pause):self.fields[name].in_grid=True
                 link=links.get(s.pk)
-                if link:self.initial[dur]=link.duration;self.initial[price]=link.price
-                row.update(dur=dur,price=price)
+                if link:self.initial[dur]=link.duration;self.initial[price]=link.price;self.initial[at]=link.pause_start;self.initial[pause]=link.pause_minutes
+                row.update(dur=dur,price=price,at=at,pause=pause)
             self.rows.append(row)
         if not Service.objects.filter(kind="day").exists():del self.fields["capacity"]
         # working days: up to two spans a day here (2.14.0: the lunch break); more, or alternate weeks, stay in Orari di apertura
@@ -225,7 +230,8 @@ class ResourceForm(ScopedForm):
         """One row a service, as the week grid: the tick, and for appointments the operator's duration and price."""
         boxes={str(w.data["value"]):w for w in self["services"].subwidgets}
         return [{"box":boxes.get(str(r["service"].pk)),"name":self.fields["services"].label_from_instance(r["service"]),
-            "dur":self[r["dur"]] if "dur" in r else None,"price":self[r["price"]] if "price" in r else None} for r in self.rows]
+            "dur":self[r["dur"]] if "dur" in r else None,"price":self[r["price"]] if "price" in r else None,
+            "at":self[r["at"]] if "at" in r else None,"pause":self[r["pause"]] if "pause" in r else None} for r in self.rows]
     def clean_priority(self):return self.cleaned_data["priority"] or 0
     def clean_photo_url(self):
         value=self.cleaned_data.get("photo_url","")
@@ -244,6 +250,11 @@ class ResourceForm(ScopedForm):
         d=super().clean()
         loc=d.get("location")
         if loc and any(s.location_id!=loc.pk for s in d.get("services",[])):raise ValidationError("Spunta solo servizi della sua sede.")
+        for row in self.rows:
+            s=row["service"]
+            if "pause" not in row or d.get(row["pause"]) is None:continue
+            at=d.get(row["at"]) if d.get(row["at"]) is not None else s.pause_start;n=d[row["pause"]];whole=d.get(row["dur"]) or s.duration
+            if n and not (0<at and at+n<whole):self.add_error(row["pause"],f"{s.name}: la posa sta dentro la durata, dopo un po' di lavoro e prima della finitura.")
         if d.get("own_hours") and self.hours and not self.split_hours:
             days=[n for n in range(7) if d.get(f"day_{n}")]
             if not days:raise ValidationError("Spunta almeno un giorno di lavoro, o spegni Ha giorni e orari suoi.")
@@ -272,7 +283,8 @@ class ResourceForm(ScopedForm):
             link,_=ServiceResource.objects.get_or_create(tenant=self.tenant,service=s,resource=obj)
             if s.kind=="resource":
                 link.duration=d.get(f"dur_{s.pk}");link.price=d.get(f"price_{s.pk}")
-                link.save(update_fields=["duration","price"])
+                link.pause_minutes=d.get(f"pm_{s.pk}");link.pause_start=d.get(f"pa_{s.pk}") if link.pause_minutes is not None else None
+                link.save(update_fields=["duration","price","pause_start","pause_minutes"])
         if d.get("photo_remove") or d.get("photo_file"):
             from django.utils import timezone
             from .models import ResourcePhoto
@@ -316,7 +328,7 @@ class ServiceForm(ScopedForm):
         from .presets import units
         one,many,_=units(getattr(self.tenant,"business_type",""))
         self.fields["resources"].label=many
-        self.fields["resources"].help_text=f"Quali {many.lower()} si possono prenotare con questo servizio"+(": le voci usate insieme all'operatore (cabine, macchinari) sono richieste, ne serve una libera" if Resource.objects.filter(active=True,secondary=True).exists() else "")
+        self.fields["resources"].help_text=f"Quali {many.lower()} si possono prenotare con questo servizio"+(": le voci usate insieme all'operatore (cabine, macchinari) sono richieste, ne serve una libera per ogni gruppo" if Resource.objects.filter(active=True,secondary=True).exists() else "")
         if not new:self.initial["resources"]=ServiceResource.objects.filter(service=self.instance).values_list("resource_id",flat=True)
         # 2.8.0: with one location a new service starts with every operator ticked, instead of an error on saving
         elif not self.is_bound and Location.objects.filter(active=True).count()==1:self.initial["resources"]=list(Resource.objects.filter(active=True).values_list("pk",flat=True))

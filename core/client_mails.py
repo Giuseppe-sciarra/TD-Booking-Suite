@@ -152,6 +152,20 @@ def send(tenant,booking,kind):
     return queue(tenant,payload,booking.contact)
 
 @client_lang
+def substitute(tenant,booking):
+    """2.14.0: the class is held by another instructor (Iscritti e presenze), when the desk chooses to tell the
+    enrolled: to whoever wants the emails about his bookings."""
+    from django.template.loader import render_to_string
+    from .booking import queue
+    from .branding import contrast_color
+    data=booking.data
+    if not data.get("email") or booking.snapshot.get("notices") is False or booking.contact_id and not booking.contact.notices:return None
+    v=values(tenant,booking,data)
+    body=gettext("Ciao {nome}, {servizio} di {quando} la tiene {operatore}.").format(**v)+("\n"+gettext("Prima era con {prima}.").format(prima=booking.snapshot["original"]) if booking.snapshot.get("original") else "")
+    return queue(tenant,{"to":data["email"],"subject":gettext("Cambio di istruttore")+" · "+tenant.name,"body":body,
+        "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":[],"color":contrast_color(tenant.brand_color)})},booking.contact)
+
+@client_lang
 def offer(tenant,entry,slots,link,until=None):
     """2.14.0: Si è liberato un posto, to a client of the waiting list who left an email and did not say no to the
     emails about his bookings: the free times of the day, the link of the booking page on it and who takes the place."""

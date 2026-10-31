@@ -259,6 +259,7 @@ class Resource(Scoped):
     # 2.14.0: a cabin, a machine, a car taken together with the operator (never chosen alone); out of "Il primo
     # disponibile"; its place in it when the location assigns by priority
     secondary=models.BooleanField(default=False)
+    group=models.CharField(max_length=40,blank=True)  # cabins and machines: a service needs one free of each group it ticks
     auto_excluded=models.BooleanField(default=False)
     priority=models.PositiveIntegerField(default=0)
     def __str__(self):return self.name
@@ -334,6 +335,8 @@ class ServiceResource(Scoped):
     # 2.11.0: what this operator takes and asks for this service; empty = the service's. A variant keeps its own
     duration=models.PositiveIntegerField(null=True,blank=True)
     price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
+    pause_start=models.PositiveIntegerField(null=True,blank=True)  # 2.14.0: his own posa; empty = the service's
+    pause_minutes=models.PositiveIntegerField(null=True,blank=True)
     class Meta: constraints=[models.UniqueConstraint(fields=["service","resource"],name="service_resource_unique")]
 class Option(Scoped):
     service=models.ForeignKey(Service,on_delete=models.PROTECT)
@@ -446,6 +449,7 @@ class Booking(Scoped):
     gap_start=models.DateTimeField(null=True,blank=True)
     gap_end=models.DateTimeField(null=True,blank=True)
     secondary=models.ForeignKey(Resource,null=True,blank=True,on_delete=models.PROTECT,related_name="+")
+    more=models.JSONField(default=list,blank=True)  # the ids of the cabins or machines of the other groups taken with it
     party=models.PositiveIntegerField(default=1)
     status=models.CharField(max_length=15,default="confirmed",choices=[("pending","In attesa di conferma"),("confirmed","Confermata"),("arrived","Arrivato"),("in_progress","In corso"),("completed","Completata"),("cancelled","Annullata"),("no_show","Assente")])
     # 2.14.0: where it came from, and the tag of the link (?src=instagram); empty for the bookings made before

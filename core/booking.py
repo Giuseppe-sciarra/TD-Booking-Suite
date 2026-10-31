@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.translation import gettext,get_language
 from .models import Tenant,Service,Resource,ServiceResource,Option,Occurrence,Booking,Contact,ActionToken,Delivery,audit
 from .crypto import encrypt,index,tenant_key,token_hash
-from .calendar import windows,fits,local_datetime,blocked_stay,blocked
+from .calendar import windows,fits,local_datetime,blocked_stay,blocked,block_spans
 from .middleware import operational
 UTC=TZ.utc
 class BookingError(ValueError):pass
@@ -94,7 +94,7 @@ def capacity_available(service,start,end,party,resource=None,occurrence=None,exc
     rows=Booking.objects.filter(status__in=HOLDING,busy_start__lt=end,busy_end__gt=start)
     if exclude:rows=rows.exclude(pk__in=exclude if isinstance(exclude,list) else [exclude])  # a list: the services of a visit being moved
     # 2.14.0: a cabin or a machine is also taken by the bookings that need it next to their operator
-    if resource:rows=rows.filter(Q(resource=resource)|Q(secondary=resource));cap=1;party=1
+    if resource:rows=rows.filter(Q(resource=resource)|Q(secondary=resource)|Q(more__icontains=str(resource.pk)));cap=1;party=1
     elif occurrence:rows=rows.filter(occurrence=occurrence);cap=occurrence.capacity
     else:
         rows=rows.filter(service=service);cap=service.capacity
@@ -117,15 +117,34 @@ def linked(service,secondary=False):
     cars it also needs, any one of them."""
     return Resource.objects.filter(active=True,secondary=secondary,location=service.location,id__in=ServiceResource.objects.filter(service=service).values("resource_id")).order_by("name")
 def posa(service,start,end,resource):
-    """2.14.0: the posa of an appointment (work, posa, finish): the client stays, the operator is free for another."""
-    if not (resource and service.kind=="resource" and service.pause_minutes):return None
-    a=start+timedelta(minutes=service.pause_start);b=a+timedelta(minutes=service.pause_minutes)
+    """2.14.0: the posa of an appointment (work, posa, finish): the client stays, the operator is free for another.
+    The operator's own posa for this service when he has one (as his duration), otherwise the service's; asked once
+    per service object, as the slots of a day call this for every time."""
+    if not (resource and service.kind=="resource"):return None
+    memo=service.__dict__.setdefault("_posa",{})
+    if resource.pk not in memo:
+        own=ServiceResource.objects.filter(service=service,resource=resource).values_list("pause_start","pause_minutes").first()
+        memo[resource.pk]=(own[0] or 0,own[1]) if own and own[1] is not None else (service.pause_start,service.pause_minutes)
+    at,minutes=memo[resource.pk]
+    if not minutes:return None
+    a=start+timedelta(minutes=at);b=a+timedelta(minutes=minutes)
     return (a,b) if start<a and b<end else None
+def groups(pool):
+    """2.14.0: the cabins and machines of a service by group (cabin AND machine), in name order."""
+    out={}
+    for r in pool:out.setdefault(r.group.strip().casefold(),[]).append(r)
+    return list(out.values())
 def support(service,bs,be,exclude=None,pool=None):
-    """2.14.0: the first free cabin or machine the service needs; None when it needs none, False when all are taken."""
+    """2.14.0: the first free cabin or machine of each group the service needs, a list; None when it needs none,
+    False when a group has none free."""
     pool=list(linked(service,True)) if pool is None else pool
     if not pool:return None
-    return next((r for r in pool if capacity_available(service,bs,be,1,r,exclude=exclude)),False)
+    got=[next((r for r in g if capacity_available(service,bs,be,1,r,exclude=exclude)),None) for g in groups(pool)]
+    return False if None in got else got
+def equip(booking,second):
+    """The cabins and machines taken with the operator, one per group: the first in secondary, the others in more."""
+    booking.secondary=second[0] if second else None;booking.more=[str(r.pk) for r in second[1:]] if second else []
+    booking.snapshot["secondary"]=", ".join(r.name for r in second) if second else ""
 def ranked(service,resources,day,prefer=None):
     """2.14.0: who gets "Il primo disponibile", as its location says; those excluded from it stay out.
     prefer: the operator of the client's last visit (last_operator), first when the location assigns so."""
@@ -148,12 +167,19 @@ def last_operator(tenant,service,pii,data,staff):
     return None
 def kit(service,start,end,bs,be,resource,issues,exclude=None):
     """2.14.0: the posa and the cabin or machine of an appointment; none of them free is said as Forza says the rest."""
-    second=support(service,bs,be,exclude) if service.kind=="resource" else None
-    if second is False:issues.append("nessuna risorsa libera tra "+", ".join(linked(service,True).values_list("name",flat=True)));second=None
+    pool=list(linked(service,True)) if service.kind=="resource" else []
+    second=support(service,bs,be,exclude,pool)
+    if second is False:
+        # Forza: the groups with one free keep it, the others are said
+        second=[]
+        for g in groups(pool):
+            r=next((r for r in g if capacity_available(service,bs,be,1,r,exclude=exclude)),None)
+            if r:second.append(r)
+            else:issues.append("nessuna risorsa libera tra "+", ".join(x.name for x in g))
     return posa(service,start,end,resource) or (None,None),second
 def holes(rows,bs,be,minutes):
-    """2.14.0: a time that would leave less than `minutes` free next to another appointment of the operator.
-    shortcut: the opening hours' edges do not count, only the appointments; upgrade if holes at opening matter."""
+    """2.14.0: a time that would leave less than `minutes` free next to another appointment of the operator, a time
+    block or the opening and closing of his hours (rows: (start, end), the edges as (moment, moment))."""
     n=timedelta(minutes=minutes)
     return any(timedelta(0)<bs-e<n or timedelta(0)<s-be<n for s,e in rows)
 def has_units(service):
@@ -218,6 +244,7 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
     result=[]
     for res in resources:
         near=list(Booking.objects.filter(resource=res,status__in=HOLDING,busy_start__lt=b,busy_end__gt=a).exclude(pk__in=exclude if isinstance(exclude,list) else [exclude]).values_list("busy_start","busy_end")) if gap else []
+        if gap:near+=[(x,x) for w in windows(tenant,day,service,res) for x in w]+[(x,y) for x,y,_ in block_spans(tenant,day,day,res)]
         for start,end,event in candidates(tenant,service,day,option,res,desk,force,party):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
             if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk,gap=posa(service,start,end,res)) and not (pace and paced(service,start,party,exclude)) and support(service,bs,be,exclude,pool) is not False and not (gap and holes(near,bs,be,gap)) and not area_over(area,bs,be,party,exclude) and not (table and not fit(service.location,party,bs,be,area,exclude))):
@@ -241,7 +268,7 @@ def piece(tenant,service,option,r,start,taken,exclude,desk,day,cache):
     cache: what the database said for this day, asked once (opening windows, cabins, operator free at a time)."""
     end=start+timedelta(minutes=length(service,option,r))
     bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
-    clash=lambda x:any(x.pk in (p[2].pk,p[8] and p[8].pk) and bs<p[6] and p[5]<be for p in taken)
+    clash=lambda x:any(x.pk in (p[2].pk,*(y.pk for y in p[8] or ())) and bs<p[6] and p[5]<be for p in taken)
     if clash(r):return None
     key=(service.pk,r.pk,start)
     if key not in cache:
@@ -250,8 +277,8 @@ def piece(tenant,service,option,r,start,taken,exclude,desk,day,cache):
     if not cache[key]:return None
     if ("need",service.pk) not in cache:cache[("need",service.pk)]=list(linked(service,True))
     need=cache[("need",service.pk)]
-    second=next((x for x in need if not clash(x) and capacity_available(service,bs,be,1,x,exclude=exclude)),False) if need else None
-    return None if second is False else (service,option,r,start,end,bs,be,posa(service,start,end,r) or (None,None),second)
+    second=[next((x for x in g if not clash(x) and capacity_available(service,bs,be,1,x,exclude=exclude)),None) for g in groups(need)] if need else None
+    return None if second and None in second else (service,option,r,start,end,bs,be,posa(service,start,end,r) or (None,None),second)
 def chain(tenant,items,first,start,split,day,wait,exclude,desk,allowed,cache):
     """2.14.0: a visit from start, its first service with first; each next one as soon as the previous ends, waiting at
     most wait; split: also with other operators (first stays the first choice). The services placed, or None."""
@@ -555,9 +582,8 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         # 2.14.0: the language of the client's page, for the emails that follow (client_mails.send)
         if not staff and get_language()!="it":booking.snapshot["lang"]=get_language()
         if issues:booking.snapshot["forced"]=issues
-        (booking.gap_start,booking.gap_end),booking.secondary=gap,second
+        (booking.gap_start,booking.gap_end)=gap;equip(booking,second)
         booking.area,booking.tables=area,tables
-        if second:booking.snapshot["secondary"]=second.name
         # 2.14.0: "Il primo disponibile": the client may move it to whoever is free then (public.py)
         if resource and not data.get("resource"):booking.snapshot["any_resource"]=True
         from .prices import stamp
@@ -583,8 +609,10 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         emit(tenant,booking,"created")
         audit(tenant,actor,"booking.created",booking.pk,origin=booking.origin,**({"forced":issues} if issues else {}))
         return booking,True
-def move_booking(tenant,booking_id,data,actor,desk=True):
-    """desk=False (2.14.0): the client from his link, with the rules of the public page and no Forza."""
+def move_booking(tenant,booking_id,data,actor,desk=True,quiet=False):
+    """desk=False (2.14.0): the client from his link, with the rules of the public page and no Forza, and the limits of
+    his category (this booking does not count twice). quiet: the other dates of a series moved together, without an
+    email and a notice each."""
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         booking=choice(Booking,booking_id,status__in=MOVABLE)
@@ -594,12 +622,14 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=desk,force=desk and data.get("force") is True)
         gap,second=kit(service,*values[:4],values[6],issues,booking.pk)
         overrun(issues,data)
+        if not desk:
+            from .clients import category_refusal
+            if why:=category_refusal(tenant,booking.contact,values[0],timezone.now(),booking.pk):raise BookingError(why)
         key=lambda b:(b.start,b.party,b.option_id,b.resource_id,b.occurrence_id,b.service_id)
         before=key(booking);left=(booking.start,booking.end)
         booking.start,booking.end,booking.busy_start,booking.busy_end,booking.party,booking.option,booking.resource,booking.occurrence=values
         booking.service=service
-        (booking.gap_start,booking.gap_end),booking.secondary=gap,second
-        booking.snapshot["secondary"]=second.name if second else ""
+        (booking.gap_start,booking.gap_end)=gap;equip(booking,second)
         # 2.14.0: only the end changed (stretched in the agenda): for the client nothing moved, no email, the reminders
         # and his Confermo stay
         moved=key(booking)!=before
@@ -625,9 +655,8 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         from .waitlist import freed
         freed(tenant,*left)  # 2.14.0: the place it left, to the waiting list
         from .client_mails import send
-        send(tenant,booking,"moved")
         from .notify import notify_staff
-        notify_staff(tenant,booking,"moved")
+        if not quiet:send(tenant,booking,"moved");notify_staff(tenant,booking,"moved")
         from .api import emit
         emit(tenant,booking,"moved")
         audit(tenant,actor,"booking.moved",booking.pk,**({"forced":issues} if issues else {}))
@@ -637,13 +666,16 @@ def move_visit(tenant,booking,data,actor,desk):
     places them; dragged in the agenda one service moves alone. One email and one notice, for the visit."""
     rows=[b for b in visit_rows(booking) if b.status in MOVABLE]
     plan=visit_plan(tenant,rows[0].service,rows[0].option,[str(b.service_id) for b in rows[1:]],data,[b.pk for b in rows],desk)
+    if not desk:
+        from .clients import category_refusal
+        if why:=category_refusal(tenant,booking.contact,plan[0][3],timezone.now(),[b.pk for b in rows]):raise BookingError(why)
     from .prices import stamp
     from .waitlist import freed
     from .api import emit
     for b,(_,_,r,start,end,bs,be,gap,second) in zip(rows,plan):
         left=(b.start,b.end)
-        b.start,b.end,b.busy_start,b.busy_end,b.resource,(b.gap_start,b.gap_end),b.secondary=start,end,bs,be,r,gap,second
-        b.snapshot.update(resource=r.name,secondary=second.name if second else "");b.snapshot.pop("forced",None)
+        b.start,b.end,b.busy_start,b.busy_end,b.resource,(b.gap_start,b.gap_end)=start,end,bs,be,r,gap;equip(b,second)
+        b.snapshot.update(resource=r.name);b.snapshot.pop("forced",None)
         for name in REARM:b.snapshot.pop(name,None)
         stamp(b);b.save()
         ActionToken.objects.filter(booking=b,kind="cancel",used=False).update(expires=b.end+timedelta(days=30))
@@ -673,8 +705,9 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False,
         elif status in ("completed","no_show") and booking.start>now and old not in ("arrived","in_progress"):raise BookingError("L'appuntamento non è ancora iniziato.")
         elif status in ("arrived","in_progress") and booking.start.astimezone(tz).date()>now.astimezone(tz).date():raise BookingError("La prenotazione non è di oggi.")
         # a place given up may have been taken meanwhile
-        if old=="cancelled" and (not capacity_available(booking.service,booking.busy_start,booking.busy_end,booking.party,booking.resource,booking.occurrence,exclude=booking.pk,gap=booking.gap_start and (booking.gap_start,booking.gap_end))
-            or booking.secondary and not capacity_available(booking.service,booking.busy_start,booking.busy_end,1,booking.secondary,exclude=booking.pk)):
+        # an event's substitute instructor sits on its bookings for the agenda: the places are the date's
+        if old=="cancelled" and (not capacity_available(booking.service,booking.busy_start,booking.busy_end,booking.party,booking.resource if booking.service.kind=="resource" else None,booking.occurrence,exclude=booking.pk,gap=booking.gap_start and (booking.gap_start,booking.gap_end))
+            or any(not capacity_available(booking.service,booking.busy_start,booking.busy_end,1,x,exclude=booking.pk) for x in Resource.objects.filter(Q(pk=booking.secondary_id)|Q(pk__in=booking.more)))):
             raise BookingError("Il posto nel frattempo è stato preso: sposta la prenotazione su un altro orario.")
         booking.status=status
         if undo:booking.snapshot.pop("undo")
@@ -738,4 +771,32 @@ def series_create(tenant,booking,every,until,actor):
         try:create_booking(tenant,{**series_base(booking),"start":start.isoformat(),"request_key":secrets.token_urlsafe(24)},actor,series=sid);made+=1
         except BookingError:pass
     audit(tenant,actor,"booking.series",booking.pk,made=made,every=every)
+    return made
+def series_rows(booking,following):
+    """2.14.0: this date alone, or this and the next ones of its series still to come, in order."""
+    if not following or not booking.series:return [booking]
+    return list(Booking.objects.filter(series=booking.series,status__in=MOVABLE,start__gte=booking.start).select_related("service").order_by("start"))
+def series_move_plan(tenant,booking,start,resource,following):
+    """2.14.0: Sposta from the desk for this date or this and the next ones: each date moved by the same days to the new
+    time of day (the same clock time across the change of hour) and operator, checked as the desk books it:
+    [(booking, new start, None or why not)]. Nothing is saved."""
+    tz=ZoneInfo(tenant.timezone);rows=series_rows(booking,following);new=start.astimezone(tz);shift=new.date()-booking.start.astimezone(tz).date()
+    out=[]
+    for b in rows:
+        at=local_datetime(b.start.astimezone(tz).date()+shift,new.time(),tz);why=None
+        if at is None:why="ora che non esiste per il cambio dell'ora"
+        else:
+            try:bounds(tenant,b.service,{"option":str(b.option_id or ""),"resource":str(resource.pk if resource else b.resource_id or ""),"party":b.party,"start":at.isoformat()},exclude=b.pk,desk=True)
+            except BookingError as ex:why=str(ex).split(".")[0].lower()
+        out.append((b,at or datetime.combine(b.start.astimezone(tz).date()+shift,new.time(),tz),why))
+    return out
+def series_move(tenant,booking,start,resource,following,actor):
+    """The free dates of the plan moved, one email and one notice for the first (as cancelling a series); the ones
+    taken meanwhile are skipped. How many moved."""
+    made=0
+    for i,(b,at,why) in enumerate(series_move_plan(tenant,booking,start,resource,following)):
+        if why:continue
+        try:move_booking(tenant,b.pk,{"service":str(b.service_id),"option":str(b.option_id or ""),"resource":str(resource.pk if resource else b.resource_id or ""),"party":b.party,"start":at.isoformat()},actor,quiet=made>0);made+=1
+        except BookingError:pass
+    audit(tenant,actor,"booking.series_moved",booking.pk,moved=made)
     return made

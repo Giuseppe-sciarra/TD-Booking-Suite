@@ -16,7 +16,7 @@ from .forms import LocationForm,ResourceForm,ServiceForm,OptionForm,ScheduleForm
 from .tenancy import scope
 from .middleware import require_role
 from .permissions import can,require,visible_bookings,shown,check_new_booking
-from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,OPEN,ACCEPTED,MOVABLE,REASONS
+from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,linked,details,OPEN,ACCEPTED,MOVABLE,REASONS
 from .calendar import fits,blocked_stay,blocked,covering,holidays
 from .crypto import index,tenant_key,encrypt
 from .mail import enqueue_campaign,campaign_contacts
@@ -433,6 +433,29 @@ def booking_detail(request,slug,booking_id):
             plan={"rows":series_plan(request.tenant,booking,every,until),"every":every,"until":until}
             plan["free"]=sum(1 for _,why in plan["rows"] if not why)
         except BookingError as ex:messages.error(request,str(ex))
+    shift=None
+    if request.method=="POST" and request.POST.get("action") in ("shift_check","shift_make"):
+        # 2.14.0: a series moved from the desk, this date or this and the next ones: first the dates that cannot move
+        # and why, then the free ones moved
+        require(request,"booking.write")
+        from .booking import series_move_plan,series_move
+        from .calendar import local_datetime
+        from .permissions import check_new_booking
+        tz=ZoneInfo(request.tenant.timezone)
+        try:
+            try:at=datetime.fromisoformat(request.POST.get("start",""));at=local_datetime(at.date(),at.time(),tz)
+            except ValueError:at=None
+            if at is None or booking.status not in MOVABLE:raise BookingError("Scegli il nuovo giorno e l'ora.")
+            r=details(booking.service,None,request.POST.get("resource") or None)[1] or booking.resource
+            check_new_booking(request,booking.service,r.pk if r else None)
+            following=request.POST.get("following")=="on"
+            if request.POST["action"]=="shift_make":
+                made=series_move(request.tenant,booking,at,r,following,request.user)
+                messages.success(request,f"Spostate {made} date." if made>1 else "Spostata." if made else "Nessuna data spostata: gli orari non sono più liberi.")
+                return redirect(reverse("booking_detail",args=[slug,booking_id])+"#sposta-serie")
+            rows=series_move_plan(request.tenant,booking,at,r,following)
+            shift={"rows":rows,"start":request.POST.get("start"),"resource":str(r.pk) if r else "","following":following,"free":sum(1 for *_,why in rows if not why)}
+        except BookingError as ex:messages.error(request,str(ex))
     if request.method=="POST" and request.POST.get("action")=="participants":
         # 2.14.0: the names of who comes with the client, optional, sealed with the booking's data
         require(request,"booking.write","pii.read")
@@ -443,7 +466,7 @@ def booking_detail(request,slug,booking_id):
             booking.pii=encrypt(request.tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
             audit(request.tenant,request.user,"booking.participants",booking.pk,count=len(names))
         return redirect(reverse("booking_detail",args=[slug,booking_id])+"#partecipanti")
-    if request.method=="POST" and plan is None and request.POST.get("action") not in ("series_check","series_make"):
+    if request.method=="POST" and plan is None and request.POST.get("action") not in ("series_check","series_make","shift_check","shift_make"):
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
         back=request.POST.get("back")=="dashboard"  # 2.14.0: the quick actions of the dashboard go back there
@@ -481,7 +504,8 @@ def booking_detail(request,slug,booking_id):
         "whatsapp":whatsapp(request.tenant,data.get("phone",""),booking),
         # 2.14.0: the statuses: arrived from the day of the booking, in progress where something is being done
         "undo":can_undo(booking),"reasons":REASONS,"progress":booking.service.kind in ("resource","capacity"),
-        "today_ok":day<=timezone.now().astimezone(tz).date(),"test_due":test_due(booking),"plan":plan,
+        "today_ok":day<=timezone.now().astimezone(tz).date(),"test_due":test_due(booking),"plan":plan,"shift":shift,
+        "shift_ops":list(linked(booking.service)) if booking.series and booking.service.kind=="resource" else [],
         "series_next":Booking.objects.filter(series=booking.series,start__gt=booking.start,status__in=OPEN).count() if booking.series else 0,
         "repeatable":booking.service.kind in ("resource","capacity") and bool(booking.contact_id) and booking.status in OPEN,
         "class_list":booking.service.kind in ("capacity","event"),
@@ -505,8 +529,9 @@ def test_due(booking):
     return ""
 def attendees(request,slug,booking_id):
     """2.14.0: Iscritti of a class or an event date: who is booked, how many, the participants' names, the tick of who
-    came (Presente: done, Assente: absent, back with Togli); the substitute instructor written on every booking of the
-    date, the original one stays where it was (the agenda does not move)."""
+    came (Presente: done, Assente: absent, back with Togli); the substitute instructor takes every booking of the date
+    in the agenda, the original one noted on it and given back when the substitute is taken off; the enrolled told by
+    email when the desk ticks it."""
     require(request,"booking.read")
     ref=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service"),pk=booking_id)
     rows=visible_bookings(request,Booking.objects.filter(service=ref.service,start=ref.start,occurrence=ref.occurrence)).exclude(status="cancelled").order_by("created")
@@ -515,12 +540,17 @@ def attendees(request,slug,booking_id):
         action=request.POST.get("action")
         try:
             if action=="substitute":
-                r=Resource.objects.filter(active=True,pk=uid(request.POST.get("resource"))).first()
+                r=Resource.objects.filter(active=True,secondary=False,location=ref.location,pk=uid(request.POST.get("resource"))).first()
+                from .client_mails import substitute
                 for b in rows:
-                    if r:b.snapshot["substitute"]=r.name
-                    else:b.snapshot.pop("substitute",None)
-                    b.save(update_fields=["snapshot"])
-                audit(request.tenant,request.user,"booking.substitute",ref.pk,resource=str(r.pk) if r else "")
+                    if "original" not in b.snapshot:b.snapshot.update(original=b.snapshot.get("resource",""),original_id=str(b.resource_id or ""))
+                    if r:b.resource=r;b.snapshot.update(substitute=r.name,resource=r.name)
+                    else:
+                        b.resource_id=b.snapshot["original_id"] or None;b.snapshot["resource"]=b.snapshot["original"]
+                        for k in ("substitute","original","original_id"):b.snapshot.pop(k)
+                    b.save(update_fields=["resource","snapshot"])
+                    if r and request.POST.get("notify")=="on":substitute(request.tenant,b)
+                audit(request.tenant,request.user,"booking.substitute",ref.pk,resource=str(r.pk) if r else "",notified=bool(r and request.POST.get("notify")=="on"))
             else:
                 b=get_object_or_404(rows,pk=uid(request.POST.get("booking")))
                 change_status(request.tenant,b,{"present":"completed","absent":"no_show"}.get(action,"confirmed"),request.user)
@@ -529,7 +559,7 @@ def attendees(request,slug,booking_id):
     rows=list(rows)
     for b in rows:b.shown=shown(request,b.data)
     return render(request,"attendees.html",{"ref":ref,"rows":rows,"people":sum(b.party for b in rows),"started":ref.start<=timezone.now(),
-        "resources":Resource.objects.filter(active=True,location=ref.location).order_by("name"),"substitute":next((b.snapshot.get("substitute") for b in rows if b.snapshot.get("substitute")),"")})
+        "resources":Resource.objects.filter(active=True,secondary=False,location=ref.location).order_by("name"),"substitute":next((b.snapshot.get("substitute") for b in rows if b.snapshot.get("substitute")),"")})
 def uid(value):
     import uuid
     try:return uuid.UUID(str(value))

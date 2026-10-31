@@ -1163,13 +1163,14 @@ button,.button{padding:8px 15px}
 .own-services legend{float:left;width:100%;font-weight:600;font-family:var(--head);font-size:17px;padding:0;margin-bottom:6px}.own-services legend+*{clear:left}
 .own-services>p{margin:0 0 10px;font-size:13.5px}
 .services-grid{display:grid;grid-template-columns:1fr;gap:6px;max-width:820px}
-.service-row{display:grid;grid-template-columns:minmax(0,1fr) 120px 140px;align-items:center;gap:10px}
+.service-row{display:grid;grid-template-columns:minmax(0,1fr) 110px 120px 110px 100px;align-items:center;gap:10px}
 .service-row .check{margin:0;min-width:0}.service-row .check span{overflow:hidden;text-overflow:ellipsis}
 .service-head{font-size:12px;font-weight:600;color:var(--muted)}
 .service-row .errorlist{grid-column:1/-1;margin:0}
 .with-unit{position:relative;display:block}.with-unit input{padding-right:40px}
 .with-unit i{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-style:normal;font-size:13px;color:var(--muted);pointer-events:none}
 .service-row:has(input[type=checkbox]:not(:checked)) .with-unit{opacity:.4}
+@media (max-width:640px){.service-row{grid-template-columns:repeat(4,minmax(0,1fr))}.service-row>:first-child{grid-column:1/-1}}
 /* the photo of an operator: in the form, in the list, at the head of the agenda, in the booking form */
 .photo-field{display:flex;align-items:center;gap:14px}.photo-field input{flex:1}
 .photo-preview{flex:none;width:64px;height:64px;border-radius:16px;object-fit:cover;border:1px solid var(--line)}

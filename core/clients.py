@@ -223,13 +223,14 @@ def parse_categories(text):
     if len(cats)>20:raise BookingError("Al massimo 20 categorie.")
     return cats
 
-def category_refusal(tenant,contact,start,now):
-    """2.14.0: the limit of the client's category on the online page, in words; None when it may book."""
+def category_refusal(tenant,contact,start,now,moving=None):
+    """2.14.0: the limit of the client's category on the online page, in words; None when it may book. moving: the
+    booking the client moves from his link, not counted among those to come."""
     name=contact.data.get("category") if contact and contact.pk else None
     cat=next((c for c in tenant.client_categories if c["name"]==name),None) if name else None
     if not cat:return None
     if cat["ahead"] and start>now+timedelta(days=cat["ahead"]):return f"Puoi prenotare al massimo {cat['ahead']} giorni avanti."
-    if cat["max"] and Booking.objects.filter(contact=contact,status__in=OPEN,end__gt=now).count()>=cat["max"]:
+    if cat["max"] and Booking.objects.filter(contact=contact,status__in=OPEN,end__gt=now).exclude(pk__in=moving if isinstance(moving,list) else [moving]).count()>=cat["max"]:
         return f"Hai già {cat['max']} prenotazion{'e' if cat['max']==1 else 'i'} in programma: per prenotarne un'altra contatta l'attività."
     return None
 
