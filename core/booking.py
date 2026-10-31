@@ -44,34 +44,61 @@ def details(service,option_id=None,resource_id=None):
     if resource and not ServiceResource.objects.filter(service=service,resource=resource).exists():raise BookingError("La risorsa non appartiene al servizio.")
     if service.kind not in ("resource","day") and resource:raise BookingError("Risorsa non prevista.")
     return option,resource,length(service,option,resource)
-def length(service,option=None,resource=None):
+def length(service,option=None,resource=None,party=1):
     """Minutes of an appointment: the variant's; otherwise the operator's own for this service (2.11.0, Giulia does
-    the colour in 75 minutes); otherwise the service's."""
+    the colour in 75 minutes); otherwise the service's. 2.14.0: a table for 2 frees sooner than one for 6 (party_durations)."""
     if option:return option.duration
     if resource is not None and service.kind=="resource":
         own=ServiceResource.objects.filter(service=service,resource=resource).values_list("duration",flat=True).first()
         if own:return own
+    if service.kind=="capacity" and service.turnover:
+        return next((m for n,m in sorted(service.party_durations or []) if party<=n),service.duration)
     return service.duration
-def capacity_available(service,start,end,party,resource=None,occurrence=None,exclude=None,blocks=True):
+def over(events,party,cap):
+    """The sweep of the places: (moment, +people at the start, -people at the end); True when party does not fit."""
+    occupied=0
+    for _,delta in sorted(events,key=lambda x:(x[0],x[1])):
+        occupied+=delta
+        if occupied+party>cap:return True
+    return party>cap
+def spans(rows,start,end,each=None):
+    return [e for r in rows for n in (each or r.party,) for e in ((max(r.busy_start,start),n),(min(r.busy_end,end),-n))]
+def shared(service,start,end,party,exclude=None):
+    """2.14.0: the covers of the whole place, taken together by every restaurant service there (lunch and the group
+    menu): the tightest limit wins. The words of the limit passed, empty when it fits."""
+    place=service.location
+    if service.kind not in ("capacity","shift") or not place.capacity:return ""
+    rows=Booking.objects.filter(status__in=HOLDING,busy_start__lt=end,busy_end__gt=start,location=place,service__kind__in=("capacity","shift")).exclude(pk=exclude)
+    return f"oltre i coperti del locale ({place.capacity})" if over(spans(rows,start,end),party,place.capacity) else ""
+def paced(service,start,party,exclude=None):
+    """2.14.0: the rhythm of the arrivals, for the kitchen: at each time of the page (every `interval` minutes from
+    midnight) at most pace_covers people and pace_bookings tables. The words of the limit passed, empty when it fits."""
+    if service.kind!="capacity" or not (service.pace_covers or service.pace_bookings):return ""
+    local=start.astimezone(ZoneInfo(service.tenant.timezone))
+    a=start-timedelta(minutes=(local.hour*60+local.minute)%service.interval,seconds=local.second,microseconds=local.microsecond)
+    rows=list(Booking.objects.filter(service=service,status__in=HOLDING,start__gte=a,start__lt=a+timedelta(minutes=service.interval)).exclude(pk=exclude).values_list("party",flat=True))
+    if service.pace_covers and sum(rows)+party>service.pace_covers or service.pace_bookings and len(rows)+1>service.pace_bookings:
+        return f"oltre il ritmo degli arrivi delle {a.astimezone(local.tzinfo):%H:%M}"
+    return ""
+def capacity_available(service,start,end,party,resource=None,occurrence=None,exclude=None,blocks=True,online=False,rooms=True):
+    """online (2.14.0): the places sold online (online_capacity), the rest kept for the desk; rooms: the covers of the
+    whole place (shared), left out where the caller says them apart (Forza)."""
     # 2.14.0: an operator's pause, a turn closed for the night: the time is taken as by a booking (Forza says it apart)
     if blocks and blocked(service.tenant,start,end,resource,service):return False
     rows=Booking.objects.filter(status__in=HOLDING,busy_start__lt=end,busy_end__gt=start)
     if exclude:rows=rows.exclude(pk=exclude)
     if resource:rows=rows.filter(resource=resource);cap=1;party=1
     elif occurrence:rows=rows.filter(occurrence=occurrence);cap=occurrence.capacity
-    else:rows=rows.filter(service=service);cap=service.capacity
-    events=[]
-    for row in rows:
-        n=1 if resource else row.party
-        events.extend([(max(row.busy_start,start),n),(min(row.busy_end,end),-n)])
+    else:
+        rows=rows.filter(service=service);cap=service.capacity
+        if online and service.online_capacity:cap=min(cap,service.online_capacity)
+    events=spans(rows,start,end,1 if resource else None)
     if service.tenant.wait_mode=="queue":
         from .waitlist import holds
         events+=holds(service,start,end,resource,occurrence)  # 2.14.0: places kept for the first in the waiting list
-    occupied=0
-    for _,delta in sorted(events,key=lambda x:(x[0],x[1])):
-        occupied+=delta
-        if occupied+party>cap:return False
-    return party<=cap and (not occurrence or service.kind!="shift" or capacity_available(service,start,end,party,exclude=exclude,blocks=False))
+    if over(events,party,cap):return False
+    if occurrence and service.kind=="shift":return capacity_available(service,start,end,party,exclude=exclude,blocks=False,online=online,rooms=rooms)
+    return bool(resource) or not rooms or not shared(service,start,end,party,exclude)
 def linked(service):
     """The active operators, rooms or units of a service, in name order."""
     return Resource.objects.filter(active=True,location=service.location,id__in=ServiceResource.objects.filter(service=service).values("resource_id")).order_by("name")
@@ -84,11 +111,11 @@ def free_units(tenant,service,bs,be,party,resource=None,exclude=None):
     return [u for u in units if (u.capacity==0 or u.capacity>=party)
         and capacity_available(service,bs,be,1,resource=u,exclude=exclude)
         and not blocked_stay(tenant,bs,be,service,u)]
-def candidates(tenant,service,day,option=None,resource=None,desk=False,force=False):
+def candidates(tenant,service,day,option=None,resource=None,desk=False,force=False,party=1):
     """desk (2.14.0): lead time, horizon and last arrival are the public page's, the desk books from now on;
     force: Forza lists every date of an event of that day, also started, full or outside the hours."""
     now=timezone.now()
-    duration=timedelta(minutes=length(service,option,resource))
+    duration=timedelta(minutes=length(service,option,resource,party))
     before=timedelta(minutes=service.buffer_before);after=timedelta(minutes=service.buffer_after)
     lead=now if desk else now+timedelta(minutes=service.lead_minutes)
     horizon=now+timedelta(days=730 if desk else service.horizon_days)
@@ -112,10 +139,13 @@ def candidates(tenant,service,day,option=None,resource=None,desk=False,force=Fal
             tick+=timedelta(minutes=service.interval)
 def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None,desk=False,force=False):
     """Free slots of a day. allowed: resource ids a scoped staff member may book ("Il primo disponibile" stays among them).
-    desk and force: see candidates; the desk also books groups bigger than the online limit (max_party), within the places."""
+    desk and force: see candidates; the desk also books groups bigger than the online limit (max_party), within the places.
+    2.14.0, restaurants: the covers of the whole place; online the places sold online and the rhythm of the arrivals
+    (at the desk too with pace_desk)."""
     service=choice(Service,service_id,active=True,location__active=True)
     option,resource,_=details(service,option_id,resource_id)
     party=integer(party,"Quantità",1,1000 if desk else service.max_party)
+    pace=not desk or service.pace_desk
     tz=ZoneInfo(tenant.timezone)
     today=timezone.now().astimezone(tz).date()
     if (day<today and not force) or day>today+timedelta(days=730 if desk else min(service.horizon_days,730)):return []
@@ -125,9 +155,9 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
         if allowed is not None:resources=[r for r in resources if str(r.pk) in allowed]
     result=[]
     for res in resources:
-        for start,end,event in candidates(tenant,service,day,option,res,desk,force):
+        for start,end,event in candidates(tenant,service,day,option,res,desk,force,party):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
-            if force or capacity_available(service,bs,be,party,res,event,exclude):
+            if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk) and not (pace and paced(service,start,party,exclude))):
                 result.append({"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(res.pk) if res else "","resource_name":res.name if res else "","occurrence":str(event.pk) if event else ""})
     result=sorted(result,key=lambda x:(x["start"],x["resource_name"]))
     if service.kind=="resource" and not resource:
@@ -247,14 +277,15 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
         elif service.kind=="capacity" and not service.turnover:
             # a table holds its places until that opening window closes, as on the page
             end=next((b-after for a,b in windows(tenant,day,service) if a<=start<b),start+timedelta(minutes=service.duration))
-        else:end=start+timedelta(minutes=minutes or length(service,option,resource))
+        else:end=start+timedelta(minutes=minutes or length(service,option,resource,party))
         bs=start-before;be=end+after
         if start<now-timedelta(minutes=1):issues.append("nel passato")
         if not fits(tenant,bs,be,service,resource):issues.append("fuori dall'orario di apertura")
         block=blocked(tenant,bs,be,resource,service)
         if block:issues.append(f"nell'orario bloccato di {resource.name} ({block.get_reason_display().lower()})" if block.resource_id else "in un turno chiuso")
-        if not capacity_available(service,bs,be,party,resource,occurrence,exclude,blocks=False):
+        if not capacity_available(service,bs,be,party,resource,occurrence,exclude,blocks=False,rooms=False):
             issues.append(f"sovrapposta a un altro appuntamento di {resource.name}" if resource else f"oltre i posti disponibili ({occurrence.capacity if occurrence else service.capacity})")
+        if not resource:issues+=[x for x in (shared(service,bs,be,party,exclude),service.pace_desk and paced(service,start,party,exclude)) if x]
     else:
         slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk)
         match=next((s for s in slots if datetime.fromisoformat(s["start"]).astimezone(UTC)==start and (not data.get("occurrence") or s["occurrence"]==str(data["occurrence"]))),None)

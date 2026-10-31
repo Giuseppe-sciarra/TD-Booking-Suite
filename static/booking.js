@@ -54,15 +54,20 @@
   const most=s?.max_party||1;party.max=config.internal&&most>1?1000:most;party.value=Math.min(Number(party.value)||1,Number(party.max));
   // one person per booking: no question to ask. Otherwise call it by what it counts
   $("party-wrap").hidden=most<=1;$("party-label").textContent=["shift","capacity","event"].includes(s?.kind)?"Persone":s?.kind==="day"?"Ospiti":"Persone / quantità";
-  $("service-description").textContent=s?.description||"";
+  $("service-description").textContent=s?.description||"";groupNote();
   // nothing left to choose in the first block: skip it
   // the choices above the row only when there is something to choose; the row holds who, how many and when
   $("what-grid").hidden=$("service-wrap").hidden&&$("option-wrap").hidden;$("date-label").textContent=s?.kind==="day"?"Arrivo":"Data";
   buildFields(s);loadSlots();
  }
+ // 2.14.0: a group above the threshold of the service is a request: said before the client sends it
+ function groupNote(){const s=current(),n=s?.request_above||0,big=!config.internal&&!config.editing&&n>0&&Number(party.value)>n;
+  $("group-note").hidden=!big;$("group-note").textContent=big?`Per gruppi oltre ${n} persone la richiesta va confermata dall'attività: ti scriviamo appena possibile.`:"";
+  submit.textContent=big?"Invia la richiesta":label;}
+ party.addEventListener("input",groupNote);
  async function loadSlots(){
   const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();if(waitBox)waitBox.hidden=true;
-  const s=current();forceOk=false;submit.textContent=label;
+  const s=current();forceOk=false;groupNote();
   if(force){$("force-time").hidden=!typed();force.closest(".force-box").hidden=s?.kind==="day";day.min=forcing()?"":config.today;}
   // 2.14.0: a client without appointment starts now: nothing to choose but the service and with whom
   if(config.walkin){if(s){selected={start:""};submit.disabled=busy;}return;}

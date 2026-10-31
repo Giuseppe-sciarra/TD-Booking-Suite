@@ -1471,3 +1471,6 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 @media (max-width:560px){.privacy-toggle span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 .client-filter>.tag-pick{flex:0 1 200px}.client-filter .vip-filter{margin:0 0 12px;align-items:center;white-space:nowrap}.client-filter .vip-filter input{width:18px}
 @media (max-width:560px){.filters.client-filter{align-items:stretch}.client-filter>div,.client-filter>.tag-pick{flex:none}.client-filter .vip-filter{margin:0}}
+
+/* 2.14.0: a group above the request threshold, on the public page */
+.group-note{flex-basis:100%;margin:6px 0 0;padding:8px 12px;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--ink);font-size:14px}

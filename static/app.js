@@ -31,7 +31,7 @@
  }
  // places by capacity: without time slots the duration and the pause after do not apply
  const turnover=$("#id_turnover");
- if(turnover){const timed=()=>["#id_duration","#id_buffer_after"].forEach(sel=>{const box=$(sel)?.closest(".field");if(box&&!(box.dataset.kindHidden))box.classList.toggle("off-turnover",!turnover.checked);});
+ if(turnover){const timed=()=>["#id_duration","#id_buffer_after","#id_party_durations"].forEach(sel=>{const box=$(sel)?.closest(".field");if(box&&!(box.dataset.kindHidden))box.classList.toggle("off-turnover",!turnover.checked);});
   turnover.addEventListener("change",timed);timed();}
  // type of business: as many location names as locations, added on the fly past the fifth
  // 2.10.0: the day agenda, placed on its grid here (the page allows no inline styles); again after each refresh

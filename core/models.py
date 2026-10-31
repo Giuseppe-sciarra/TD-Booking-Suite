@@ -177,6 +177,8 @@ class Location(Scoped):
     address=models.CharField(max_length=255,blank=True)
     phone=models.CharField(max_length=60,blank=True)
     active=models.BooleanField(default=True)
+    # 2.14.0: the covers of the whole place, shared by its restaurant services (booking.shared); 0 = no such limit
+    capacity=models.PositiveIntegerField(default=0)
     def __str__(self):return self.name
 class Resource(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
@@ -225,6 +227,14 @@ class Service(Scoped):
     request_all=models.BooleanField(default=False)
     request_above=models.PositiveIntegerField(default=0)  # more people than this; 0 = never
     request_allergies=models.BooleanField(default=False)
+    # 2.14.0: restaurants. The arrivals of each time of the page (every `interval` minutes): covers and bookings at most,
+    # online only unless pace_desk (booking.paced); the places sold online, the rest kept for the phone and who walks in
+    # (0 = all); minutes by people when a place frees after a time: [[up to people, minutes], ...], bigger groups `duration`
+    pace_covers=models.PositiveIntegerField(default=0)
+    pace_bookings=models.PositiveIntegerField(default=0)
+    pace_desk=models.BooleanField(default=False)
+    online_capacity=models.PositiveIntegerField(default=0)
+    party_durations=models.JSONField(default=list,blank=True)
     # 2.14.0: what the client needs before arriving (keys, meeting point), sent by the message Prima dell'arrivo
     instructions=models.TextField(blank=True,max_length=2000)
     preset=models.CharField(max_length=40,blank=True)

@@ -6,7 +6,8 @@ kind is the booking engine: capacity, resource, day (stays and rentals), event (
 from datetime import time
 
 PRESETS={
- "ristorante":{"label":"Ristorante / Pizzeria","kind":"capacity","resource_label":"","hint":"Posti per fascia oraria, il tavolo occupa una durata.","defaults":{"duration":90,"interval":15,"capacity":30,"max_party":12,"turnover":False,"last_arrival":60}},
+ # 2.14.0: groups above 8 wait for the restaurant's yes (Plateform's "Più persone"), up to 20 online; bigger ones call
+ "ristorante":{"label":"Ristorante / Pizzeria","kind":"capacity","resource_label":"","hint":"Posti per fascia oraria, il tavolo occupa una durata.","defaults":{"duration":90,"interval":15,"capacity":30,"max_party":20,"request_above":8,"turnover":False,"last_arrival":60}},
  "parrucchiere":{"label":"Parrucchiere / Estetista","kind":"resource","resource_label":"Operatore","hint":"Operatori con agenda propria, prestazioni con durata.","defaults":{"interval":15,"max_party":1}},
  "medico":{"label":"Studio medico / Fisioterapia","kind":"resource","resource_label":"Professionista","hint":"Professionisti con agenda propria, visite con durata.","defaults":{"interval":15,"max_party":1}},
  "consulenza":{"label":"Consulenze professionali","kind":"resource","resource_label":"Consulente","hint":"Appuntamenti con professionisti, in studio o in videochiamata.","defaults":{"interval":30,"max_party":1}},

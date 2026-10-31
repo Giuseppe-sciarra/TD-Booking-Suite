@@ -50,7 +50,7 @@ def widget_data(request,booking=None,wait=None):
     from .prices import euro
     cost=lambda p:euro(p) if internal and p is not None else ""
     for s in rows:
-        services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"fields":s.fields,"price":cost(s.price),
+        services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"request_above":s.request_above,"fields":s.fields,"price":cost(s.price),
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration,"price":cost(o.price)} for o in Option.objects.filter(service=s,active=True)],
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if mine is None or str(r.pk) in mine]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"

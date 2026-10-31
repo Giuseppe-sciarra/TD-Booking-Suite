@@ -16,6 +16,8 @@ LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nom
  "last_arrival":"Ultimo arrivo (minuti prima della chiusura)",
  "request_all":"Su richiesta: confermate voi ogni prenotazione online","request_above":"Su richiesta oltre quante persone","request_allergies":"Su richiesta se il cliente segnala intolleranze o allergie",
  "instructions":"Istruzioni prima dell'arrivo",
+ "pace_covers":"Persone massime per ogni orario di arrivo","pace_bookings":"Prenotazioni massime per ogni orario di arrivo","pace_desk":"Il ritmo degli arrivi vale anche al banco",
+ "online_capacity":"Posti prenotabili online","party_durations":"Durata per numero di persone",
  "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato","price":"Prezzo (€)"}
 # 2.6.0: one plain line under every field, with an example
 HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 19:00, 19:30",
@@ -34,13 +36,19 @@ HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 1
  "last_arrival":"Per esempio 60: con il pranzo dalle 12 alle 15 l'ultimo arrivo è alle 14, con la cena fino alle 23:30 alle 22:30. 0 vuol dire fino alla chiusura",
  "address":"Compare nelle email di conferma","phone":"Compare nelle email di conferma",
  "instructions":"Facoltative: come ritirare le chiavi, dove trovarsi, cosa portare. Le riceve il cliente con il messaggio Prima dell'arrivo, se lo accendete in Notifiche",
+ "pace_covers":"Il ritmo degli arrivi, per la cucina: con un orario ogni 15 minuti e 10, alle 20:00 arrivano al massimo 10 persone, alle 20:15 altre 10. Vale per la pagina online. 0 vuol dire nessun limite",
+ "pace_bookings":"Per esempio 3: allo stesso orario arrivano al massimo tre prenotazioni. 0 vuol dire nessun limite",
+ "pace_desk":"Spento, di solito: al banco decidete voi. Acceso: anche al banco, e si supera solo con Forza",
+ "online_capacity":"Per esempio 30 con 40 posti: gli ultimi 10 restano per il telefono e per chi entra senza prenotare. 0 vuol dire tutti",
+ "party_durations":"Quando il posto si libera dopo un tempo: per esempio 2:90, 4:105 vuol dire fino a 2 persone 90 minuti, fino a 4 persone 105, i gruppi più grandi la durata qui sopra. Vuoto: la stessa durata per tutti",
  "price":"Facoltativo, per esempio 25 o 25,50. Compare in agenda, nelle prenotazioni e nella scheda del cliente, con il suo sconto se ne ha uno"}
 SERVICE_KINDS=[("capacity","Posti per fascia oraria: ristorante, sala, lezione di gruppo"),("shift","Turni fissi, per esempio pranzo e cena, con i coperti di ciascuno"),
  ("resource","Appuntamento con una persona o una risorsa: parrucchiere, studio, campo"),("day","A notti o giorni: camere, appartamenti, noleggio"),("event","Evento o corso in date precise")]
 # which fields each kind of booking uses; the others are not shown at all
 FIELD_KINDS={"duration":{"resource","capacity"},"interval":{"resource","capacity"},"capacity":{"capacity","shift","day"},"max_party":{"capacity","shift","event","day"},
  "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"last_arrival":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
- "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"},"instructions":{"day","event"}}
+ "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"},"instructions":{"day","event"},
+ "online_capacity":{"capacity","shift"},"pace_covers":{"capacity"},"pace_bookings":{"capacity"},"pace_desk":{"capacity"},"party_durations":{"capacity"}}
 KIND_LABELS={"duration":{"capacity":"Quanto resta occupato il posto (minuti)","resource":"Durata dell'appuntamento (minuti)"},
  "capacity":{"capacity":"Posti (coperti)","shift":"Posti totali del locale","day":"Unità disponibili"},
  "max_party":{"capacity":"Persone massime per prenotazione","shift":"Persone massime per prenotazione","event":"Posti massimi per prenotazione","day":"Ospiti massimi per prenotazione"}}
@@ -85,9 +93,13 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","active"]
-        labels={"name":"Nome della sede","active":"Attiva"}
-        help_texts={"name":"Per esempio Centro o Via degli Angeli"}
+        model=Location;fields=["name","address","phone","capacity","active"]
+        labels={"name":"Nome della sede","active":"Attiva","capacity":"Coperti di tutto il locale"}
+        help_texts={"name":"Per esempio Centro o Via degli Angeli","capacity":"Per i ristoranti: il tetto che tutti i servizi della sede dividono, per esempio pranzo alla carta e menu di gruppo nella stessa sala. 0 vuol dire nessun limite"}
+    def clean_capacity(self):
+        val=self.cleaned_data.get("capacity") or 0
+        if val>10000:raise ValidationError("Valore tra 0 e 10000.")
+        return val
 WEEKDAYS=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
 def hour_field():return forms.TimeField(required=False,widget=forms.TimeInput(attrs={"type":"time"},format="%H:%M"))
 class ResourceForm(ScopedForm):
@@ -224,9 +236,10 @@ def default_kind(tenant):
     return PRESETS.get(getattr(tenant,"business_type",""),{}).get("kind","resource")
 class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
+    party_durations=forms.CharField(required=False,max_length=200)  # 2.14.0: "2:90, 4:105", kept as [[2,90],[4,105]]
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","instructions","resource_label","fields","active"]
+        fields=["name","location","kind","description","price","capacity","online_capacity","max_party","turnover","last_arrival","duration","party_durations","interval","pace_covers","pace_bookings","pace_desk","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","instructions","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
@@ -262,7 +275,9 @@ class ServiceForm(ScopedForm):
                 if kind not in kinds:self.fields.pop(name)
         # 2.14.0: allergies make a request only where the booking form asks about them
         if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
-        self.fields["request_above"].required=False
+        for name in ("request_above","online_capacity","pace_covers","pace_bookings"):
+            if name in self.fields:self.fields[name].required=False  # 2.14.0: empty = 0, no limit
+        if "party_durations" in self.fields and not self.is_bound:self.initial["party_durations"]=", ".join(f"{n}:{m}" for n,m in self.instance.party_durations or [])
         for name in KIND_LABELS:
             if name in self.fields and kind in KIND_LABELS[name]:self.fields[name].label=KIND_LABELS[name][kind]
         for name in KIND_HELP:
@@ -278,14 +293,27 @@ class ServiceForm(ScopedForm):
             if type(item.get("required",False)) is not bool:raise ValidationError("Obbligatorietà non valida.")
             if item["type"]=="select" and (not isinstance(item.get("choices"),list) or not 1<=len(item["choices"])<=30 or any(not isinstance(c,str) or not 1<=len(c)<=80 for c in item["choices"])):raise ValidationError("Inserisci le opzioni del campo.")
         return schema
+    def clean_party_durations(self):
+        out=[]
+        for part in filter(None,(p.strip() for p in re.split(r"[,;\n]",self.cleaned_data.get("party_durations") or ""))):
+            m=re.fullmatch(r"(\d{1,4})\s*[:=]\s*(\d{1,4})",part)
+            if not m:raise ValidationError("Scrivi persone e minuti così: 2:90, 4:105.")
+            if not (1<=int(m[1])<=1000 and 5<=int(m[2])<=1440):raise ValidationError("Persone da 1 a 1000, minuti da 5 a 1440.")
+            out.append([int(m[1]),int(m[2])])
+        if len({n for n,_ in out})<len(out):raise ValidationError("Ogni numero di persone una volta sola.")
+        return sorted(out)[:8]
     def clean(self):
         d=super().clean()
         kind=d.get("kind") or self.kind
         if d.get("price") is not None and not 0<=d["price"]<=100000:self.add_error("price","Prezzo tra 0 e 100.000 €.")
-        if d.get("request_above") is None:d["request_above"]=0
-        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600),"request_above":(0,1000)}
+        for name in ("request_above","online_capacity","pace_covers","pace_bookings"):
+            if name in self.fields and d.get(name) is None:d[name]=0
+        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600),"request_above":(0,1000),"online_capacity":(0,10000),"pace_covers":(0,10000),"pace_bookings":(0,1000)}
         for key,(low,high) in bounds.items():
             if key in d and d[key] is not None and not low<=d[key]<=high:self.add_error(key,f"Valore tra {low} e {high}.")
+        if d.get("online_capacity") and d.get("capacity") and d["online_capacity"]>d["capacity"]:self.add_error("online_capacity","Non può superare i posti.")
+        # 2.14.0: the groups above the threshold are requests, up to the most people online: above it no request can start
+        if d.get("request_above") and d.get("max_party") and d["request_above"]>=d["max_party"]:self.add_error("request_above","Deve essere meno delle persone massime per prenotazione: sopra quel numero online non si prenota.")
         if kind=="resource" and "resources" in self.fields and not d.get("resources"):self.add_error("resources","Seleziona almeno una voce: se l'elenco è vuoto, creala prima nella pagina accanto a Servizi.")
         if kind=="day" and d.get("min_days") and d.get("max_days") and d["min_days"]>d["max_days"]:self.add_error("min_days","Le notti minime superano le massime.")
         if kind=="day" and d.get("min_days")==0 and d.get("checkin") and d.get("checkout") and d["checkout"]<=d["checkin"]:self.add_error("min_days","Con 0 notti la riconsegna è lo stesso giorno: l'ora di partenza deve venire dopo quella di arrivo.")
