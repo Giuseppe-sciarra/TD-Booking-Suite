@@ -7,6 +7,7 @@ from django.db import migrations, models
 def protect(apps,schema_editor):
     if schema_editor.connection.vendor!="postgresql":return
     q=schema_editor.quote_name;x=schema_editor.execute;t=q("core_receipt")
+    x(f"ALTER TABLE {t} ADD CONSTRAINT {q('core_receipt_id_tenant')} UNIQUE (id,tenant_id)")
     x(f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY")
     x(f"ALTER TABLE {t} FORCE ROW LEVEL SECURITY")
     x(f"CREATE POLICY tenant_boundary ON {t} USING (tenant_id::text=current_setting('app.tenant_id',true)) WITH CHECK (tenant_id::text=current_setting('app.tenant_id',true))")
@@ -16,6 +17,7 @@ def unprotect(apps,schema_editor):
     t=schema_editor.quote_name("core_receipt")
     schema_editor.execute(f"DROP POLICY IF EXISTS tenant_boundary ON {t}")
     schema_editor.execute(f"ALTER TABLE {t} DISABLE ROW LEVEL SECURITY")
+    schema_editor.execute(f"ALTER TABLE {t} DROP CONSTRAINT IF EXISTS {schema_editor.quote_name('core_receipt_id_tenant')}")
 
 
 class Migration(migrations.Migration):
