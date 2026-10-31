@@ -53,6 +53,8 @@ def test_service_needs_a_free_cabin_with_the_operator(sample):
         # Bruno is free, the only cabin is not; the cut does not need it
         assert "10:00" not in times(t,colore) and "12:00" in times(t,colore) and "10:00" in times(t,taglio,resource_id=str(bruno.pk))
         with pytest.raises(BookingError):create_booking(t,at(colore,10,resource=str(bruno.pk),email="x@example.invalid"))
+        # nor booked as if it were the operator, by a request written by hand
+        with pytest.raises(BookingError):create_booking(t,at(colore,15,resource=str(cabina.pk),email="y@example.invalid"))
     # the cabin is never offered to the client
     r=client_as(t)[0].get(f"/book/{t.slug}/")
     assert "Cabina" not in r.content.decode() and "Bruno" in r.content.decode()

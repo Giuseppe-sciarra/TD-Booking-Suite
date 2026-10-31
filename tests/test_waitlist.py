@@ -64,6 +64,14 @@ def test_full_day_offers_the_waiting_list_and_records_consent(salon):
         assert e.snapshot["consent"]["channel"]=="public" and len(e.snapshot["consent"]["text_sha256"])==64
         assert e.contact.data["email"]=="giulia@example.invalid" and e.first==e.last==DAY()
 
+def test_no_waiting_list_on_a_closed_day(salon):
+    # the page offered "Avvisami se si libera" also on the days the business is closed: nothing can free up there
+    t,svc,_=salon;book(t,svc);c=Client()
+    slots=lambda:c.get(f"/book/{t.slug}/api/slots/",{"service":str(svc.pk),"date":DAY().isoformat()}).json()
+    assert slots()=={"slots":[],"closed":False}  # full: the box is offered
+    with scope(t):ExceptionDay.objects.create(tenant=t,date=DAY(),closed=True)
+    assert slots()=={"slots":[],"closed":True}
+
 def cancel_desk(t,b):
     with scope(t):change_status(t,b,"cancelled",reason="business")
 def cancel_link(t,b):

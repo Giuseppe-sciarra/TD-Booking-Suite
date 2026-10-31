@@ -79,7 +79,8 @@ class GuardMiddleware:
             from django.utils import timezone
             from django.utils import translation
             with scope(tenant), timezone.override(tenant.timezone), translation.override("it" if match[1]=="t" else public_lang(request)):
-                if request.support:
+                # 2.14.0: the agenda refreshing itself re-reads the page already recorded: once is enough (a write always is)
+                if request.support and not (request.method=="GET" and request.headers.get("X-TDBS-Refresh")):
                     from .models import audit
                     audit(tenant,request.user,"support.access",request.support.pk,method=request.method,path=path[:200])
                 response=self.get_response(request)

@@ -116,6 +116,17 @@ def test_support_grant_is_scoped_timed_and_audited(two_rooms):
         grant.revoked=True;grant.save()
     assert c.get(f"/t/{t.slug}/bookings/{mine.pk}/").status_code==403
 
+def test_support_access_not_recorded_for_the_agenda_refreshing_itself(two_rooms):
+    # 2.14.0: the agenda re-reads itself every 45 seconds: one line when the page opens, not 80 an hour
+    t,svc,res,other,mine,theirs=two_rooms
+    c,u=staff_client()
+    with scope(t):grant=SupportGrant.objects.create(tenant=t,user=u,reason="Verifica orari errati",expires=timezone.now()+timedelta(hours=1),created_by="owner")
+    count=lambda:Audit.objects.filter(action="support.access",target=str(grant.pk)).count()
+    assert c.get(f"/t/{t.slug}/bookings/").status_code==200
+    with scope(t):seen=count()
+    assert seen==1 and c.get(f"/t/{t.slug}/bookings/",HTTP_X_TDBS_REFRESH="1").status_code==200
+    with scope(t):assert count()==seen
+
 def test_support_grant_needs_recent_mfa_and_not_expired(two_rooms):
     t,svc,res,other,mine,theirs=two_rooms
     stale,u=staff_client(fresh=False)

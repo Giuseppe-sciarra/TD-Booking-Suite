@@ -100,7 +100,7 @@
    // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
    if(config.prefill?.time&&!selected){const hit=[...$("slots").querySelectorAll("button")].find(b=>b.firstChild?.textContent===config.prefill.time);if(hit){hit.click();hit.scrollIntoView({block:"nearest"});}}
    $("slot-status").textContent=t(result.slots.length?(units?"Scegli l'unità che preferisci.":"Scegli uno degli orari disponibili."):(units?"Nessuna unità libera per tutte le date scelte.":"Nessun orario disponibile: prova un'altra data."));
-   waitShow(!result.slots.length);
+   if(!result.closed)waitShow(!result.slots.length);  // a closed day: nothing to wait for
   }catch(e){if(e.name!=="AbortError"&&seq===sequence)$("slot-status").textContent=e.message;}
   finally{if(seq===sequence)$("slots").removeAttribute("aria-busy");}
  }

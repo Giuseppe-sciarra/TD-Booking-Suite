@@ -150,6 +150,20 @@ def test_reminder_by_sms_once_with_budget_and_quiet_night(sample,monkeypatch):
     with scope(t):d.refresh_from_db();assert d.status=="accepted" and d.channel=="sms"
     assert remind(b.start-timedelta(hours=22))==0  # once
 
+def test_texts_over_budget_do_not_hold_back_the_emails(sample,monkeypatch):
+    # the worker takes 50 at a time: 50 reminders waiting for the SMS budget stopped every email of the business
+    from core.booking import queue
+    from tests.test_notifications import SMTP
+    t,o,s=sample;configure(t,provider="twilio",user="AC"+"0"*32,secret="tok",sender="+390612345")
+    t.texts_daily_limit=0;t.smtp=encrypt(t,SMTP,"smtp");t.save()
+    with scope(t):
+        for _ in range(50):d=queue(t,{"to":"+393331234567","body":"x","params":[]});d.channel="sms";d.save(update_fields=["channel"])
+        mail=queue(t,{"to":"mario@example.invalid","subject":"Ciao","body":"x"})
+    monkeypatch.setattr(texts,"later",lambda tenant:None)
+    mails=[];monkeypatch.setattr("core.mail.send_message",lambda conf,p,mid:mails.append(p))
+    worker_once()
+    with scope(t):mail.refresh_from_db();assert mail.status=="accepted" and Delivery.objects.filter(channel="sms",status="pending").count()==50
+
 def test_whatsapp_falls_back_to_sms_and_waits_when_busy(sample,monkeypatch):
     t,o,s=sample
     p={"to":"+393331234567","body":"Ciao","params":["Mario","Taglio","domani","Salone"]}

@@ -110,6 +110,14 @@ def test_api_reads_with_the_key_only(sample,clock):
     owner,_=client_as(t)
     assert owner.get(f"/t/{t.slug}/api/").status_code==403  # the agency's
 
+def test_dates_of_a_series_cancelled_together_reach_the_webhook(sample):
+    # each date of a series sends "created": cancelled quietly with the first, the receiver kept them as booked
+    t,o,s=sample;t.webhook=encrypt(t,{"url":"https://hooks.example.com/td","secret":"x"},"webhook");t.save()
+    with scope(t):
+        b,_=create_booking(t,payload(s));change_status(t,b,"cancelled",reason="client",quiet=True)
+        events=[decrypt(t,d.payload,"delivery:"+str(d.pk))["event"] for d in Delivery.objects.filter(channel="webhook").order_by("created")]
+    assert events==["booking.created","booking.cancelled"]
+
 def test_webhooks_signed_without_client_data_and_retried(sample,clock):
     t,o,s=sample;svc,marco=salon(t)
     agency,_=client_as(t,staff=True)
