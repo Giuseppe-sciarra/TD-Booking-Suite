@@ -119,6 +119,9 @@ class Tenant(models.Model):
     wait_check=models.DateTimeField(null=True,blank=True,db_index=True)
     # 2.14.0: after this many absences the client's online bookings wait for the business's yes (booking.needs_request); 0 = never
     absences_request=models.PositiveSmallIntegerField(default=0)
+    # 2.14.0: the categories of client (Socio, Ospite) with their limits on the online page: [{"name","ahead","max"}],
+    # ahead = days ahead it may book (0 = the service's), max = bookings still to come at once (0 = no limit)
+    client_categories=models.JSONField(default=list,blank=True)
     smtp=models.TextField(blank=True)
     # 2.14.0: the reminders also by SMS (Twilio, Skebby or Aruba) or WhatsApp Cloud API, set by the agency (texts.py); encrypted,
     # with its own daily budget as the emails
@@ -248,6 +251,12 @@ class Service(Scoped):
     party_durations=models.JSONField(default=list,blank=True)
     # 2.14.0: what the client needs before arriving (keys, meeting point), sent by the message Prima dell'arrivo
     instructions=models.TextField(blank=True,max_length=2000)
+    # 2.14.0: a distanza: the video-call link put in confirmation and reminders (a TD Meet room or any HTTPS address)
+    remote_url=models.URLField(max_length=500,blank=True)
+    # 2.14.0: the recall after the visit (desk list Richiami, email only with marketing consent) and the test that must be
+    # done within so many days before the service (a warning at the desk, never a refusal); 0 = none
+    recall_days=models.PositiveIntegerField(default=0)
+    test_days=models.PositiveIntegerField(default=0)
     preset=models.CharField(max_length=40,blank=True)
     resource_label=models.CharField(max_length=60,blank=True)  # "Operatore", "Stanza", "Campo"...
     fields=models.JSONField(default=list,blank=True)
@@ -372,6 +381,7 @@ class Booking(Scoped):
     # 2.14.0: where it came from, and the tag of the link (?src=instagram); empty for the bookings made before
     origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata")])
     source=models.CharField(max_length=30,blank=True)
+    series=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the dates repeated together from the desk (Ripeti)
     pii=models.TextField()
     snapshot=models.JSONField(default=dict)
     request_key=models.CharField(max_length=64)

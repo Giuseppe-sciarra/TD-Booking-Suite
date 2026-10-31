@@ -23,8 +23,9 @@ KINDS=[("confirmed","Conferma","Appena la prenotazione è fatta, online o da voi
        ("cancelled","Annullamento","Quando la prenotazione viene annullata, da voi o dal cliente"),
        ("arrival","Prima dell'arrivo","Soggiorni ed eventi: le istruzioni scritte nel servizio, per esempio check-in o punto d'incontro"),
        ("review","Dopo la visita","Il grazie con il link per la recensione, solo a chi è iscritto alle comunicazioni, al massimo una volta a settimana"),
-       ("waitlist","Si è liberato un posto","A chi è in lista d'attesa, quando si libera un posto che aspetta, con il link per prenotarlo")]
-GROUPS=[("Promemoria e conferme",("confirmed","reminder","reminder2","requested","accepted","rejected","moved","cancelled")),("Prima dell'arrivo",("arrival",)),("Dopo la visita",("review",)),("Lista d'attesa",("waitlist",))]
+       ("waitlist","Si è liberato un posto","A chi è in lista d'attesa, quando si libera un posto che aspetta, con il link per prenotarlo"),
+       ("recall","Richiamo","Quando è ora di tornare per un servizio con il richiamo, solo a chi è iscritto alle comunicazioni e non ha già un appuntamento")]
+GROUPS=[("Promemoria e conferme",("confirmed","reminder","reminder2","requested","accepted","rejected","moved","cancelled")),("Prima dell'arrivo",("arrival",)),("Dopo la visita",("review","recall")),("Lista d'attesa",("waitlist",))]
 # the standard emails go and stop with the agency's switch, as in 2.13.0; the others are switched by the business
 STANDARD=("confirmed","requested","accepted","rejected","moved","cancelled")
 DEFAULTS={
@@ -40,6 +41,8 @@ DEFAULTS={
  "arrival":{"on":False,"hours":48,"subject":"Prima del tuo arrivo · {attivita}","body":"Ciao {nome},\nti aspettiamo: {servizio}, {quando}.\n{istruzioni}\nPer gestire la prenotazione: {link}"},
  "review":{"on":False,"hours":3,"url":"","subject":"Com'è andata? · {attivita}","body":"Ciao {nome},\ngrazie di aver scelto {attivita}. Se ti va, lasciaci una recensione: per noi conta molto."},
  # 2.14.0: the line on who takes the place (everyone told, or kept for him until...) is added after the text (offer)
+ # 2.14.0: Richiami: {link} is the booking page, not the old booking
+ "recall":{"on":False,"subject":"È ora di tornare · {attivita}","body":"Ciao {nome},\nè il momento giusto per {servizio}. Prenota quando vuoi: {link}"},
  "waitlist":{"on":True,"subject":"Si è liberato un posto · {attivita}","body":"Ciao {nome},\nsi è liberato un posto che aspettavi: {servizio}, {quando}.\nPrenota da qui: {link}"},
 }
 HOURS=[2,3,6,12,24,48,72]
@@ -121,6 +124,10 @@ def send(tenant,booking,kind):
         # a reminder leaves at most 3 days before: its buttons last until the day after
         links=[(label,f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{action_token(tenant,what,booking.contact,booking,days=4)}/") for label,what in (("Confermo","confirm"),("Non vengo","decline"))]
     if kind=="review":links=[("Lascia una recensione",conf["url"])]
+    if kind=="recall":
+        v["link"]=f"{settings.PUBLIC_ORIGIN}/book/{tenant.slug}/";body=fill(conf["body"],v);links=[("Prenota",v["link"])]
+    # 2.14.0: a distanza: the video-call link with the confirmation, the change and the reminders
+    if booking.service.remote_url and kind in ("confirmed","accepted","moved","reminder","reminder2"):links.insert(0,("Entra nella videochiamata",booking.service.remote_url))
     payload={"to":data["email"],"subject":" ".join(fill(conf["subject"],v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
         "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":links,"color":contrast_color(tenant.brand_color)})}
     if kind in ("confirmed","accepted","moved"):
@@ -212,7 +219,7 @@ def remind(now=None):
                         sent+=1
                         if kind!="arrival":b.snapshot["asked"]=now.isoformat()  # Confermo / Non vengo went out: Da chiamare
                     b.snapshot[mark]=now.isoformat();b.save(update_fields=["snapshot"])
-            sent+=unconfirmed(tenant,conf["reminder"]["autocancel"],now)+reviews(tenant,conf["review"],now)
+            sent+=unconfirmed(tenant,conf["reminder"]["autocancel"],now)+reviews(tenant,conf["review"],now)+recall(tenant,conf["recall"],now)
     return sent
 
 def unconfirmed(tenant,hours,now):
@@ -239,4 +246,17 @@ def reviews(tenant,conf,now):
         go=not any(s["review"] and datetime.fromisoformat(s["review"])>now-timedelta(days=7) for s in recent)
         b.snapshot["review"]=now.isoformat() if go and send(tenant,b,"review") else ""  # "": looked at, not sent
         sent+=bool(b.snapshot["review"]);b.save(update_fields=["snapshot"])
+    return sent
+
+def recall(tenant,conf,now):
+    """2.14.0: the recall email, once per visit, on its day, only with the marketing consent (art. 130: it invites to book)
+    and never to who already has something booked (clients.recalls)."""
+    if not conf["on"]:return 0
+    from .clients import recalls
+    sent=0
+    for r in recalls(now,ahead=0):
+        b,c=r["booking"],r["contact"]
+        if "recall_sent" in b.snapshot or c.consent!="yes" or c.suppressed:continue
+        b.snapshot["recall_sent"]=now.isoformat() if send(tenant,b,"recall") else ""  # "": looked at, not sent
+        sent+=bool(b.snapshot["recall_sent"]);b.save(update_fields=["snapshot"])
     return sent

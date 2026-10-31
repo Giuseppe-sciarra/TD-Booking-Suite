@@ -154,9 +154,11 @@ def setup_desk(request,slug):
         absences=int(request.POST.get("absences_request",t.absences_request));minutes=int(request.POST.get("wait_minutes",t.wait_minutes))
         mode=request.POST.get("wait_mode",t.wait_mode)
         if absences not in ABSENCES or minutes not in WAIT_MINUTES or mode not in ("all","queue"):raise ValueError
-    except ValueError:
-        messages.error(request,"Scelta non valida.");return redirect(reverse("setup",args=[slug])+"#banco")
-    Tenant.objects.filter(pk=t.pk).update(force_all=on,absences_request=absences,wait_mode=mode,wait_minutes=minutes)
+        from .clients import parse_categories
+        cats=parse_categories(request.POST.get("client_categories","")) if "client_categories" in request.POST else t.client_categories
+    except (ValueError,BookingError) as ex:
+        messages.error(request,str(ex) if isinstance(ex,BookingError) else "Scelta non valida.");return redirect(reverse("setup",args=[slug])+"#banco")
+    Tenant.objects.filter(pk=t.pk).update(force_all=on,absences_request=absences,wait_mode=mode,wait_minutes=minutes,client_categories=cats)
     audit(t,request.user,"tenant.force_all",t.pk,on=on,absences=absences,wait_mode=mode,wait_minutes=minutes)
     messages.success(request,("Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")+" Regole salvate.")
     return redirect(reverse("setup",args=[slug])+"#banco")
@@ -414,7 +416,33 @@ def booking_detail(request,slug,booking_id):
         try:messages.success(request,record_action(request,booking.contact,booking))
         except BookingError as ex:messages.error(request,str(ex))
         return redirect(reverse("booking_detail",args=[slug,booking_id])+"#scheda")
-    if request.method=="POST":
+    plan=None
+    if request.method=="POST" and request.POST.get("action") in ("series_check","series_make"):
+        # 2.14.0: Ripeti from the desk: first the dates with the ones that cannot be booked, then the free ones made
+        require(request,"booking.write")
+        from .booking import series_plan,series_create
+        try:
+            every=int(request.POST.get("every") or 0);until=date.fromisoformat(request.POST.get("until") or "")
+        except ValueError:every,until=0,None
+        try:
+            if request.POST["action"]=="series_make":
+                made=series_create(request.tenant,booking,every,until,request.user)
+                messages.success(request,f"Serie creata: {made} date in più." if made else "Nessuna data libera da aggiungere.")
+                return redirect(reverse("booking_detail",args=[slug,booking_id])+"#serie")
+            plan={"rows":series_plan(request.tenant,booking,every,until),"every":every,"until":until}
+            plan["free"]=sum(1 for _,why in plan["rows"] if not why)
+        except BookingError as ex:messages.error(request,str(ex))
+    if request.method=="POST" and request.POST.get("action")=="participants":
+        # 2.14.0: the names of who comes with the client, optional, sealed with the booking's data
+        require(request,"booking.write","pii.read")
+        names=[" ".join(x.split())[:100] for x in request.POST.get("participants","").splitlines() if x.strip()]
+        if len(names)>max(booking.party,1) or any(any(ord(c)<32 for c in n) for n in names):messages.error(request,f"Al massimo {booking.party} nomi, uno per riga.")
+        else:
+            pii=booking.data;pii["participants"]=names
+            booking.pii=encrypt(request.tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
+            audit(request.tenant,request.user,"booking.participants",booking.pk,count=len(names))
+        return redirect(reverse("booking_detail",args=[slug,booking_id])+"#partecipanti")
+    if request.method=="POST" and plan is None and request.POST.get("action") not in ("series_check","series_make"):
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
         back=request.POST.get("back")=="dashboard"  # 2.14.0: the quick actions of the dashboard go back there
@@ -426,7 +454,12 @@ def booking_detail(request,slug,booking_id):
                 audit(request.tenant,request.user,"booking.notes",booking.pk)
             elif action=="undo":change_status(request.tenant,booking,None,request.user,undo=True)
             elif action=="reject":change_status(request.tenant,booking,"cancelled",request.user,reason="rejected")
-            else:change_status(request.tenant,booking,action,request.user,reason=request.POST.get("reason",""),note=request.POST.get("note",""))
+            else:
+                change_status(request.tenant,booking,action,request.user,reason=request.POST.get("reason",""),note=request.POST.get("note",""))
+                # 2.14.0: "anche le prossime date della serie": the others quietly, the client got the email of this one
+                if action=="cancelled" and booking.series and request.POST.get("whole_series")=="on":
+                    for other in Booking.objects.filter(series=booking.series,start__gt=booking.start,status__in=OPEN):
+                        change_status(request.tenant,other,"cancelled",request.user,reason=request.POST.get("reason",""),quiet=True)
             if back:
                 request.session["undo"]=str(booking.pk);return redirect("dashboard",slug)
             return redirect("booking_detail",slug,booking_id)
@@ -447,13 +480,51 @@ def booking_detail(request,slug,booking_id):
         "whatsapp":whatsapp(request.tenant,data.get("phone",""),booking),
         # 2.14.0: the statuses: arrived from the day of the booking, in progress where something is being done
         "undo":can_undo(booking),"reasons":REASONS,"progress":booking.service.kind in ("resource","capacity"),
-        "today_ok":day<=timezone.now().astimezone(tz).date()}
+        "today_ok":day<=timezone.now().astimezone(tz).date(),"test_due":test_due(booking),"plan":plan,
+        "series_next":Booking.objects.filter(series=booking.series,start__gt=booking.start,status__in=OPEN).count() if booking.series else 0,
+        "repeatable":booking.service.kind in ("resource","capacity") and bool(booking.contact_id) and booking.status in OPEN,
+        "class_list":booking.service.kind in ("capacity","event")}
     if spec and can(request,"notes.read"):
         from .clients import treatments,from_booking
         entries=treatments(booking.contact);prefill=from_booking(booking,tz)
         # what was done before this appointment, the newest first: what the operator wants to know before starting
         ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ACCEPTED,**record_options(spec))
     return render(request,"booking_detail.html",ctx)
+def test_due(booking):
+    """2.14.0: the service wants a test done within so many days: what the desk must know, never a refusal."""
+    days=booking.service.test_days
+    if not days or not booking.contact_id or booking.status not in OPEN:return ""
+    done=booking.contact.data.get("test_date")
+    if not done:return "nella scheda del cliente non c'è un test"
+    if date.fromisoformat(done)+timedelta(days=days)<booking.start.astimezone(ZoneInfo(booking.tenant.timezone)).date():return f"l'ultimo test è del {date.fromisoformat(done):%d/%m/%Y}, più di {days} giorni prima"
+    return ""
+def attendees(request,slug,booking_id):
+    """2.14.0: Iscritti of a class or an event date: who is booked, how many, the participants' names, the tick of who
+    came (Presente: done, Assente: absent, back with Togli); the substitute instructor written on every booking of the
+    date, the original one stays where it was (the agenda does not move)."""
+    require(request,"booking.read")
+    ref=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service"),pk=booking_id)
+    rows=visible_bookings(request,Booking.objects.filter(service=ref.service,start=ref.start,occurrence=ref.occurrence)).exclude(status="cancelled").order_by("created")
+    if request.method=="POST":
+        require(request,"booking.write")
+        action=request.POST.get("action")
+        try:
+            if action=="substitute":
+                r=Resource.objects.filter(active=True,pk=uid(request.POST.get("resource"))).first()
+                for b in rows:
+                    if r:b.snapshot["substitute"]=r.name
+                    else:b.snapshot.pop("substitute",None)
+                    b.save(update_fields=["snapshot"])
+                audit(request.tenant,request.user,"booking.substitute",ref.pk,resource=str(r.pk) if r else "")
+            else:
+                b=get_object_or_404(rows,pk=uid(request.POST.get("booking")))
+                change_status(request.tenant,b,{"present":"completed","absent":"no_show"}.get(action,"confirmed"),request.user)
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect("attendees",slug,booking_id)
+    rows=list(rows)
+    for b in rows:b.shown=shown(request,b.data)
+    return render(request,"attendees.html",{"ref":ref,"rows":rows,"people":sum(b.party for b in rows),"started":ref.start<=timezone.now(),
+        "resources":Resource.objects.filter(active=True,location=ref.location).order_by("name"),"substitute":next((b.snapshot.get("substitute") for b in rows if b.snapshot.get("substitute")),"")})
 def uid(value):
     import uuid
     try:return uuid.UUID(str(value))
@@ -573,7 +644,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile","sign")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -614,13 +685,24 @@ def contact_detail(request,slug,contact_id):
         audit(request.tenant,request.user,"contact.notices",contact.pk,on=contact.notices)
         messages.success(request,"Il cliente riceve le email delle sue prenotazioni." if contact.notices else "Il cliente non riceve più le email delle sue prenotazioni.")
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#privacy")
+    if request.method=="POST" and request.POST.get("action")=="sign":
+        # 2.14.0: a consent signed on the tablet at the desk, sealed in the card
+        require(request,"booking.write","pii.read")
+        from .clients import sign_consent
+        try:
+            with transaction.atomic():
+                sign_consent(request.tenant,contact,request.POST,request.user)
+                audit(request.tenant,request.user,"contact.signed",contact.pk)
+            messages.success(request,"Consenso firmato e salvato nella scheda.")
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#firme")
     if request.method=="POST" and request.POST.get("action")=="profile":
         # 2.14.0: tags, birthday, VIP and "not bookable online": who edits the card's data
         require(request,"booking.write","pii.read")
         from .clients import clean_profile,save_profile
         try:
             with transaction.atomic():
-                p=clean_profile(request.POST,timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date())
+                p=clean_profile(request.POST,timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date(),request.tenant.client_categories)
                 save_profile(request.tenant,contact,p)
                 audit(request.tenant,request.user,"contact.profile",contact.pk,vip=p["vip"],online_blocked=p["online_blocked"],tags=len(p["tags"]),birthday=bool(p["birthday"]))
             messages.success(request,"Scheda aggiornata.")
@@ -652,6 +734,8 @@ def contact_detail(request,slug,contact_id):
     ctx={"contact":contact,"data":data,"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
         "waits":list(WaitEntry.objects.filter(contact=contact,status="waiting").select_related("service").order_by("first")),
         "merge_ok":can(request,"privacy.manage") and can(request,"pii.read"),
+        "tests":list(Service.objects.filter(active=True,test_days__gt=0).values_list("name",flat=True)),
+        "consent_titles":__import__("core.clients",fromlist=["CONSENT_TITLES"]).CONSENT_TITLES,
         "upcoming":upcoming,"discount":discount_label(contact),
         # 2.14.0: WhatsApp with the text about the next booking, or an empty chat
         "whatsapp":whatsapp(request.tenant,data.get("phone",""),upcoming[0] if upcoming else None),
@@ -711,6 +795,22 @@ def waitlist_view(request,slug):
     return render(request,"waitlist.html",{"rows":rows,"error":error,"form":form,"client":client,"services":Service.objects.filter(active=True,location__active=True).select_related("location").order_by("name"),
         "resources":Resource.objects.filter(active=True,location__active=True,id__in=ServiceResource.objects.filter(service__active=True,service__kind__in=("resource","day")).values("resource_id")).order_by("name"),
         "one":units(t.business_type)[0],"today":now.astimezone(tz).date(),"many_locations":Location.objects.filter(active=True).count()>1})
+def recalls_view(request,slug):
+    """2.14.0: Richiami: the clients whose recall is due (a week ahead), without a booking to come; Chiama, WhatsApp,
+    Prenota, Fatto. For who sees the client cards."""
+    require(request,"contacts.read")
+    from .clients import recalls
+    t=request.tenant;now=timezone.now()
+    if request.method=="POST":
+        require(request,"booking.write")
+        b=get_object_or_404(Booking.objects.filter(service__recall_days__gt=0,contact__isnull=False),pk=uid(request.POST.get("booking")))
+        b.snapshot["recall_done"]=now.isoformat();b.save(update_fields=["snapshot"])
+        audit(t,request.user,"contact.recalled",b.contact_id,booking=str(b.pk))
+        messages.success(request,"Segnato come fatto.");return redirect("recalls",slug)
+    rows=recalls(now)
+    for r in rows:
+        r["shown"]=shown(request,r["contact"].data);r["whatsapp"]=whatsapp(t,r["shown"].get("phone","")) if not r["shown"].get("masked") else ""
+    return render(request,"recalls.html",{"rows":rows,"now":now})
 def contact_merge(request,slug,contact_id):
     """2.14.0: two cards of the same person made one (clients.merge): the other card searched by name, phone or email,
     then field by field which value stays, which card is the main one, and a confirmation: it cannot be undone."""

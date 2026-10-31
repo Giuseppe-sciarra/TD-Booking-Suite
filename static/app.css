@@ -1474,3 +1474,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 
 /* 2.14.0: a group above the request threshold, on the public page */
 .group-note{flex-basis:100%;margin:6px 0 0;padding:8px 12px;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--ink);font-size:14px}
+/* 2.14.0: consents signed on the tablet at the desk */
+.sign-pad{display:block;width:100%;max-width:640px;aspect-ratio:3/1;border:1px dashed var(--line);border-radius:var(--r-sm);background:#fff;touch-action:none;cursor:crosshair}
+.sign-img{display:block;max-width:260px;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm)}
+.sign-new{margin-top:12px}.sign-new>summary{list-style:none;display:inline-flex}.series-plan li{padding:4px 0}
