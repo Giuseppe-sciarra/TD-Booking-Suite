@@ -520,3 +520,12 @@ msgstr "Room not valid: reload the page."
 
 msgid "Nessun tavolo libero per quest'ora: scegline un'altra."
 msgstr "No table free at this time: choose another one."
+
+msgid "Ciao {nome}, {servizio} di {quando} la tiene {operatore}."
+msgstr "Hi {nome}, {servizio} on {quando} will be led by {operatore}."
+
+msgid "Prima era con {prima}."
+msgstr "It was with {prima} before."
+
+msgid "Cambio di istruttore"
+msgstr "Change of instructor"
