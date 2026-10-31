@@ -41,11 +41,31 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
 - Sedi, orari, chiusure e giorni speciali (per tutta l'attività, una sede, un servizio o una
   risorsa), servizi con durata, passo, pause prima e dopo, preavviso minimo, fino a quanti giorni
   avanti, termine per annullare online, varianti, persone per prenotazione.
+- **Chiusure dal giorno al giorno** (due settimane di ferie sono una riga sola), **festività
+  italiane in un clic** con Pasqua e Pasquetta calcolate e il santo patrono, **due fasce al giorno**
+  nella scheda dell'operatore e **settimane alterne** (*Ogni quante settimane* negli orari).
+  **Blocca orario** dall'agenda per una pausa o una riunione, una volta o ogni settimana: toglie il
+  posto ma non conta nelle statistiche.
+- **Stati completi**: confermata, *Arrivato*, *In corso*, completata, assente, annullata con il
+  motivo; si riporta a confermata, e per 5 minuti c'è *Torna indietro* sull'ultimo cambio. Un servizio può
+  essere **su richiesta** (sempre, oltre N persone, con allergie): la prenotazione online aspetta
+  *Accetta* o *Rifiuta* tra le *Richieste da confermare* della Dashboard.
+- **Regole del banco** separate da quelle online: al banco si prenota da adesso a due anni avanti,
+  senza preavviso né limite di persone. **Forza** (titolare e amministratore sede, agli altri se il
+  titolare lo sceglie) prenota anche fuori orario, oltre i posti o sopra un altro appuntamento,
+  dicendo prima cosa si supera. **Senza appuntamento** registra chi entra adesso, già *In corso*,
+  anche senza nome.
 - La disponibilità si ricontrolla quando il cliente conferma; ogni scrittura prende lo stesso
   blocco, così due clienti non prendono mai lo stesso orario. Una richiesta inviata due volte è una
   prenotazione sola.
 - **16 tipi di attività** pronti: scegli il tipo e quante sedi, e servizi, risorse, orari e domande
-  sono pronti, da ritoccare. Si può riapplicare anche dopo: le prenotazioni restano.
+  sono pronti, da ritoccare. Si può riapplicare anche dopo: le prenotazioni restano. Il ristorante
+  parte con l'*Ultimo arrivo* un'ora prima della chiusura, l'officina con i ponti (un veicolo per
+  ponte, una colonna ciascuno in agenda), il noleggio anche in giornata; gli appuntamenti con un'ora
+  di preavviso online.
+- **Turni del ristorante ed eventi con data** li gestisce il titolare: date ripetute in serie (ogni
+  settimana o ogni 2-4, nei giorni scelti), modifica di una data o delle successive, e nella
+  Dashboard *Turni di oggi* con *Chiudi* e *Riapri* un turno per un giorno solo.
 
 **Scheda cliente**
 - **Trattamenti, sedute, visite, lezioni, interventi** — il nome segue l'attività: data, cosa è
@@ -65,6 +85,17 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   inserito al banco con il solo numero ritrova la sua scheda quando prenota online; due email
   diverse restano due persone, anche con lo stesso telefono, e un nome diverso sullo stesso numero
   (una madre e la figlia) ha la sua scheda.
+- **Etichette, VIP e compleanno** (cifrati come gli altri dati), con la rubrica filtrata per
+  etichetta e i compleanni della settimana nella Dashboard. La stella VIP, le assenze e le disdette
+  all'ultimo momento si vedono in piccolo in agenda e nelle liste. *Non prenotabile online* ferma
+  un cliente sulla pagina pubblica, e il titolare può far diventare richieste le prenotazioni online
+  di chi ha N assenze.
+- **Unisci due schede** dello stesso cliente, scegliendo campo per campo cosa tenere; il consenso
+  segue l'email tenuta.
+- **WhatsApp a un clic** dalla prenotazione e dalla scheda, con un testo già scritto che il
+  titolare cambia in *Notifiche*: il messaggio lo manda chi è al banco.
+- La ricerca trova tutti i clienti, non più solo le 5.000 schede più recenti: email e telefono
+  interi con il loro indice cifrato, i nomi dall'inizio delle parole e senza accenti.
 - **Importa dal programma di prima** — anagrafica e storico dei trattamenti da Excel o CSV:
   si sceglie cosa contiene ogni colonna, si guarda l'anteprima, si importa. Le schede che ci sono
   già prendono solo i dati mancanti; i consensi marketing restano da confermare.
@@ -80,7 +111,18 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   ristorante.
 - **Intolleranze e allergie** per i ristoranti, un elenco che gestisce l'amministratore dell'attività (o l'agenzia); dati sulla salute visibili
   solo a chi vede le note, mai nelle notifiche, cancellati con i dati del cliente.
-- Email di conferma con il link per gestire o annullare la prenotazione.
+- Email di conferma con il link *Gestisci* per **spostare** o annullare la prenotazione, con le
+  regole della pagina online e fino al termine per annullare; il file `.ics` allegato e *Aggiungi al
+  calendario* (Google, Outlook, `.ics`).
+- **Lista d'attesa**: quando il giorno è pieno il cliente preme *Avvisami se si libera*; appena si
+  libera un posto riceve un'email con un link che apre la pagina già compilata. Si può tenere il
+  posto per il primo della lista per un tempo scelto (*Uno alla volta*). Al banco la lista è nella
+  voce *Lista d'attesa*.
+- **Da dove arriva ogni prenotazione**: pagina pubblica, sito WordPress, banco o senza
+  appuntamento, più il canale del link (`?src=instagram`). In *Configura l'attività › La pagina
+  prenotazioni* ci sono i link pronti per Google, Instagram, Facebook, WhatsApp e newsletter, il QR
+  da stampare e il codice per i siti senza WordPress (`/static/embed.js`; l'indirizzo del sito lo
+  autorizza l'agenzia).
 - **Plugin WordPress**: si collega il sito con un codice monouso e nasce la pagina *Prenota* con
   `[td_booking_suite]`; shortcode per una sola sede o un solo servizio; il riquadro segue l'altezza
   del modulo.
@@ -90,16 +132,30 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   lavora, la settimana ora per ora con gli appuntamenti affiancati, il mese con quanti ne ha ogni
   giorno; ogni operatore ha il suo colore e la sua foto, e si guarda l'agenda di uno solo. I
   soggiorni compaiono in ogni giorno, con arrivo, "in casa" e partenza.
+- **Agenda da banco**: un appuntamento si **trascina** su un'altra ora, un altro operatore o un
+  altro giorno e si allunga tirando il bordo, con il mouse o con il dito, con la conferma prima di
+  salvare e le regole del banco. Colori e segni per stato con la legenda e *Mostra le annullate*;
+  agenda e Dashboard si **aggiornano da sole**; il **foglio del giorno da stampare**, per tutti o per
+  un operatore; tasti (*T*, frecce, *N*, */*, *G* *S* *M*, *?*); **Nascondi nomi** per gli schermi
+  che vedono i clienti.
 - **Operatori con foto** e cosa fa ciascuno, con la sua durata e il suo prezzo se diversi da quelli
   del trattamento; i suoi giorni e orari, le ferie.
-- **Il listino lo tiene l'attività**: servizi e varianti con i loro prezzi; il tipo di prenotazione
-  resta dell'agenzia.
-- Dashboard, agenda, prenotazioni al banco, clienti, export CSV, campagne marketing con consenso
-  confermato e disiscrizione con un clic, notifiche al personale via email e Telegram (senza note,
-  risposte né allergie), registro attività.
-- **Email ai clienti con promemoria**: conferma, modifica e annullamento partono da sole; quando
-  l'agenzia lo attiva l'attività sceglie quali inviare, aggiunge il promemoria (da 2 ore a 3 giorni
-  prima) e ne scrive il testo, con l'anteprima. Il cliente sceglie se riceverle.
+- **Il listino lo tiene l'attività**: servizi e varianti con i loro prezzi, turni ed eventi con
+  data; il tipo di prenotazione resta dell'agenzia.
+- Dashboard con oggi, prossimi 7 giorni, *Richieste da confermare*, *Da chiudere*, *Da chiamare*,
+  lista d'attesa e compleanni; agenda, prenotazioni al banco, clienti, export CSV con origine e
+  fonte, campagne marketing con consenso confermato, disiscrizione con un clic e filtri per gruppi
+  (etichetta, VIP, ultima visita, numero di visite), notifiche al personale via email e Telegram
+  (senza note, risposte né allergie), registro attività.
+- **Email ai clienti con promemoria**: conferma, modifica e annullamento partono da sole, in HTML
+  con il logo e il colore dell'attività. Il **promemoria** è acceso di default per le attività nuove
+  e lo regola il titolare; c'è un secondo promemoria facoltativo, con i tasti **Confermo** e **Non
+  vengo** (spunta verde in agenda, *Da chiamare* per chi non risponde) e, se lo si vuole,
+  l'annullamento da solo delle non confermate. Poi *Prima dell'arrivo* con le istruzioni del
+  servizio, *Dopo la visita* con il link per la recensione, il prezzo indicativo in conferma, il
+  **riepilogo serale** di domani all'attività e a ogni operatore. Quando l'agenzia lo attiva
+  l'attività sceglie anche quali email standard inviare e ne scrive il testo, con l'anteprima. Il
+  cliente sceglie se riceverle.
 - **Logo e aspetto** tenuti dall'attività, con l'anteprima; la dashboard mostra chi viene oggi e nei
   prossimi 7 giorni. Campagne e CSV degli iscritti li accende l'agenzia: senza, la voce Marketing
   non compare.
@@ -129,8 +185,9 @@ I dati sono una demo con nomi inventati e indirizzi `example.com`.
   password per le pagine sensibili, limiti ai tentativi, registro delle attività. *Resta collegato*
   tiene dentro un dispositivo finché non preme Esci, senza scadenza di serie (un limite in giorni si
   mette in `TDBS_SESSION_REMEMBER_DAYS`).
-- Export e cancellazione GDPR per cliente, regole di conservazione per attività, rotazione delle
-  chiavi, backup cifrati.
+- Export e cancellazione GDPR per cliente, rotazione delle chiavi, backup cifrati. Le regole di
+  conservazione di ogni attività le applica il programma da solo ogni giorno, con l'esito tra gli
+  avvisi dell'agenzia (*Da controllare*).
 - **Aggiornamento automatico ogni notte** di Python, Debian, librerie e PostgreSQL 17.x,
   con il backup prima e il ritorno automatico alla versione di prima se quella nuova non passa le prove.
 

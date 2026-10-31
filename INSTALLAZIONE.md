@@ -4,7 +4,7 @@ Questa guida installa TD Booking Suite su un server nuovo, dietro NPMplus. Ogni 
 
 ## Come funziona
 
-Sul server girano tre container: `db` (il database), `web` (l'applicazione) e `worker` (invia le email). L'applicazione risponde sulla **porta 8085** del server. NPMplus riceve il dominio in HTTPS e lo inoltra a quella porta.
+Sul server girano tre container: `db` (il database), `web` (l'applicazione) e `worker` (invia le email, i promemoria, gli avvisi della lista d'attesa e fa la pulizia dei dati ogni giorno). L'applicazione risponde sulla **porta 8085** del server. NPMplus riceve il dominio in HTTPS e lo inoltra a quella porta.
 
 ## Cosa serve
 
@@ -207,16 +207,18 @@ rm /root/ripristino.dump
 
 Il ripristino funziona solo con lo stesso `.env` del momento del backup.
 
-## 10. Pulizia dei dati, ogni settimana
+## 10. Pulizia dei dati, da sola
 
-Cancella i dati scaduti secondo le regole di conservazione di ogni attività. Prima prova senza `--apply`: mostra solo cosa farebbe.
+Dalla 2.14.0 non serve un cron: il `worker` cancella i dati scaduti secondo le regole di conservazione di ogni attività una volta al giorno (prenotazioni vecchie senza dati personali, schede senza prenotazioni recenti né consenso, voci della scheda trattamenti scadute, richieste della lista d'attesa passate). L'esito è nella dashboard dell'agenzia, in *Da controllare*: compare se la pulizia non è riuscita (il dettaglio è nel log del `worker`) o se è ferma da più di due giorni, e sotto c'è quando è stata fatta l'ultima volta.
+
+Per vedere cosa farebbe, senza cancellare niente, o per forzarla subito su un'attività:
 
 ```
 docker compose run --rm web python manage.py retention --tenant pizzeria-da-mario
 docker compose run --rm web python manage.py retention --tenant pizzeria-da-mario --apply
 ```
 
-Poi mettilo in cron con `--apply`.
+Un cron rimasto dalle versioni di prima non fa danni (la pulizia rifatta non cambia niente), ma si può togliere.
 
 ## 11. Aggiornare a una versione nuova
 
@@ -234,7 +236,7 @@ docker compose --profile tools run --rm migrate
 docker compose up -d --remove-orphans
 ```
 
-`.env` resta com'è: lo zip non lo contiene. Valori facoltativi da aggiungere quando servono, poi `docker compose up -d`: `TDBS_SESSION_REMEMBER_DAYS=30`, i giorni per cui un dispositivo con *Resta collegato* rimane dentro dall'ultima visita (predefinito 0: finché non preme *Esci*). Per tornare indietro, ripeti gli stessi comandi con lo zip della versione precedente e ripristina il backup fatto all'inizio.
+`.env` resta com'è: lo zip non lo contiene. Aggiornando alla 2.14.0, `migrate` crea anche gli indici di ricerca delle schede clienti che ci sono già: qualche secondo ogni 10.000 clienti. Valori facoltativi da aggiungere quando servono, poi `docker compose up -d`: `TDBS_SESSION_REMEMBER_DAYS=30`, i giorni per cui un dispositivo con *Resta collegato* rimane dentro dall'ultima visita (predefinito 0: finché non preme *Esci*). Per tornare indietro, ripeti gli stessi comandi con lo zip della versione precedente e ripristina il backup fatto all'inizio.
 
 ## 12. Cambiare edizione: da Cloud a Private e ritorno
 

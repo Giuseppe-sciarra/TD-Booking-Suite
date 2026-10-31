@@ -41,11 +41,30 @@ Italian.
 - Locations, opening hours, closures and special days (for the whole business, a location, a
   service or a resource), services with duration, step, buffers before and after, minimum notice,
   how far ahead, online cancellation cutoff, variants, people per booking.
+- **Closures from one day to another** (two weeks of holidays are one line), **Italian public
+  holidays in one click** with Easter and Easter Monday computed and the patron saint, **two time
+  bands a day** on the staff member's card and **alternating weeks** (*Every how many weeks* in the
+  hours). **Block time** from the agenda for a break or a meeting, once or every week: it takes the
+  slot but does not count in the statistics.
+- **Full statuses**: confirmed, *Arrived*, *In progress*, completed, no-show, cancelled with a
+  reason; each can be brought back to confirmed, and *Undo* reverts the last change for 5 minutes. A service can
+  work **on request** (always, above N people, with allergies): the online booking waits for
+  *Accept* or *Decline* under *Requests to confirm* on the dashboard.
+- **Desk rules** apart from the online ones: at the desk you book from now to two years ahead, with
+  no notice or party-size limit. **Force** (owner and location manager, the others if the owner
+  allows it) books outside the hours, over the seats or on top of another appointment, saying first
+  what is being overridden. **Walk-in** records who comes in now, already *In progress*, even with
+  no name.
 - Availability is checked again when the client confirms; every write takes the same lock, so two
   clients never get the same slot. A request sent twice is one booking.
 - **16 kinds of business** ready to start: pick the type and the number of locations, and
   services, resources, hours and questions are in place, to be adjusted. It can be applied again
-  later: bookings stay.
+  later: bookings stay. The restaurant starts with the *Last arrival* an hour before closing, the
+  garage with lifts (one vehicle per lift, a column each in the agenda), the rental also for the
+  same day; appointments with one hour of online notice.
+- **Restaurant shifts and dated events** are kept by the owner: dates repeated as a series (every
+  week or every 2-4, on the chosen days), editing one date or the following ones, and *Today's
+  shifts* on the dashboard to *Close* and *Reopen* a shift for one day only.
 
 **Client record**
 - **Treatments, sessions, visits, lessons, jobs** — the name follows the business: date, what was
@@ -65,6 +84,17 @@ Italian.
   phone number only finds their card again when they book online; two different emails stay two
   people, even with the same phone, and another name on the same number (a mother and her
   daughter) gets a card of its own.
+- **Tags, VIP and birthday** (encrypted like the other data), with the address book filtered by tag
+  and the birthdays of the week on the dashboard. The VIP star, no-shows and last-minute
+  cancellations show in small in the agenda and the lists. *Not bookable online* stops a client on
+  the public page, and the owner can turn the online bookings of a client with N no-shows into
+  requests.
+- **Merge two cards** of the same client, choosing field by field what to keep; the consent follows
+  the email kept.
+- **WhatsApp in one click** from the booking and the card, with a ready text the owner edits in
+  *Notifications*: the message is sent by whoever is at the desk.
+- Search finds every client, no longer only the 5,000 most recent cards: full email and phone
+  through their keyed index, names by the start of the words and without accents.
 - **Import from the previous program** — client list and treatment history from Excel or CSV:
   pick what each column holds, check the preview, import. Existing cards only get the missing
   data; marketing consents stay to be confirmed.
@@ -79,7 +109,16 @@ Italian.
   questions online, apart from the restaurant's allergens.
 - **Intolerances and allergies** for restaurants, a list the business owner (or the agency) edits; health data seen only by
   who reads the notes, never in notifications, erased with the client's data.
-- Confirmation email with a link to manage or cancel the booking.
+- Confirmation email with a *Manage* link to **move** or cancel the booking, with the rules of the
+  online page and up to the cancellation cutoff; the `.ics` file attached and *Add to calendar*
+  (Google, Outlook, `.ics`).
+- **Waitlist**: when the day is full the client taps *Notify me if a slot opens*; as soon as one
+  does they get an email with a link that opens the page already filled in. The slot can be held for
+  the first in line for a chosen time (*One at a time*). At the desk the list is under *Waitlist*.
+- **Where each booking comes from**: public page, WordPress site, desk or walk-in, plus the link's
+  channel (`?src=instagram`). *Set up the business › Booking page* has ready links for Google,
+  Instagram, Facebook, WhatsApp and newsletters, a printable QR code and the embed code for sites
+  without WordPress (`/static/embed.js`; the agency authorises the site's address).
 - **WordPress plugin**: connect the site with a one-time code, a *Book* page is created with
   `[td_booking_suite]`; shortcodes for one location or one service; the frame follows the height of
   the form.
@@ -89,16 +128,30 @@ Italian.
   by hour with overlapping appointments side by side, the month with how full each day is; one
   colour and one photo per staff member everywhere, and the agenda of one person only. Stays show on
   each of their days, with arrival, "in house" and departure.
+- **Desk agenda**: an appointment is **dragged** to another time, staff member or day and resized
+  by its bottom edge, with the mouse or a finger, confirmed before saving and checked against the
+  desk rules. Colours and marks per status with a legend and *Show cancelled*; agenda and dashboard
+  **refresh by themselves**; a **printable day sheet**, for everyone or one staff member; keyboard
+  shortcuts (*T*, arrows, *N*, */*, *G* *S* *M*, *?*); **Hide names** for screens the clients can
+  see.
 - **Staff with photos** and what each one does, with their own duration and price when they differ
   from the treatment's; their days and hours, their holidays.
-- **Price list kept by the business**: services and variants with their prices; the kind of
-  booking stays with the agency.
-- Dashboard, agenda, bookings at the desk, clients, CSV export, marketing campaigns with confirmed
-  consent and one-click unsubscribe, notifications to staff by email and Telegram (without notes,
-  answers or allergies), activity log.
-- **Client emails with reminders**: confirmation, change and cancellation go by themselves; once the
-  agency allows it the business picks which ones go, adds the reminder (2 hours to 3 days before)
-  and writes them, with a preview. The client chooses whether to get them.
+- **Price list kept by the business**: services and variants with their prices, shifts and dated
+  events; the kind of booking stays with the agency.
+- Dashboard with today, the next 7 days, *Requests to confirm*, *To close*, *To call*, waitlist and
+  birthdays; agenda, bookings at the desk, clients, CSV export with origin and source, marketing
+  campaigns with confirmed consent, one-click unsubscribe and filters by group (tag, VIP, last
+  visit, number of visits), notifications to staff by email and Telegram (without notes, answers or
+  allergies), activity log.
+- **Client emails with reminders**: confirmation, change and cancellation go by themselves, in HTML
+  with the business's logo and colour. The **reminder** is on by default for new businesses and the
+  owner sets it; an optional second reminder, with **Confirm** and **Not coming** buttons (green
+  tick in the agenda, *To call* for who does not answer) and, if wanted, automatic cancellation of
+  the unconfirmed ones. Then *Before arrival* with the service's instructions, *After the visit*
+  with the review link, the indicative price in the confirmation, the **evening summary** of
+  tomorrow to the business and to each staff member. Once the agency allows it the business also
+  picks which standard emails go and writes them, with a preview. The client chooses whether to get
+  them.
 - **Logo and look** kept by the business, with a preview; the dashboard shows who comes today and in
   the next 7 days. Campaigns and the subscribers' CSV are switched on by the agency: without them,
   Marketing is not in the menu.
@@ -125,8 +178,9 @@ Italian.
 - Two-step verification with **authenticator app or passkey**, recovery codes, password confirmation
   for sensitive pages, rate limits, audit log. *Stay signed in* keeps a device in until
   it signs out, with no time limit by default (a limit in days goes in `TDBS_SESSION_REMEMBER_DAYS`).
-- GDPR export and erasure per client, retention rules per business, key rotation, encrypted
-  backups.
+- GDPR export and erasure per client, key rotation, encrypted backups. The retention rules of
+  each business are applied by the program every day, with the outcome among the agency's alerts
+  (*To check*).
 - **Nightly automatic update** of Python, Debian, libraries and PostgreSQL 17.x, with a
   backup first and an automatic rollback if the new version fails its tests.
 
