@@ -1,8 +1,8 @@
-# TD Booking Suite 2.13.0 — registro modifiche
+# TD Booking Suite 2.14.0 — registro modifiche
 
-**29 ottobre 2026 · versione 2.13.0**
+**31 ottobre 2026 · versione 2.14.0**
 
-## 2.14.0 — confronto con i gestionali di settore
+## 2.14.0 — quello che fanno da anni i gestionali di settore: promemoria con conferma, lista d'attesa, agenda da banco, ristoranti, saloni, alloggi con Alloggiati e imposta, corsi e studi, SMS e WhatsApp, report, API, inglese
 
 - **Resta collegato davvero fino a Esci anche nel Docker**: `compose.yaml` passava ancora 30 giorni ai container, contro quanto detto nella 2.13.0. Ora il valore predefinito è 0, cioè finché non si preme *Esci*; un limite in giorni resta possibile con `TDBS_SESSION_REMEMBER_DAYS` nel `.env`
 - **Ultimo arrivo al ristorante**: nel servizio, per chi lo modifica (titolare compreso), *Ultimo arrivo* dice quanti minuti prima della chiusura di ogni fascia si smette di prenotare. Il ristorante nuovo parte con 60: pranzo dalle 12 alle 15 con l'ultimo tavolo alle 14, cena fino alle 23:30 con l'ultimo alle 22:30, invece di tavoli offerti fino all'ora di chiusura. I servizi che ci sono già restano come prima (0, fino alla chiusura) finché non lo imposti. Vale per la pagina online: al banco non conta (vedi *Regole del banco*)
@@ -88,6 +88,8 @@
 - **Il cliente sceglie con chi, se vuoi**: nel servizio su appuntamento l'interruttore *Il cliente sceglie con chi* (acceso di default) spento toglie dalla pagina pubblica e dal sito la scelta della persona o del posto e assegna il primo libero. Nelle officine nuove parte spento: il cliente prenota l'orario, il ponte lo assegna il programma. Il banco sceglie sempre
 - **Pagina prenotazioni ed email al cliente anche in inglese**: la pagina pubblica, la pagina del link *Gestisci* (sposta, annulla, Confermo / Non vengo) e le email al cliente si aprono nella lingua del browser del cliente, italiano o inglese; in alto un tasto *English* / *Italiano* cambia lingua. Per un link o una pagina del sito in una lingua fissa basta `?lang=en` (o `?lang=it`); nel plugin WordPress lo shortcode accetta `lang="en"`. La lingua resta sulla prenotazione e sulla lista d'attesa, così conferme, promemoria, modifiche, annullamenti e avvisi arrivano nella lingua in cui il cliente ha prenotato. I testi scritti dal titolare (servizi, descrizioni, domande, privacy, email personalizzate in *Notifiche*) restano come sono scritti; i testi standard delle email sono tradotti. Le pagine del personale restano in italiano. Le traduzioni sono in `locale/en/LC_MESSAGES/django.po`; dopo una modifica `python scripts/compile_messages.py` rigenera il file `.mo` senza bisogno di gettext
 - **Pagina prenotazioni più accessibile (WCAG 2.1 AA)**: la lingua della pagina è dichiarata, mentre si caricano gli orari il riquadro è segnato come occupato e il messaggio di stato viene letto dai lettori di schermo, il gruppo degli orari rimanda a quel messaggio, il servizio rimanda alla sua descrizione, il link *Gestisci* finale dice anche "Prenotazione confermata" e il riferimento. Campi, orari e allergeni hanno bordi con contrasto sufficiente sulla pagina pubblica e i colori di avviso e conferma (arancio e verde) sono un poco più scuri ovunque per superare il rapporto 4,5:1. Niente captcha, come prima: restano i limiti di frequenza e il ticket firmato
+- **Plugin WordPress 2.14.0**: lo shortcode accetta `lang="en"` per la pagina in inglese; per il resto stesso codice
+- **Non ancora in questa versione** (arrivano dopo): tavoli e piantina del ristorante, scelta sala o dehors e scelta del tipo di turni nella configurazione; più servizi nella stessa visita del salone; collegamento a due vie con Google Calendar via account Google (oggi si fa con il link .ics nei due sensi)
 
 ## 2.13.0 — email ai clienti con promemoria, logo dell'attività, dashboard che mostra chi viene, persone e marketing all'amministratore
 

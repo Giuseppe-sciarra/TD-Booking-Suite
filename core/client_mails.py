@@ -142,7 +142,7 @@ def send(tenant,booking,kind):
         v["link"]=f"{settings.PUBLIC_ORIGIN}/book/{tenant.slug}/";body=fill(conf["body"],v);links=[("Prenota",v["link"])]
     # 2.14.0: a distanza: the video-call link with the confirmation, the change and the reminders
     if booking.service.remote_url and kind in ("confirmed","accepted","moved","reminder","reminder2"):links.insert(0,("Entra nella videochiamata",booking.service.remote_url))
-    payload={"to":data["email"],"subject":" ".join(fill(conf["subject"],v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
+    payload={"to":data["email"],"subject":" ".join(fill(gettext(conf["subject"]),v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
         "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":links,"color":contrast_color(tenant.brand_color)})}
     if kind in ("confirmed","accepted","moved"):
         from .ics import ics
