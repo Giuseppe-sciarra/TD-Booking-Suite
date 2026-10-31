@@ -148,6 +148,15 @@ def client_marks(booking,full=""):
     return html
 
 @register.filter
+def iso_day(iso):
+    """2.14.0: a moment saved as ISO text in the sealed data ("2026-10-31T23:12:00+00:00") -> "01/11/2026", local day."""
+    from datetime import datetime
+    from django.utils import timezone
+    try:v=datetime.fromisoformat(str(iso))
+    except ValueError:return ""
+    return (timezone.localtime(v) if v.tzinfo else v).strftime("%d/%m/%Y")
+
+@register.filter
 def birthday(iso):
     """2.14.0: "1985-03-12" -> "12 marzo"."""
     from datetime import date
