@@ -120,6 +120,10 @@ class Tenant(models.Model):
     # 2.14.0: after this many absences the client's online bookings wait for the business's yes (booking.needs_request); 0 = never
     absences_request=models.PositiveSmallIntegerField(default=0)
     smtp=models.TextField(blank=True)
+    # 2.14.0: the reminders also by SMS (Twilio, Skebby or Aruba) or WhatsApp Cloud API, set by the agency (texts.py); encrypted,
+    # with its own daily budget as the emails
+    texts=models.TextField(blank=True)
+    texts_daily_limit=models.PositiveIntegerField(default=100)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
     logo=models.BinaryField(null=True,blank=True)
@@ -190,6 +194,13 @@ class Resource(Scoped):
     active=models.BooleanField(default=True)
     # 2.11.0: when its uploaded photo (ResourcePhoto) last changed, also the version in its address
     photo_at=models.DateTimeField(null=True,blank=True)
+    # 2.14.0: the private calendar feed of its bookings (feeds.py): the version in the signed link, 0 = off; with the
+    # client's name only when chosen. busy: an outside calendar (.ics address, encrypted) read as Occupato blocks
+    feed=models.PositiveIntegerField(default=0)
+    feed_names=models.BooleanField(default=False)
+    busy=models.TextField(blank=True)
+    busy_at=models.DateTimeField(null=True,blank=True)
+    busy_error=models.CharField(max_length=200,blank=True)
     def __str__(self):return self.name
     def photo_link(self,slug):
         """The uploaded photo, served by the program itself; otherwise the HTTPS address typed in, if any."""
@@ -300,7 +311,7 @@ class ShiftRule(Scoped):
     valid_until=models.DateField(null=True,blank=True)
     active=models.BooleanField(default=True)
     def __str__(self):return self.name
-BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso")]
+BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso"),("busy","Occupato")]
 class TimeBlock(Scoped):
     """2.14.0: time taken off the agenda without a booking: an operator's pause, training or meeting (Blocca orario),
     or a restaurant turn closed for one day (service). It takes the time as a booking does and is counted nowhere."""

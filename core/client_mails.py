@@ -193,6 +193,7 @@ def remind(now=None):
     from .models import Tenant,Booking
     from .middleware import operational
     from .tenancy import scope
+    from . import texts
     now=now or timezone.now();sent=0
     for tenant in Tenant.objects.iterator():
         if not operational(tenant):continue
@@ -206,7 +207,8 @@ def remind(now=None):
                 # the instructions are needed also by who books at the last minute
                 if kind=="arrival":rows=rows.filter(service__kind__in=("day","event")).exclude(service__instructions="")
                 for b in rows:
-                    if (kind=="arrival" or b.created<=b.start-window) and send(tenant,b,kind):
+                    # 2.14.0: the reminders also by SMS or WhatsApp, when the agency set one (texts.py)
+                    if (kind=="arrival" or b.created<=b.start-window) and (bool(send(tenant,b,kind))|bool(texts.remind(tenant,b,kind))):
                         sent+=1
                         if kind!="arrival":b.snapshot["asked"]=now.isoformat()  # Confermo / Non vengo went out: Da chiamare
                     b.snapshot[mark]=now.isoformat();b.save(update_fields=["snapshot"])

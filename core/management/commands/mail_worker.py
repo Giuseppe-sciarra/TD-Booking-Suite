@@ -5,7 +5,7 @@ class Command(BaseCommand):
     help="Elabora la coda email; --once per un solo ciclo."
     def add_arguments(self,p):p.add_argument("--once",action="store_true")
     def handle(self,*a,**kw):
-        last_refresh=last_remind=0
+        last_refresh=last_remind=last_busy=0
         while True:
             if time.time()-last_refresh>3600:
                 from django.core.management import call_command
@@ -19,6 +19,10 @@ class Command(BaseCommand):
                 if remind():self.stdout.write("Messaggi accodati ai clienti.")
                 if evening():self.stdout.write("Riepiloghi serali accodati.")
                 last_remind=time.time()
+            if time.time()-last_busy>300:
+                from core.feeds import refresh as busy  # 2.14.0: the operators' outside calendars, each every 15 minutes
+                if busy():self.stdout.write("Calendari esterni letti.")
+                last_busy=time.time()
             from core.waitlist import run as waitlist  # 2.14.0: places freed, offered to the waiting list; kept places that expire
             if waitlist():self.stdout.write("Avvisi della lista d'attesa accodati.")
             result=worker_once()
