@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core","0029_waitlist_client_card"),
+        ("core","0033_classes_recalls_remote"),
     ]
 
     operations = [

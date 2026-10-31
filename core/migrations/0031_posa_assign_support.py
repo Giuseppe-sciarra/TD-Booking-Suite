@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0029_waitlist_client_card"),
+        ("core", "0030_restaurant_pacing_venue_covers"),
     ]
 
     operations = [
