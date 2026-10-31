@@ -101,6 +101,35 @@ def smtp_view(request,slug):
     from .mailsetup import page,Target
     staff(request);tenant=request.tenant
     return page(request,Target(tenant),"Invio email","La casella da cui partono le conferme delle prenotazioni, le notifiche e gli inviti di "+tenant.name+": Gmail, Microsoft 365 o l'email del suo dominio. Se il marketing è attivo, serve anche per le campagne. Senza, si usa l'invio dell'agenzia. Le credenziali restano cifrate e gli utenti dell'attività non le vedono")
+def texts_view(request,slug):
+    """2.14.0: the reminders also by SMS (Twilio, Skebby) or WhatsApp Cloud API, set by the agency (texts.py)."""
+    from . import texts
+    staff(request);tenant=request.tenant;error=""
+    saved=texts.config(tenant)
+    if request.method=="POST":
+        fresh(request)
+        try:
+            if request.POST.get("action")=="test":
+                from .booking import normalize_phone
+                to=normalize_phone(request.POST.get("test_to",""))
+                if not to or not saved:raise ValueError("Salva prima un canale e scrivi un numero di cellulare.")
+                try:used=texts.deliver(tenant,texts.channel(saved),{"to":to,"body":f"Messaggio di prova di {tenant.name}: l'invio funziona.","params":["Prova","Servizio","domani alle 10:30",tenant.name]})
+                except texts.TextError as ex:raise ValueError("Il servizio ha rifiutato il messaggio: "+ex.code)
+                messages.success(request,"Prova inviata via "+("WhatsApp" if used=="whatsapp" else "SMS")+".")
+            else:
+                conf=texts.clean(request.POST,saved)
+                try:limit=int(request.POST.get("texts_daily_limit",""))
+                except ValueError:limit=-1
+                if not 0<=limit<=5000:raise ValueError("Messaggi al giorno: da 0 a 5000.")
+                with transaction.atomic():
+                    t=Tenant.objects.select_for_update().get(pk=tenant.pk)
+                    t.texts=encrypt(t,conf,"texts") if conf else "";t.texts_daily_limit=limit
+                    t.save(update_fields=["texts","texts_daily_limit"])
+                    audit(t,request.user,"texts.saved",channel=texts.channel(conf),limit=limit)
+                messages.success(request,"SMS e WhatsApp salvati.")
+            return redirect("texts",slug)
+        except ValueError as ex:error=str(ex)
+    return render(request,"texts.html",{"tenant":tenant,"conf":saved,"channel":texts.channel(saved),"providers":texts.PROVIDERS,"error":error})
 def team_admin(request):
     """2.13.0: who has access to a business and with which role is the agency's, like its type and locations:
     the owner does not even see the page."""

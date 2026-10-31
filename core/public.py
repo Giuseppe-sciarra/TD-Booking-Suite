@@ -367,6 +367,14 @@ def booking_ics(request,slug,token):
     response=HttpResponse(ics(obj.booking),content_type="text/calendar; charset=utf-8")
     response["Content-Disposition"]='attachment; filename="prenotazione.ics"'
     return response
+def operator_feed(request,slug,token):
+    """2.14.0: the private calendar of an operator, from its signed link (feeds.py); renewed or switched off, 404."""
+    from django.http import Http404,HttpResponse
+    from .feeds import opened,feed
+    throttle(request,"feed",120,3600)
+    key=opened(token);r=Resource.objects.filter(pk=key[0]).first() if key else None
+    if not r or not r.feed or r.feed!=key[1]:raise Http404("Calendario non disponibile.")
+    return HttpResponse(feed(request.tenant,r),content_type="text/calendar; charset=utf-8")
 @csrf_exempt
 @require_POST
 def unsubscribe_oneclick(request,slug,token):

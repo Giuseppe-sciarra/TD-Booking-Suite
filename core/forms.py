@@ -1,4 +1,4 @@
-import json,re,uuid
+import json,re,uuid,secrets
 from datetime import timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
@@ -98,9 +98,13 @@ class ResourceForm(ScopedForm):
     photo_remove=forms.BooleanField(required=False,label="Togli la foto")
     services=forms.ModelMultipleChoiceField(queryset=Service.objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     own_hours=forms.BooleanField(required=False,label="Ha giorni e orari suoi",help_text="Spento: lavora negli orari di apertura dell'attività. Le ferie e i giorni liberi si segnano in Chiusure e giorni speciali")
+    # 2.14.0: the calendars (feeds.py): its bookings to subscribe from a phone, an outside calendar read as Occupato
+    feed_on=forms.BooleanField(required=False,label="Calendario da aggiungere al telefono",help_text="Un link privato con le sue prenotazioni, servizio e orario, da aggiungere a Google Calendar, Outlook o iPhone come calendario a cui iscriversi")
+    feed_new=forms.BooleanField(required=False,label="Cambia il link del calendario",help_text="Il link di prima smette di funzionare: serve se è finito in mani sbagliate")
+    busy_url=forms.CharField(required=False,max_length=2000,label="Calendario esterno da segnare come occupato",help_text="L'indirizzo segreto .ics del suo calendario Google, Outlook o iCloud: ogni 15 minuti i suoi impegni diventano orari occupati, senza titoli. Vuoto: nessuno")
     class Meta:
-        model=Resource;fields=["name","location","capacity","description","photo_url","active"]
-        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva"}
+        model=Resource;fields=["name","location","capacity","description","photo_url","active","feed_names"]
+        labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva","feed_names":"Nel calendario anche il nome del cliente"}
         help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno"}
         widgets={"description":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
@@ -111,6 +115,14 @@ class ResourceForm(ScopedForm):
         new=self.is_new=self.instance._state.adding
         slug=getattr(self.tenant,"slug","")
         self.photo_preview=self.instance.photo_link(slug) if not new and self.instance.photo_at else ""
+        from .feeds import link,busy_url
+        r=self.instance;self.initial["feed_on"]=bool(r.feed);self.initial["busy_url"]=busy_url(r) if not new else ""
+        if r.feed:self.fields["feed_on"].help_text="Link privato da aggiungere al calendario del telefono: "+link(r,slug)
+        else:del self.fields["feed_new"]
+        if r.busy_error:self.fields["busy_url"].help_text="Ultima lettura non riuscita: "+r.busy_error
+        elif r.busy_at:
+            from zoneinfo import ZoneInfo
+            self.fields["busy_url"].help_text+=f". Letto il {r.busy_at.astimezone(ZoneInfo(self.tenant.timezone)):%d/%m alle %H:%M}"
         if not self.photo_preview:del self.fields["photo_remove"]
         bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
         f=self.fields["services"];f.queryset=bookable
@@ -175,6 +187,10 @@ class ResourceForm(ScopedForm):
         value=self.cleaned_data.get("photo_url","")
         if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
         return value
+    def clean_busy_url(self):
+        value=self.cleaned_data.get("busy_url","").strip()
+        if value and not re.match(r"(https|webcal)://[^\s/]+",value,re.I):raise ValidationError("Usa l'indirizzo che inizia con https:// o webcal://")
+        return value
     def clean_photo_file(self):
         upload=self.cleaned_data.get("photo_file")
         if not upload:return None
@@ -194,8 +210,18 @@ class ResourceForm(ScopedForm):
                 if a and a<d[f"end_{n}"] and d[f"start_{n}"]<b:raise ValidationError(f"{WEEKDAYS[n]}: le due fasce si sovrappongono.")
         return d
     def save(self,commit=True):
+        from .crypto import encrypt
+        from .models import TimeBlock
+        from .feeds import busy_url
+        d=self.cleaned_data;obj=self.instance;old=busy_url(obj) if obj.busy else ""
+        # a new random version: the links given before stop working, also those of a feed switched off and on again
+        if d.get("feed_on") and (not obj.feed or d.get("feed_new")):obj.feed=secrets.randbelow(2**31-1)+1
+        if not d.get("feed_on"):obj.feed=0
         obj=super().save(commit)
-        d=self.cleaned_data
+        if d.get("busy_url")!=old:
+            obj.busy=encrypt(self.tenant,d["busy_url"],"busy:"+str(obj.pk)) if d.get("busy_url") else "";obj.busy_at=None;obj.busy_error=""
+            obj.save(update_fields=["busy","busy_at","busy_error"])
+            TimeBlock.objects.filter(resource=obj,reason="busy").delete()
         # the links are kept, with their own duration and price: only the unticked go, the ticked are added
         ServiceResource.objects.filter(resource=obj).exclude(service__in=d.get("services",[])).delete()
         for s in d.get("services",[]):
@@ -547,7 +573,7 @@ class TimeBlockForm(ScopedForm):
         f=self.fields["resource"];f.queryset=resources;f.required=True;f.empty_label=None
         from .presets import units
         f.label=units(getattr(self.tenant,"business_type",""))[0]
-        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0]!="closed"]
+        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0] not in ("closed","busy")]  # busy: only from an outside calendar (feeds.py)
         if self.instance.pii:self.initial["note"]=self.instance.note
         self.order_fields(["resource","day","start","end","reason","note","weekly","until"])
     def clean(self):

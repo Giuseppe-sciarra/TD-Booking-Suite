@@ -11,7 +11,7 @@ def denied(request,message):
     from django.shortcuts import render
     return render(request,"403.html",{"exception":message},status=403)
 
-TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog"}
+TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi"}
 
 class GuardMiddleware:
     def __init__(self,get_response):self.get_response=get_response

@@ -167,7 +167,12 @@ def worker_once():
                     if contact.consent!="yes" or contact.suppressed:
                         delivery.status="skipped";delivery.last_code="not_eligible";delivery.save();counts["skipped"]+=1;continue
                 channel=delivery.channel
-                if channel=="telegram":
+                if channel in ("sms","whatsapp"):
+                    # 2.14.0: the texts wait for the morning and for room in their own daily budget
+                    from .texts import later,spent
+                    if wait:=later(tenant):delivery.next_attempt=wait;delivery.save(update_fields=["next_attempt"]);continue
+                    if spent(tenant)>=tenant.texts_daily_limit:continue
+                if channel!="email":
                     delivery.status="sending";delivery.claimed_at=timezone.now();delivery.attempts+=1;delivery.save()
                     payload=decrypt(tenant,delivery.payload,"delivery:"+str(delivery.pk))
                 else:
@@ -182,16 +187,19 @@ def worker_once():
                     payload=decrypt(tenant,delivery.payload,"delivery:"+str(delivery.pk))
                     # the logo goes with the message, not in every queued email
                     if "cid:logo" in payload.get("html","") and tenant.logo:payload["logo"]=bytes(tenant.logo)
-            if channel=="telegram":
+            if channel!="email":
                 from .notify import send_telegram,TelegramError
-                status="accepted";code="";retry=False
-                try:send_telegram(tenant,payload)
-                except TelegramError as ex:
+                from .texts import deliver,TextError
+                status="accepted";code="";retry=False;used=channel
+                try:
+                    if channel=="telegram":send_telegram(tenant,payload)
+                    else:used=deliver(tenant,channel,payload)
+                except (TelegramError,TextError) as ex:
                     code=ex.code;retry=ex.temporary and delivery.attempts<5;status="pending" if retry else "failed"
                 except Exception:status="unknown";code="delivery_uncertain"
                 with scope(tenant):
                     d=Delivery.objects.select_for_update().get(pk=delivery_id)
-                    d.status=status;d.last_code=code
+                    d.status=status;d.last_code=code;d.channel=used
                     if status=="accepted":d.sent_at=timezone.now()
                     if retry:d.next_attempt=timezone.now()+timedelta(minutes=2**d.attempts)
                     d.save()

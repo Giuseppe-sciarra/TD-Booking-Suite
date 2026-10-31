@@ -50,6 +50,7 @@ urlpatterns=[
  path("t/<slug:slug>/guida/",portal.guide,name="tenant_guide"),
  path("t/<slug:slug>/settings/",platform.tenant_settings,name="tenant_settings"),
  path("t/<slug:slug>/smtp/",platform.smtp_view,name="smtp"),
+ path("t/<slug:slug>/messaggi/",platform.texts_view,name="texts"),
  path("t/<slug:slug>/members/",platform.members_view,name="members"),
  path("t/<slug:slug>/support/",platform.support_view,name="support_grants"),
  path("t/<slug:slug>/notifications/",platform.notifications_view,name="notifications"),
@@ -94,4 +95,5 @@ urlpatterns=[
  path("action/<slug:slug>/<str:token>/sposta/",public.move_public,name="move_public"),
  path("action/<slug:slug>/<str:token>/sposta/orari/",public.move_public_slots,name="move_public_slots"),
  path("action/<slug:slug>/<str:token>/calendario.ics",public.booking_ics,name="booking_ics"),
+ path("action/<slug:slug>/feed/<str:token>/calendario.ics",public.operator_feed,name="operator_feed"),
 ]
