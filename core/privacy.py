@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,audit
 from .crypto import encrypt
-from .booking import BookingError
+from .booking import BookingError,OPEN
 
 ANON_CONTACT={"first_name":"Anonimo","last_name":"","email":"","phone":""}
 ANON_BOOKING={"first_name":"Anonimo","last_name":"","email":"","phone":"","notes":"","internal_notes":"","answers":{}}
@@ -65,7 +65,7 @@ def erase_contact(tenant,contact,actor):
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         contact=Contact.objects.select_for_update().get(pk=contact.pk)
-        if Booking.objects.filter(contact=contact,status="confirmed",end__gt=timezone.now()).exists():
+        if Booking.objects.filter(contact=contact,status__in=OPEN,end__gt=timezone.now()).exists():
             raise BookingError("Il cliente ha prenotazioni future: annullale o completale prima della cancellazione.")
         for b in Booking.objects.filter(contact=contact):_anonymize_booking(tenant,b)
         _anonymize_contact(tenant,contact,forget=True)

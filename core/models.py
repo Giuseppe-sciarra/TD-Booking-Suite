@@ -102,6 +102,8 @@ class Tenant(models.Model):
     # 2.14.0: the retention the worker runs once a day (privacy.run_retention): when it last went through, and why not
     retention_at=models.DateTimeField(null=True,blank=True)
     retention_error=models.CharField(max_length=200,blank=True)
+    # 2.14.0: Forza at the desk also for reception and operators, when the owner says so (permissions.effective)
+    force_all=models.BooleanField(default=False)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -204,6 +206,10 @@ class Service(Scoped):
     # 2.14.0: places by capacity: the last arrival, minutes before each opening window closes (lunch 12-15 with 60:
     # last at 14:00); 0 = until closing, as before
     last_arrival=models.PositiveIntegerField(default=0)
+    # 2.14.0: an online booking that waits for the business's yes (booking.needs_request); all off = confirmed at once
+    request_all=models.BooleanField(default=False)
+    request_above=models.PositiveIntegerField(default=0)  # more people than this; 0 = never
+    request_allergies=models.BooleanField(default=False)
     preset=models.CharField(max_length=40,blank=True)
     resource_label=models.CharField(max_length=60,blank=True)  # "Operatore", "Stanza", "Campo"...
     fields=models.JSONField(default=list,blank=True)
@@ -291,7 +297,10 @@ class Booking(Scoped):
     busy_start=models.DateTimeField()
     busy_end=models.DateTimeField()
     party=models.PositiveIntegerField(default=1)
-    status=models.CharField(max_length=15,default="confirmed",choices=[("confirmed","Confermata"),("completed","Completata"),("cancelled","Annullata"),("no_show","Assente")])
+    status=models.CharField(max_length=15,default="confirmed",choices=[("pending","In attesa di conferma"),("confirmed","Confermata"),("arrived","Arrivato"),("in_progress","In corso"),("completed","Completata"),("cancelled","Annullata"),("no_show","Assente")])
+    # 2.14.0: where it came from, and the tag of the link (?src=instagram); empty for the bookings made before
+    origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata")])
+    source=models.CharField(max_length=30,blank=True)
     pii=models.TextField()
     snapshot=models.JSONField(default=dict)
     request_key=models.CharField(max_length=64)

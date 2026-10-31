@@ -13,6 +13,7 @@ from django.db.models import Max
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from .models import Tenant,User,Membership,Booking,Contact,Delivery,Location,Service,ClientProfile,audit
+from .booking import MOVABLE
 from .crypto import encrypt,decrypt,login_index
 from .tenancy import scope
 from .identity import fresh
@@ -72,7 +73,7 @@ def usage(t,now=None):
     with scope(t):
         b=Booking.objects
         u={"bookings_30":b.filter(created__gte=since).count(),"bookings_prev":b.filter(created__gte=before,created__lt=since).count(),
-           "upcoming":b.filter(status="confirmed",start__gte=now).count(),"bookings_total":b.count(),
+           "upcoming":b.filter(status__in=MOVABLE,start__gte=now).count(),"bookings_total":b.count(),
            "last_booking":b.aggregate(x=Max("created"))["x"],"contacts":Contact.objects.count(),
            "sent_30":Delivery.objects.filter(status="accepted",sent_at__gte=since).count(),
            "queued":Delivery.objects.filter(status="pending").count(),"issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),

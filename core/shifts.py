@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import ShiftRule,Occurrence,Booking,Tenant
 from .calendar import local_datetime
-from .booking import BookingError
+from .booking import BookingError,OPEN
 def materialize(rule):
     """Create recurring seating occurrences, never rewrite occupied turns."""
     tenant=rule.tenant
@@ -12,7 +12,7 @@ def materialize(rule):
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         today=timezone.now().astimezone(ZoneInfo(tenant.timezone)).date()
         existing=Occurrence.objects.filter(rule=rule,start__gte=timezone.now())
-        booked=set(Booking.objects.filter(occurrence__in=existing,status="confirmed").values_list("occurrence_id",flat=True))
+        booked=set(Booking.objects.filter(occurrence__in=existing,status__in=OPEN).values_list("occurrence_id",flat=True))
         if booked:
             raise BookingError("Questo turno ha prenotazioni future. Gestiscile prima di modificare la regola; puoi creare un nuovo turno per un periodo successivo.")
         existing.update(active=False)

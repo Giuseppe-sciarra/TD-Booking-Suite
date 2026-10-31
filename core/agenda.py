@@ -15,7 +15,7 @@ from .permissions import can,shown,visible_bookings
 from .presets import units
 
 STEP=15  # minutes in a row of the grid
-SHOWN=("confirmed","completed","no_show")
+SHOWN=("pending","confirmed","arrived","in_progress","completed","no_show")  # 2.14.0: a request holds its place, shown as such
 COLORS=8  # operator colours in the stylesheet: op-1 ... op-8
 MONTHS=["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"]
 

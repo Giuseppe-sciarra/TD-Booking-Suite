@@ -6,7 +6,7 @@ def role_label(role):
  return label(role)
 @register.filter
 def status_name(v):
- return {"confirmed":"Confermata","completed":"Completata","cancelled":"Annullata","no_show":"Assente","none":"Non richiesto","pending":"In attesa","yes":"Confermato","revoked":"Revocato","draft":"Bozza","queued":"In coda","paused":"In pausa","accepted":"Accettata da SMTP","failed":"Fallita","unknown":"Esito incerto","skipped":"Esclusa","sending":"Invio in corso","active":"Attivo","trial":"Prova","suspended":"Sospeso"}.get(v,v)
+ return {"confirmed":"Confermata","completed":"Completata","cancelled":"Annullata","no_show":"Assente","arrived":"Arrivato","in_progress":"In corso","none":"Non richiesto","pending":"In attesa","yes":"Confermato","revoked":"Revocato","draft":"Bozza","queued":"In coda","paused":"In pausa","accepted":"Accettata da SMTP","failed":"Fallita","unknown":"Esito incerto","skipped":"Esclusa","sending":"Invio in corso","active":"Attivo","trial":"Prova","suspended":"Sospeso"}.get(v,v)
 @register.filter
 def row_label(o):
  if hasattr(o,"name"):return o.name
@@ -95,3 +95,20 @@ ICONS.update({
 def icon(name):
     from django.utils.safestring import mark_safe
     return mark_safe(f'<svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">{ICONS.get(name) or ICONS["sliders"]}</svg>')
+
+# 2.14.0: where a booking came from, as a small icon with its name (and the tag of the link, ?src=instagram)
+ORIGIN_ICONS={"public":"globe","wordpress":"plug","desk":"shop","walkin":"user","import":"archive"}
+@register.filter
+def origin_icon(booking,full=""):
+    """full: the name written next to the icon (the booking's page), otherwise only for screen readers and on hover."""
+    from django.utils.html import format_html
+    from django.utils.safestring import mark_safe
+    if not booking.origin:return ""
+    name=booking.get_origin_display()+(" · "+booking.source if booking.source else "")
+    return format_html('<span class="origin" title="{}"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">{}</svg><span class="{}">{}</span></span>',name,mark_safe(ICONS[ORIGIN_ICONS[booking.origin]]),"" if full else "sr-only",name)
+
+@register.filter
+def reason_label(code):
+    """2.14.0: why a booking was cancelled, in words."""
+    from core.booking import REASON_LABELS
+    return REASON_LABELS.get(code,"")

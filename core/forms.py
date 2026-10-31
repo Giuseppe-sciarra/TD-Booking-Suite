@@ -12,13 +12,17 @@ LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nom
  "cancel_cutoff_minutes":"Annullamento online fino a (minuti prima)","resource_label":"Come si chiamano le risorse",
  "service":"Servizio","resource":"Risorsa","purpose":"A cosa si applica","weekday":"Giorno","start":"Inizio","end":"Fine","valid_from":"Valido dal","valid_until":"Valido fino al",
  "last_arrival":"Ultimo arrivo (minuti prima della chiusura)",
+ "request_all":"Su richiesta: confermate voi ogni prenotazione online","request_above":"Su richiesta oltre quante persone","request_allergies":"Su richiesta se il cliente segnala intolleranze o allergie",
  "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato","price":"Prezzo (€)"}
 # 2.6.0: one plain line under every field, with an example
 HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 19:00, 19:30",
  "buffer_before":"Minuti tenuti liberi prima di ogni prenotazione, per esempio per preparare la cabina. Di solito 0",
  "buffer_after":"Minuti tenuti liberi dopo ogni prenotazione, per esempio per riordinare. Di solito 0",
- "lead_minutes":"Quanto prima si deve prenotare online: 60 vuol dire almeno un'ora prima",
- "horizon_days":"Per esempio 60: si prenota al massimo due mesi avanti",
+ "lead_minutes":"Quanto prima si deve prenotare online: 60 vuol dire almeno un'ora prima. Al banco non conta",
+ "horizon_days":"Per esempio 60: online si prenota al massimo due mesi avanti. Al banco non conta",
+ "request_all":"Spento, di solito: la prenotazione online è confermata subito. Acceso: aspetta la vostra conferma, tiene intanto il posto e la accettate o rifiutate dalla Dashboard; il cliente riceve un'email a ogni passo",
+ "request_above":"Per esempio 8: i gruppi più grandi aspettano la vostra conferma, gli altri sono confermati subito. 0 vuol dire mai",
+ "request_allergies":"La richiesta aspetta la vostra conferma, così la cucina può dire se è in grado di accogliere il cliente",
  "cancel_cutoff_minutes":"Fino a quando il cliente annulla da solo dal link nell'email. 0 vuol dire fino all'inizio, 1440 fino al giorno prima",
  "resource_label":"La parola che vede il cliente: Operatore, Cabina, Camera, Campo",
  "description":"Facoltativa: compare sotto il nome nella pagina prenotazioni",
@@ -43,7 +47,7 @@ KIND_HELP={"turnover":{"capacity":"Spento, di solito al ristorante: il cliente s
  "capacity":{"capacity":"Il tetto massimo, per esempio 40. Senza turni sono i coperti di ogni pranzo e di ogni cena; a turni sono i posti occupati nello stesso momento",
   "shift":"Il tetto massimo anche se due turni si sovrappongono. I coperti di ogni turno si scrivono in Turni del ristorante",
   "day":"Conta solo se non usi camere o mezzi con il loro nome: in quel caso conta la disponibilità di ciascuno"},
- "max_party":{"capacity":"Per esempio 12: per gruppi più grandi il cliente ti chiama","shift":"Per esempio 12: per gruppi più grandi il cliente ti chiama","event":"Quanti posti può prendere una persona sola","day":"Ospiti massimi in una prenotazione"}}
+ "max_party":{"capacity":"Per esempio 12: per gruppi più grandi il cliente ti chiama, e al banco li prenoti tu","shift":"Per esempio 12: per gruppi più grandi il cliente ti chiama, e al banco li prenoti tu","event":"Quanti posti può prendere una persona sola","day":"Ospiti massimi in una prenotazione"}}
 
 def only_one(field,queryset):
     """With a single choice (one location, one service) the field is filled in and not shown."""
@@ -212,7 +216,7 @@ class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","resource_label","fields","active"]
+        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
@@ -246,6 +250,9 @@ class ServiceForm(ScopedForm):
             self.fields.pop("kind")
             for name,kinds in FIELD_KINDS.items():
                 if kind not in kinds:self.fields.pop(name)
+        # 2.14.0: allergies make a request only where the booking form asks about them
+        if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
+        self.fields["request_above"].required=False
         for name in KIND_LABELS:
             if name in self.fields and kind in KIND_LABELS[name]:self.fields[name].label=KIND_LABELS[name][kind]
         for name in KIND_HELP:
@@ -265,7 +272,8 @@ class ServiceForm(ScopedForm):
         d=super().clean()
         kind=d.get("kind") or self.kind
         if d.get("price") is not None and not 0<=d["price"]<=100000:self.add_error("price","Prezzo tra 0 e 100.000 €.")
-        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600)}
+        if d.get("request_above") is None:d["request_above"]=0
+        bounds={"duration":(5,1440),"interval":(5,240),"capacity":(1,10000),"max_party":(1,1000),"buffer_before":(0,1440),"buffer_after":(0,1440),"lead_minutes":(0,525600),"horizon_days":(1,730),"max_days":(1,366),"min_days":(0,366),"last_arrival":(0,1440),"cancel_cutoff_minutes":(0,525600),"request_above":(0,1000)}
         for key,(low,high) in bounds.items():
             if key in d and d[key] is not None and not low<=d[key]<=high:self.add_error(key,f"Valore tra {low} e {high}.")
         if kind=="resource" and "resources" in self.fields and not d.get("resources"):self.add_error("resources","Seleziona almeno una voce: se l'elenco è vuoto, creala prima nella pagina accanto a Servizi.")

@@ -10,6 +10,10 @@ from django.db import transaction
 from django.utils import timezone
 
 KINDS=[("confirmed","Conferma","Appena la prenotazione è fatta, online o da voi"),
+       # 2.14.0: the services you confirm by hand (Servizi, Su richiesta): the request, then your yes or no
+       ("requested","Richiesta ricevuta","Quando una prenotazione online aspetta la vostra conferma"),
+       ("accepted","Richiesta accettata","Quando confermate una richiesta"),
+       ("rejected","Richiesta rifiutata","Quando rifiutate una richiesta"),
        ("moved","Modifica","Quando spostate giorno, orario o servizio"),
        ("cancelled","Annullamento","Quando la prenotazione viene annullata, da voi o dal cliente"),
        ("reminder","Promemoria","Prima dell'appuntamento, perché non se ne dimentichi")]
@@ -17,6 +21,9 @@ DEFAULTS={
  "confirmed":{"on":True,"subject":"Prenotazione confermata · {attivita}","body":"La prenotazione è confermata.\n{servizio}\n{quando}\nGestisci o annulla: {link}"},
  "moved":{"on":True,"subject":"Prenotazione aggiornata · {attivita}","body":"Nuovo orario: {quando}.\nContatta l'attività per informazioni."},
  "cancelled":{"on":True,"subject":"Prenotazione annullata · {attivita}","body":"La prenotazione è stata annullata. Contatta l'attività per prenotare nuovamente."},
+ "requested":{"on":True,"subject":"Richiesta ricevuta · {attivita}","body":"Abbiamo ricevuto la tua richiesta: {servizio}, {quando}.\nTi scriviamo appena la confermiamo. Fino ad allora il posto resta tenuto per te.\nPer annullarla: {link}"},
+ "accepted":{"on":True,"subject":"Prenotazione confermata · {attivita}","body":"La tua richiesta è confermata.\n{servizio}\n{quando}\nGestisci o annulla: {link}"},
+ "rejected":{"on":True,"subject":"Richiesta non confermata · {attivita}","body":"Ci dispiace, non possiamo confermare la tua richiesta: {servizio}, {quando}.\nContatta l'attività per trovare un'altra soluzione."},
  "reminder":{"on":False,"hours":24,"subject":"Promemoria · {attivita}","body":"Ciao {nome},\nti ricordiamo la prenotazione: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
 }
 HOURS=[2,3,6,12,24,48,72]

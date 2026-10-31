@@ -120,7 +120,8 @@ def build_catalog(tenant,preset,locations):
             units.append(Resource.objects.create(tenant=tenant,location=loc,name=f"{label} {n}",capacity=p["defaults"].get("max_party",0) if spec.get("day") else 0))
         created["resources"]+=len(units)
         for name,changes in spec["services"]:
-            s=Service.objects.create(tenant=tenant,location=loc,name=name,preset=preset,lead_minutes=0,**{**base,**changes})
+            # 2.14.0: appointments are booked online at least an hour ahead, now that the desk has its own rules
+            s=Service.objects.create(tenant=tenant,location=loc,name=name,preset=preset,lead_minutes=60 if {**base,**changes}["kind"]=="resource" else 0,**{**base,**changes})
             created["services"]+=1
             for u in units:ServiceResource.objects.create(tenant=tenant,service=s,resource=u)
             ev=spec.get("events")

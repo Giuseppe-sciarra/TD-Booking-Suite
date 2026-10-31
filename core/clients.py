@@ -6,7 +6,7 @@ Contact data stay encrypted like the rest: the search decrypts in memory, in the
 from collections import Counter
 from django.db.models import Count,Max,Q
 from django.utils import timezone
-from .booking import BookingError,normalize_phone
+from .booking import BookingError,normalize_phone,ACCEPTED,MOVABLE
 from .crypto import encrypt,index,tenant_key
 from .models import Contact,Booking,Treatment
 from .prices import spent
@@ -108,7 +108,7 @@ def set_discount(contact,kind,value):
     contact.discount_kind=kind;contact.discount=amount.quantize(Decimal("0.01"))
     contact.save(update_fields=["discount_kind","discount"])
     changed=0
-    for b in Booking.objects.filter(contact=contact,status="confirmed",start__gt=timezone.now()).select_related("service","option","resource"):
+    for b in Booking.objects.filter(contact=contact,status__in=MOVABLE,start__gt=timezone.now()).select_related("service","option","resource"):
         before=dict(b.snapshot);b.contact=contact;stamp(b)
         if b.snapshot!=before:b.save(update_fields=["snapshot"]);changed+=1
     return changed
@@ -131,8 +131,8 @@ def history(contact,visible):
     """All the bookings of a client the user may see, newest first, and the numbers of the card."""
     rows=list(visible.filter(contact=contact).select_related("service","resource","option","location","tenant").order_by("-start"))
     now=timezone.now()
-    done=[b for b in rows if b.start<=now and b.status in ("completed","confirmed")]
-    upcoming=sorted([b for b in rows if b.start>now and b.status=="confirmed"],key=lambda b:b.start)
+    done=[b for b in rows if b.start<=now and b.status in ACCEPTED]
+    upcoming=sorted([b for b in rows if b.start>now and b.status in MOVABLE],key=lambda b:b.start)
     services=Counter(b.snapshot.get("service") or b.service.name for b in done)
     staff=Counter(b.snapshot.get("resource") for b in done if b.snapshot.get("resource"))
     stats={"visits":len(done),"last":done[0].start if done else None,"next":upcoming[0] if upcoming else None,
@@ -181,6 +181,6 @@ def visit_counts(contacts):
     """Visits and last visit for a page of the client list."""
     now=timezone.now()
     rows=Booking.objects.filter(contact__in=contacts).values("contact_id").annotate(
-        visits=Count("id",filter=Q(start__lte=now,status__in=("completed","confirmed"))),last=Max("start",filter=Q(start__lte=now,status__in=("completed","confirmed"))),
-        next=Count("id",filter=Q(start__gt=now,status="confirmed")))
+        visits=Count("id",filter=Q(start__lte=now,status__in=ACCEPTED)),last=Max("start",filter=Q(start__lte=now,status__in=ACCEPTED)),
+        next=Count("id",filter=Q(start__gt=now,status__in=MOVABLE)))
     return {r["contact_id"]:r for r in rows}

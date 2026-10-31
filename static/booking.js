@@ -2,7 +2,10 @@
 (() => {
  const $=id=>document.getElementById(id),config=JSON.parse($("widget-config").textContent);
  const form=$("booking-form"),service=$("service"),option=$("option"),resource=$("resource"),party=$("party"),day=$("date"),departure=$("departure"),submit=$("booking-submit");
- let selected=null,controller=null,sequence=0,busy=false,requestKey=crypto.randomUUID().replace(/-/g,"");
+ let selected=null,controller=null,sequence=0,busy=false,requestKey=crypto.randomUUID().replace(/-/g,""),forceOk=false;
+ // 2.14.0: Forza at the desk: the time typed in for appointments and places, every date of the day for events
+ const force=$("force"),forceAt=$("force-at"),label=submit.textContent;
+ const forcing=()=>!!force?.checked&&current()?.kind!=="day",typed=()=>!config.walkin&&forcing()&&["resource","capacity"].includes(current()?.kind);
  const select=(el,items,label)=>{el.replaceChildren();if(label)el.add(new Option(label,""));items.forEach(v=>el.add(new Option(v.name,v.id)));};
  const current=()=>config.services.find(s=>s.id===service.value);
  // one service: nothing to choose. The same service in several locations: choose the location.
@@ -47,9 +50,10 @@
   pickers();
   $("option-wrap").hidden=!s?.options.length;$("resource-wrap").hidden=!(s?.kind==="resource"||(s?.kind==="day"&&s?.resources.length));
   $("resource-label").textContent=s?.resource_label||(s?.kind==="day"?"Unità / camera":"Operatore / risorsa");$("departure-wrap").hidden=s?.kind!=="day";departure.required=s?.kind==="day";
-  party.max=s?.max_party||1;party.value=Math.min(Number(party.value)||1,Number(party.max));
+  // 2.14.0: the desk also books a group bigger than the online limit, within the places
+  const most=s?.max_party||1;party.max=config.internal&&most>1?1000:most;party.value=Math.min(Number(party.value)||1,Number(party.max));
   // one person per booking: no question to ask. Otherwise call it by what it counts
-  $("party-wrap").hidden=Number(party.max)<=1;$("party-label").textContent=["shift","capacity","event"].includes(s?.kind)?"Persone":s?.kind==="day"?"Ospiti":"Persone / quantità";
+  $("party-wrap").hidden=most<=1;$("party-label").textContent=["shift","capacity","event"].includes(s?.kind)?"Persone":s?.kind==="day"?"Ospiti":"Persone / quantità";
   $("service-description").textContent=s?.description||"";
   // nothing left to choose in the first block: skip it
   // the choices above the row only when there is something to choose; the row holds who, how many and when
@@ -58,11 +62,18 @@
  }
  async function loadSlots(){
   const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();
-  const s=current();
+  const s=current();forceOk=false;submit.textContent=label;
+  if(force){$("force-time").hidden=!typed();force.closest(".force-box").hidden=s?.kind==="day";day.min=forcing()?"":config.today;}
+  // 2.14.0: a client without appointment starts now: nothing to choose but the service and with whom
+  if(config.walkin){if(s){selected={start:""};submit.disabled=busy;}return;}
+  if(typed()){
+   if(day.value&&forceAt.value){selected={start:day.value+"T"+forceAt.value,resource:"",occurrence:""};submit.disabled=busy;}
+   $("slot-status").textContent="Scrivi giorno e ora: quando confermi il programma dice cosa stai superando.";return;
+  }
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=$("service-label").textContent==="Sede"?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.";return;}
   $("slot-status").textContent="Controllo delle disponibilità…";
   try{
-   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value});
+   const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,...(forcing()?{forza:"1"}:{})});
    const response=await fetch(config.slots+"?"+query,{signal:controller.signal,credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error("Impossibile verificare le disponibilità. Riprova.");}
    if(seq!==sequence)return;
@@ -76,7 +87,7 @@
     const sub=document.createElement("small");
     sub.textContent=units?slot.resource_name+(slot.capacity?" · fino a "+slot.capacity+" ospiti":""):(resource.value?slot.resource_name:"")||(s.kind==="capacity"&&s.turnover===false?"":"fino alle "+format.format(new Date(slot.end)));if(sub.textContent)button.append(sub);
     if(units&&slot.description){const d=document.createElement("small");d.textContent=slot.description;button.append(d);}
-    button.addEventListener("click",()=>{selected=slot;$("slots").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));submit.disabled=busy;});
+    button.addEventListener("click",()=>{selected=slot;forceOk=false;submit.textContent=label;$("slots").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));submit.disabled=busy;});
     $("slots").append(button);
    }
    // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
@@ -85,7 +96,7 @@
   }catch(e){if(e.name!=="AbortError"&&seq===sequence)$("slot-status").textContent=e.message;}
  }
  service.addEventListener("change",changeService);
- [option,resource,party,day,departure].forEach(el=>el.addEventListener("change",loadSlots));
+ [option,resource,party,day,departure,force,forceAt].forEach(el=>el?.addEventListener("change",loadSlots));
  // 2.12.0: with operators' photos, one face each to choose with whom; the select stays, for the keyboard and the logic
  function pickers(){
   const box=$("resource-pick"),s=current();if(!box)return;mark();
@@ -106,13 +117,15 @@
  resource.addEventListener("change",mark);
  form.addEventListener("submit",async e=>{
   e.preventDefault();if(busy||!selected||!form.reportValidity())return;
-  busy=true;submit.disabled=true;$("booking-error").hidden=true;
+  busy=true;submit.disabled=true;$("booking-error").hidden=true;$("booking-error").className="notice error";
   try{
    const s=current(),answers={};
    document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
    const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value};
    if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
+   if(config.walkin)payload.walkin=true;
+   if(forcing()){payload.force=true;if(forceOk)payload.force_ok=true;}
    // Persist only a fingerprint and random idempotency key, never personal fields.
    let cacheKey="";
    try{
@@ -125,11 +138,15 @@
    payload.request_key=requestKey;
    const response=await fetch(config.submit,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":form.querySelector("[name=csrfmiddlewaretoken]").value,"X-TDBS-Ticket":config.ticket},body:JSON.stringify(payload),credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error("Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.");}
+   // 2.14.0: Forza says what is being exceeded; a second click confirms it
+   if(response.status===409&&result.force){forceOk=true;submit.textContent="Conferma e forza";$("booking-error").className="notice warning";throw Error(result.error);}
    if(!response.ok)throw Error(result.error||"Prenotazione non completata.");
    // done: the same data typed again later is a new booking, not this one (it may have been cancelled meanwhile)
    try{if(cacheKey)sessionStorage.removeItem(cacheKey);}catch{}
    if(result.redirect){location.assign(result.redirect);return;}
    form.hidden=true;$("booking-success").hidden=false;$("booking-reference").textContent="Riferimento: "+result.reference;
+   // 2.14.0: a request the business confirms later
+   if(result.pending){$("booking-done").textContent="Richiesta inviata";$("booking-pending").hidden=false;$("cancel-link").textContent="Gestisci / annulla la richiesta";}
    $("cancel-link").href=result.cancel;$("booking-success").scrollIntoView({block:"center"});$("cancel-link").focus();
   }catch(e){$("booking-error").textContent=e.message;$("booking-error").hidden=false;}
   finally{busy=false;submit.disabled=!selected;}

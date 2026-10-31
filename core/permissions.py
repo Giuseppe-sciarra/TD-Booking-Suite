@@ -22,11 +22,13 @@ PERMS={
  "users.manage":"Gestire utenti e accessi di assistenza",
  "audit.read":"Leggere il registro attività",
  "privacy.manage":"Gestire richieste privacy (accesso e cancellazione dei dati)",
+ # 2.14.0: at the desk, a booking outside hours, over the places, overlapping or in the past (booking.bounds)
+ "booking.force":"Forzare orari e posti al banco",
 }
 ALL=frozenset(PERMS)
 ROLES={
  "owner":("Amministratore",ALL),
- "manager":("Amministratore sede",frozenset({"booking.read","booking.write","booking.cancel","pii.read","notes.read","contacts.read","export.operational"})),
+ "manager":("Amministratore sede",frozenset({"booking.read","booking.write","booking.cancel","booking.force","pii.read","notes.read","contacts.read","export.operational"})),
  "reception":("Reception",frozenset({"booking.read","booking.write","booking.cancel","pii.read","notes.read","contacts.read"})),
  "operator":("Operatore sede",frozenset({"booking.read","booking.write","pii.read","notes.read"})),
  "marketing":("Marketing",frozenset({"contacts.read","pii.read","campaign.manage","export.marketing"})),
@@ -50,6 +52,8 @@ def effective(request):
         if m.can_schedule and m.role not in ("viewer","marketing"):perms.add("catalog.write")
         # the agency configures every business, also one it works in with a lower role
         if getattr(getattr(request,"user",None),"is_staff",False):perms.add("catalog.write")
+        # 2.14.0: the owner lets everyone who books at the desk use Forza too (Tenant.force_all)
+        if "booking.write" in perms and getattr(getattr(request,"tenant",None),"force_all",False):perms.add("booking.force")
     elif grant:perms=set(SUPPORT)
     elif getattr(getattr(request,"user",None),"is_staff",False):
         # 2.6.0: the agency configures every business (locations, hours, services): no customer data involved
@@ -102,7 +106,7 @@ def shown(request,data):
         data["answers"]={};data["masked"]=True
     if not can(request,"notes.read"):
         # allergies are health data: they go with the notes (2.8.0)
-        data.pop("notes",None);data.pop("internal_notes",None);data.pop("allergies",None);data["notes_hidden"]=True
+        data.pop("notes",None);data.pop("internal_notes",None);data.pop("allergies",None);data.pop("cancel_note",None);data["notes_hidden"]=True
     data.pop("cancel_token",None)
     return data
 

@@ -12,17 +12,21 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
 from .identity import throttle,json_body,page_origin
-from .booking import available,create_booking,move_booking,change_status,BookingError,choice,bounds,has_units,free_units
+from .booking import available,create_booking,move_booking,change_status,BookingError,ForceWarning,choice,bounds,has_units,free_units,MOVABLE
 from .calendar import local_datetime
 from .crypto import token_hash,encrypt
 from .middleware import require_role
-from .permissions import visible_bookings,check_new_booking
+from .permissions import visible_bookings,check_new_booking,can
 from .privacy import record
 
 def human_minutes(m):
     if m%1440==0:return f"{m//1440} giorni" if m>=2880 else "1 giorno"
     if m%60==0:return f"{m//60} ore" if m>=120 else "1 ora"
     return f"{m} minuti"
+def source_tag(value):
+    """2.14.0: the tag of a link per channel (?src=instagram): a few plain characters, otherwise none."""
+    value=str(value or "").strip().lower()
+    return value if re.fullmatch(r"[a-z0-9_-]{1,30}",value) else ""
 def widget_data(request,booking=None):
     tenant=request.tenant
     services=[]
@@ -51,8 +55,10 @@ def widget_data(request,booking=None):
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     from .presets import service_word
     result={"service_label":service_word(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
-        "ticket":signing.dumps({"tenant":str(tenant.pk)},salt="public-booking"),"internal":internal,
-        "allergens":tenant.asked_allergens}
+        # 2.14.0: where the page was opened, signed with the ticket, so the booking keeps its channel.
+        # shortcut: the WordPress plugin is told apart by the theme= its frame always adds; a link with theme= counts as WordPress
+        "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src"))},salt="public-booking"),"internal":internal,
+        "allergens":tenant.asked_allergens,"can_force":internal and can(request,"booking.force")}
     if booking:
         result["submit"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-api/"
         result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party}
@@ -102,6 +108,10 @@ def manual_booking(request,slug):
     except ValueError:pass
     if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d",request.GET.get("ora","")):prefill["time"]=request.GET["ora"]
     if prefill:widget["prefill"]=prefill
+    # 2.14.0: a client without appointment, now: appointments and places only (an event or a stay has its date)
+    if request.GET.get("adesso"):
+        widget["walkin"]=True;widget["services"]=[x for x in widget["services"] if x["kind"] in ("resource","capacity")]
+        return render(request,"booking.html",{"widget":widget,"walkin":True,"intro":"Chi entra adesso: servizio e con chi. Nome e recapiti sono facoltativi"})
     return render(request,"booking.html",{"widget":widget,"intro":INTRO[first_step(widget)].replace("il servizio","il "+widget["service_label"].lower())})
 @json_denied
 def slots_api(request,slug,booking_id=None):
@@ -110,7 +120,9 @@ def slots_api(request,slug,booking_id=None):
     if booking_id is not None:require_role(request,write=True)
     try:
         # The excluded booking is resolved server-side inside the tenant scope.
-        if booking_id is not None:exclude=choice(visible_bookings(request,Booking.objects.all()),booking_id,status="confirmed").pk
+        if booking_id is not None:exclude=choice(visible_bookings(request,Booking.objects.all()),booking_id,status__in=MOVABLE).pk
+        # 2.14.0: in the portal the desk's rules; Forza lists every date of an event of the day, also full
+        desk=request.path.startswith("/t/");force=desk and request.GET.get("forza")=="1" and can(request,"booking.force")
         day=date.fromisoformat(request.GET.get("date",""))
         service=choice(Service,request.GET.get("service"),active=True,location__active=True)
         if service.kind=="day":
@@ -120,17 +132,17 @@ def slots_api(request,slug,booking_id=None):
             if has_units(service):
                 from .booking import details,integer
                 _,unit,_=details(service,None,request.GET.get("resource") or None)
-                party=integer(request.GET.get("party",1),"Quantità",1,service.max_party)
-                start,end,bs,be,*_=bounds(request.tenant,service,{**data,"resource":str(unit.pk) if unit else ""},exclude=exclude)
+                party=integer(request.GET.get("party",1),"Quantità",1,1000 if desk else service.max_party)
+                start,end,bs,be,*_=bounds(request.tenant,service,{**data,"resource":str(unit.pk) if unit else ""},exclude=exclude,desk=desk)
                 units=free_units(request.tenant,service,bs,be,party,unit,exclude)
                 tz=ZoneInfo(request.tenant.timezone)
                 slots=[{"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(u.pk),"resource_name":u.name,
                     "description":u.description,"photo":u.photo_link(request.tenant.slug),"capacity":u.capacity,"occurrence":""} for u in units]
             else:
-                start,end,*_=bounds(request.tenant,service,data,exclude=exclude)
+                start,end,*_=bounds(request.tenant,service,data,exclude=exclude,desk=desk)
                 slots=[{"start":start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),"end":end.isoformat(),"resource":"","resource_name":"","occurrence":""}]
         else:
-            slots=available(request.tenant,service.pk,day,request.GET.get("option"),request.GET.get("resource"),request.GET.get("party",1),exclude=exclude,allowed=staff_resources(request))
+            slots=available(request.tenant,service.pk,day,request.GET.get("option"),request.GET.get("resource"),request.GET.get("party",1),exclude=exclude,allowed=staff_resources(request),desk=desk,force=force)
         return JsonResponse({"slots":slots})
     except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or "Richiesta non valida."},status=400)
 @csrf_exempt
@@ -146,27 +158,34 @@ def public_submit(request,slug):
         if ticket.get("tenant")!=str(request.tenant.pk):raise PermissionDenied
     except signing.BadSignature:return JsonResponse({"error":"Pagina scaduta. Ricarica e riprova."},status=403)
     throttle(request,"booking:"+str(request.tenant.pk),20,3600)
-    return submit(request,actor=None)
+    return submit(request,actor=None,ticket=ticket)
 @require_POST
 @json_denied
 def internal_submit(request,slug):
     require_role(request,write=True)
     try:
         data=json_body(request)
+        check_force(request,data)
         check_new_booking(request,choice(Service,data.get("service"),active=True),data.get("resource"))
     except (ValueError,ValidationError,TypeError,AttributeError):pass  # submit() reports the validation error
     return submit(request,actor=request.user)
-def submit(request,actor):
+def check_force(request,data):
+    if isinstance(data,dict) and data.get("force") is True and not can(request,"booking.force"):raise PermissionDenied("Il tuo ruolo non consente di forzare: chiedi al titolare.")
+def warned(ex):
+    """2.14.0: Forza: what is being exceeded, for the desk to confirm (the form sends force_ok)."""
+    return JsonResponse({"error":str(ex),"force":True},status=409)
+def submit(request,actor,ticket=None):
     try:
         data=json_body(request)
         if actor is None:throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
-        booking,created=create_booking(request.tenant,data,actor)
+        booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src"))} if ticket else {}))
         if actor:return JsonResponse({"redirect":f"/t/{request.tenant.slug}/bookings/{booking.pk}/"})
-        return JsonResponse({"ok":True,"created":created,"reference":str(booking.pk)[:8],"cancel":f"/action/{request.tenant.slug}/{booking.data['cancel_token']}/"},status=201 if created else 200)
+        return JsonResponse({"ok":True,"created":created,"pending":booking.status=="pending","reference":str(booking.pk)[:8],"cancel":f"/action/{request.tenant.slug}/{booking.data['cancel_token']}/"},status=201 if created else 200)
+    except ForceWarning as ex:return warned(ex)
     except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or "Controlla i dati."},status=400)
 def get_visible(request,booking_id):
     from django.http import Http404
-    try:return choice(visible_bookings(request,Booking.objects.all()),booking_id,status="confirmed")
+    try:return choice(visible_bookings(request,Booking.objects.all()),booking_id,status__in=MOVABLE)
     except BookingError:raise Http404("Prenotazione non disponibile.")
 def move_page(request,slug,booking_id):
     require_role(request,write=True)
@@ -179,10 +198,12 @@ def move_api(request,slug,booking_id):
     booking=get_visible(request,booking_id)
     try:
         data=json_body(request)
+        check_force(request,data)
         # the new place must be inside the scope, also when only the resource changes
         if isinstance(data,dict):check_new_booking(request,choice(Service,data.get("service") or booking.service_id),data.get("resource"))
         move_booking(request.tenant,booking_id,data,request.user)
         return JsonResponse({"redirect":f"/t/{slug}/bookings/{booking_id}/"})
+    except ForceWarning as ex:return warned(ex)
     except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex)},status=400)
 def action_view(request,slug,token):
     throttle(request,"action",60,60)
@@ -207,7 +228,7 @@ def apply_action(request,obj):
             cutoff=obj.booking.snapshot.get("policy",{}).get("cancel_cutoff_minutes",obj.booking.service.cancel_cutoff_minutes)
             if cutoff and timezone.now()>obj.booking.start-timedelta(minutes=cutoff):
                 raise BookingError(f"Il termine per annullare online è scaduto ({human_minutes(cutoff)} prima dell'inizio). Contatta direttamente l'attività.")
-            change_status(request.tenant,obj.booking,"cancelled")
+            change_status(request.tenant,obj.booking,"cancelled",reason="client")
         elif obj.kind in ("consent","unsubscribe"):
             c=Contact.objects.select_for_update().get(pk=obj.contact_id)
             if obj.kind=="consent":

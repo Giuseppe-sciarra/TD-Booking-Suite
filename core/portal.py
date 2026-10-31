@@ -15,7 +15,7 @@ from .forms import LocationForm,ResourceForm,ServiceForm,OptionForm,ScheduleForm
 from .tenancy import scope
 from .middleware import require_role
 from .permissions import can,require,visible_bookings,shown
-from .booking import choice,change_status,BookingError,queue,capacity_available
+from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,OPEN,ACCEPTED,MOVABLE,REASONS
 from .calendar import fits,blocked_stay
 from .crypto import index,tenant_key,encrypt
 from .mail import enqueue_campaign,campaign_contacts
@@ -72,6 +72,8 @@ def catalog_kinds(tenant=None):
         from .presets import units
         out["resources"]=(Resource,ResourceForm,units(tenant.business_type)[1])
     return out
+# 2.14.0: the links of the booking page for each channel: the bookings keep the tag (Booking.source)
+CHANNELS=[("google","Google, profilo dell'attività"),("instagram","Instagram"),("facebook","Facebook"),("whatsapp","WhatsApp"),("newsletter","Newsletter")]
 def setup(request,slug):
     """The configuration of a business as a sequence of steps, each with its state."""
     require_role(request,schedule=True)
@@ -104,7 +106,7 @@ def setup(request,slug):
     done=sum(1 for s in steps if s["done"])+sum(1 for a in agency if a["done"])
     from .presets import PRESETS
     from .profile import describe,MAX_LOCATIONS,default_name
-    profile=describe(t)
+    profile=describe(t);page=f"{settings.PUBLIC_ORIGIN.rstrip('/')}/book/{t.slug}/"
     shown=max(5,len(profile["locations"]))
     names=[l.name for l in profile["locations"]]+[default_name(i) for i in range(len(profile["locations"]),shown)]
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
@@ -116,7 +118,10 @@ def setup(request,slug):
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
         "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":t.business_type=="ristorante" or t.allergens_on,
         # 2.13.0: ready colours of Logo e aspetto, the same in app.css
-        "swatches":["#7a55ad","#be185d","#b91c1c","#c2410c","#a16207","#15803d","#0f766e","#1d4ed8","#334155"]})
+        "swatches":["#7a55ad","#be185d","#b91c1c","#c2410c","#a16207","#15803d","#0f766e","#1d4ed8","#334155"],
+        # 2.14.0: a link for each channel, and the frame for a site without WordPress that grows with its content (embed.js)
+        "channels":[(label,f"{page}?src={key}") for key,label in CHANNELS],
+        "embed":f'<iframe src="{page}?src=sito" title="Prenota" width="100%" height="900" loading="lazy" style="border:0" data-tdbs></iframe>\n<script src="{settings.PUBLIC_ORIGIN.rstrip("/")}/static/embed.js" async></script>'})
 
 def setup_brand(request,slug):
     """2.13.0: Logo e aspetto, in Configura l'attività: the business's own logo (the menu, the portal, the booking page),
@@ -133,6 +138,26 @@ def setup_brand(request,slug):
         messages.success(request,"Logo e aspetto salvati: li vedi già nel menu a sinistra.")
     else:messages.error(request," ".join(e for errors in form.errors.values() for e in errors))
     return redirect(reverse("setup",args=[slug])+"#aspetto")
+
+def setup_desk(request,slug):
+    """2.14.0: Forza at the desk also for reception and operators: the owner's choice (Tenant.force_all)."""
+    from django.http import Http404
+    if request.method!="POST":raise Http404
+    require(request,"users.manage")
+    on=request.POST.get("force_all")=="on"
+    Tenant.objects.filter(pk=request.tenant.pk).update(force_all=on)
+    audit(request.tenant,request.user,"tenant.force_all",request.tenant.pk,on=on)
+    messages.success(request,"Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")
+    return redirect(reverse("setup",args=[slug])+"#banco")
+
+def booking_qr(request,slug):
+    """2.14.0: the QR of the booking page, for the counter, a flyer or the menu: its bookings are tagged qr."""
+    import qrcode
+    require(request,"catalog.write")
+    buf=io.BytesIO();qrcode.make(f"{settings.PUBLIC_ORIGIN.rstrip('/')}/book/{request.tenant.slug}/?src=qr",border=2).save(buf,format="PNG")
+    response=HttpResponse(buf.getvalue(),content_type="image/png")
+    if request.GET.get("scarica"):response["Content-Disposition"]=f'attachment; filename="prenota-{request.tenant.slug}.png"'
+    return response
 
 def recommended(tenant):
     """2.8.0: the usual questions of this kind of business that some active service does not ask yet."""
@@ -255,7 +280,8 @@ def home(request):
     if members.count()==1:return redirect("dashboard",members.first().tenant.slug)
     return render(request,"home.html",{"memberships":members})
 def outcome_rows(counts,total):
-    labels=[("done","Svolte o confermate","ok"),("cancelled","Disdette","danger"),("no_show","Assenze","warn")]
+    # 2.14.0: done is what was closed as done; what nobody closed is counted apart, no longer as done
+    labels=[("done","Svolte","ok"),("open","Da chiudere","open"),("cancelled","Disdette","danger"),("no_show","Assenze","warn")]
     return [{"label":l,"value":counts[k],"pct":round(100*counts[k]/total) if total else 0,"tone":"tone-"+tone} for k,l,tone in labels]
 def dashboard(request,slug):
     """2.4.0: the business at a glance. Every number comes from visible_bookings, so each role counts
@@ -272,9 +298,9 @@ def dashboard(request,slug):
     received=mine(Booking.objects.filter(created__gte=since))
     received_n=received.count();previous=mine(Booking.objects.filter(created__gte=before,created__lt=since)).count()
     cancelled_n=received.filter(status="cancelled").count()
-    metrics={"today":rows.filter(status="confirmed").count(),
-        "week":mine(Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=7),status="confirmed")).count(),
-        "upcoming":mine(Booking.objects.filter(start__gte=end,status="confirmed")).count(),
+    metrics={"today":rows.filter(status__in=ACCEPTED).count(),
+        "week":mine(Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=7),status__in=ACCEPTED)).count(),
+        "upcoming":mine(Booking.objects.filter(start__gte=end,status__in=ACCEPTED)).count(),
         "received":received_n,"trend":round((received_n-previous)*100/previous) if previous else None,
         "cancelled":cancelled_n,"cancel_rate":round(100*cancelled_n/received_n) if received_n else 0,
         "contacts":Contact.objects.count() if can(request,"contacts.read") else None,"eligible":campaign_contacts().count() if can(request,"contacts.read") else None,
@@ -283,7 +309,7 @@ def dashboard(request,slug):
     if can(request,"booking.read"):
         # how the last 30 days went, by appointment date
         past=mine(Booking.objects.filter(start__gte=start-timedelta(days=30),start__lt=start))
-        counts={"done":past.filter(status__in=["confirmed","completed"]).count(),"cancelled":past.filter(status="cancelled").count(),"no_show":past.filter(status="no_show").count()}
+        counts={"done":past.filter(status="completed").count(),"open":past.filter(status__in=OPEN).count(),"cancelled":past.filter(status="cancelled").count(),"no_show":past.filter(status="no_show").count()}
         total=sum(counts.values())
         services=list(received.exclude(status="cancelled").values("snapshot__service").annotate(n=Count("id")).order_by("-n")[:5])
         top=max([s["n"] for s in services]+[1])
@@ -292,7 +318,7 @@ def dashboard(request,slug):
             i=(created.astimezone(tz).date()-first).days//7
             if 0<=i<WEEKS:weekly[i]+=1
         days=[0]*7
-        for s in mine(Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=7),status="confirmed")).values_list("start",flat=True):
+        for s in mine(Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=7),status__in=ACCEPTED)).values_list("start",flat=True):
             i=(s.astimezone(tz).date()-today).days
             if 0<=i<7:days[i]+=1
         next_days=bars(days,today,width=300,height=170)
@@ -312,7 +338,17 @@ def dashboard(request,slug):
         row.shown=shown(request,row.data);day=row.start.astimezone(tz).date()
         if not week or week[-1]["day"]!=day:week.append({"day":day,"iso":day.isoformat(),"name":{0:"Oggi",1:"Domani"}.get((day-today).days,""),"rows":[]})
         week[-1]["rows"].append(row)
-    return render(request,"dashboard.html",{"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count()})
+    # 2.14.0: the requests to answer, and what already happened that nobody closed (30 days), each with its buttons
+    asks=mine(Booking.objects.filter(status="pending",end__gt=now-timedelta(days=30))).select_related("service","tenant").order_by("start")
+    closing=mine(Booking.objects.filter(status__in=("confirmed","arrived","in_progress"),end__lte=now,end__gt=now-timedelta(days=30))).select_related("service","tenant").order_by("-start")
+    todo={"asks":list(asks[:20]),"asks_n":asks.count(),"closing":list(closing[:20]),"closing_n":closing.count()}
+    for row in todo["asks"]+todo["closing"]:row.shown=shown(request,row.data)
+    # the last quick action, to take back for a few minutes
+    undo=visible_bookings(request,Booking.objects.filter(pk=uid(request.session.pop("undo",None)))).first() if request.session.get("undo") else None
+    if undo and can_undo(undo):undo.shown=shown(request,undo.data)
+    else:undo=None
+    return render(request,"dashboard.html",{"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),
+        "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists()})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
     today=timezone.now().astimezone(tz).date()
@@ -350,29 +386,40 @@ def booking_detail(request,slug,booking_id):
     if request.method=="POST":
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
+        back=request.POST.get("back")=="dashboard"  # 2.14.0: the quick actions of the dashboard go back there
         try:
             if action=="notes":
                 pii=booking.data
                 pii["internal_notes"]=request.POST.get("internal_notes","")[:4000]
                 booking.pii=encrypt(request.tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
                 audit(request.tenant,request.user,"booking.notes",booking.pk)
-            else:change_status(request.tenant,booking,action,request.user)
+            elif action=="undo":change_status(request.tenant,booking,None,request.user,undo=True)
+            elif action=="reject":change_status(request.tenant,booking,"cancelled",request.user,reason="rejected")
+            else:change_status(request.tenant,booking,action,request.user,reason=request.POST.get("reason",""),note=request.POST.get("note",""))
+            if back:
+                request.session["undo"]=str(booking.pk);return redirect("dashboard",slug)
             return redirect("booking_detail",slug,booking_id)
-        except BookingError as ex:messages.error(request,str(ex))
+        except BookingError as ex:
+            messages.error(request,str(ex))
+            if back:return redirect("dashboard",slug)
     data=shown(request,booking.data)
     answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":"Sì" if v is True else v} for k,v in data.get("answers",{}).items() if v not in ("",None,False)]
-    ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,"back_day":booking.start.astimezone(ZoneInfo(request.tenant.timezone)).date().isoformat(),
+    tz=ZoneInfo(request.tenant.timezone);day=booking.start.astimezone(tz).date()
+    ctx={"booking":booking,"data":data,"answers":answers,"spec":spec,"back_day":day.isoformat(),
         # 2.8.0: the note kept on the client card shows on every booking, as the main booking software do
         "client_note":booking.contact.data.get("staff_notes","") if booking.contact_id and can(request,"notes.read") else "",
         # 2.12.0: a room is not "with": it has its own word, Camera, Alloggio, Mezzo
         "unit":__import__("core.presets",fromlist=["units"]).units(request.tenant.business_type)[0],
         # 2.14.0: a chat with the client about this booking, for whoever sees the phone (masked: no number, no button)
-        "whatsapp":whatsapp(request.tenant,data.get("phone",""),booking)}
+        "whatsapp":whatsapp(request.tenant,data.get("phone",""),booking),
+        # 2.14.0: the statuses: arrived from the day of the booking, in progress where something is being done
+        "undo":can_undo(booking),"reasons":REASONS,"progress":booking.service.kind in ("resource","capacity"),
+        "today_ok":day<=timezone.now().astimezone(tz).date()}
     if spec and can(request,"notes.read"):
         from .clients import treatments,from_booking
-        entries=treatments(booking.contact);prefill=from_booking(booking,ZoneInfo(request.tenant.timezone))
+        entries=treatments(booking.contact);prefill=from_booking(booking,tz)
         # what was done before this appointment, the newest first: what the operator wants to know before starting
-        ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ("confirmed","completed"),**record_options(spec))
+        ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ACCEPTED,**record_options(spec))
     return render(request,"booking_detail.html",ctx)
 def uid(value):
     import uuid
@@ -545,7 +592,7 @@ def contact_detail(request,slug,contact_id):
     notes_ok=can(request,"notes.read")
     # 2.11.0: the overview shows the next appointments; the client's discount sits on the card
     from .prices import discount_label
-    upcoming=sorted((b for b in rows if b.start>timezone.now() and b.status=="confirmed"),key=lambda b:b.start)[:3]
+    upcoming=sorted((b for b in rows if b.start>timezone.now() and b.status in MOVABLE),key=lambda b:b.start)[:3]
     for b in upcoming:b.shown=shown(request,b.data)
     data=shown(request,raw)
     ctx={"contact":contact,"data":data,"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
@@ -562,7 +609,7 @@ def contact_detail(request,slug,contact_id):
         now=timezone.now();tz=ZoneInfo(request.tenant.timezone)
         entries=treatments(contact)
         recorded={t.booking_id for t in entries if t.booking_id}
-        for b in page:b.recorded=b.pk in recorded;b.recordable=b.start<=now and b.status in ("confirmed","completed")
+        for b in page:b.recorded=b.pk in recorded;b.recordable=b.start<=now and b.status in ACCEPTED
         prefill=None
         if request.GET.get("da"):
             b=visible_bookings(request,Booking.objects.filter(contact=contact)).filter(pk=uid(request.GET["da"])).first()
@@ -587,10 +634,10 @@ def export(request,slug):
         qs=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).order_by("start")
         notes=can(request,"notes.read")
         if qs.count()>50000:return HttpResponse("Restringi l'intervallo.",status=400)
-        header=["ID","Nome","Cognome","Email","Telefono","Inizio","Fine","Stato","Servizio","Sede","Risorsa","Note cliente","Note interne","Campi aggiuntivi","Intolleranze"]
+        header=["ID","Nome","Cognome","Email","Telefono","Inizio","Fine","Stato","Servizio","Sede","Risorsa","Note cliente","Note interne","Campi aggiuntivi","Intolleranze","Origine","Fonte"]
         for booking in qs.iterator(chunk_size=200):
             d=booking.data
-            rows.append([booking.pk,d.get("first_name"),d.get("last_name"),d.get("email"),d.get("phone"),booking.start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.end.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.status,booking.snapshot.get("service"),booking.snapshot.get("location"),booking.snapshot.get("resource"),d.get("notes") if notes else "",d.get("internal_notes") if notes else "",__import__("json").dumps(d.get("answers",{}),ensure_ascii=False),", ".join(d.get("allergies",[])) if notes else ""])
+            rows.append([booking.pk,d.get("first_name"),d.get("last_name"),d.get("email"),d.get("phone"),booking.start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.end.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),booking.status,booking.snapshot.get("service"),booking.snapshot.get("location"),booking.snapshot.get("resource"),d.get("notes") if notes else "",d.get("internal_notes") if notes else "",__import__("json").dumps(d.get("answers",{}),ensure_ascii=False),", ".join(d.get("allergies",[])) if notes else "",booking.get_origin_display(),booking.source])
     elif kind in ("contacts","marketing"):
         qs=campaign_contacts() if kind=="marketing" else Contact.objects.exclude(email_index__startswith="erased:").order_by("created")
         if qs.count()>50000:return HttpResponse("Richiedi un export di portabilità da console per oltre 50.000 contatti.",status=400)
@@ -632,7 +679,7 @@ def overbooked(rows):
 def calendar_conflicts(tenant):
     """Complete impact check after a catalog change: no silent truncation."""
     from .models import ServiceResource
-    rows=list(Booking.objects.filter(status="confirmed",end__gt=timezone.now()).select_related("service","resource","option","location","occurrence").order_by("start","pk"))
+    rows=list(Booking.objects.filter(status__in=OPEN,end__gt=timezone.now()).select_related("service","resource","option","location","occurrence").order_by("start","pk"))
     links=set(ServiceResource.objects.values_list("service_id","resource_id"))
     conflicts=[]
     for b in rows:
@@ -691,7 +738,7 @@ def catalog_edit(request,slug,kind,item_id=None):
         try:
             with transaction.atomic():
                 Tenant.objects.select_for_update().get(pk=request.tenant.pk)
-                if kind=="occurrences" and instance and Booking.objects.filter(occurrence=instance,status="confirmed",end__gt=timezone.now()).exists():
+                if kind=="occurrences" and instance and Booking.objects.filter(occurrence=instance,status__in=OPEN,end__gt=timezone.now()).exists():
                     raise BookingError("Gestisci le prenotazioni future prima di modificare questo evento o turno.")
                 obj=form.save()
                 if kind=="turns":
@@ -728,7 +775,7 @@ def calendar_remove(request,slug,kind,item_id):
                 messages.error(request,"Serve almeno una sede: aggiungine un'altra prima di eliminare questa.");return redirect("catalog",slug,kind)
             future=0
             if kind in ("services","resources","locations","occurrences"):
-                future=Booking.objects.filter(status="confirmed",end__gt=timezone.now(),**{{"services":"service","resources":"resource","locations":"location","occurrences":"occurrence"}[kind]:obj}).count()
+                future=Booking.objects.filter(status__in=OPEN,end__gt=timezone.now(),**{{"services":"service","resources":"resource","locations":"location","occurrences":"occurrence"}[kind]:obj}).count()
             name=str(getattr(obj,"name","") or "")
             kept=remove(kind,obj)
             audit(request.tenant,request.user,"catalog.removed",item_id,kind=kind,kept=kept)

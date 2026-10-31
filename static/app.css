@@ -1313,3 +1313,24 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .quick-account>span:nth-child(2){flex:1;min-width:0}
 .quick-avatar{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--brand);color:var(--brand-ink,#fff);font:700 16px/1 var(--head)}
 .quick-go{font-size:22px;color:var(--brand)}
+
+/* 2.14.0: the new statuses, the dashboard's to-do lists with their buttons, Forza at the desk, where a booking came from */
+.pill.arrived,.pill.in_progress{background:var(--soft);color:var(--brand)}
+.agenda-item.pending{background:var(--warn-soft);border-left:3px dashed var(--warn)}.agenda-item.arrived,.agenda-item.in_progress{border-left-width:6px}
+.week-col li a.pending,.month-day li.pending{font-style:italic}
+.outcomes .tone-open .fill{fill:var(--muted)}
+.todo-grid{margin-bottom:20px}
+.section-heading h2 .count{margin-left:6px;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--brand);vertical-align:middle}
+.today-time small{display:block;margin-top:3px;font-size:11.5px;font-weight:500;color:var(--muted)}
+.quick-actions{display:flex;gap:6px;flex-wrap:wrap;margin:0}.quick-actions button{margin:0}
+.undo-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.undo-bar button{margin:0}
+.card .undo-bar{margin-bottom:14px;padding:10px 12px;border-radius:var(--r-sm);background:var(--soft)}
+.cancel-box{margin-top:16px}.cancel-box summary{cursor:pointer;font-weight:600;color:var(--danger)}
+.force-box{margin-top:14px}.force-time{max-width:180px;margin-top:8px}
+.origin{display:inline-flex;align-items:center;gap:6px;margin-right:4px;vertical-align:-2px}.origin .nav-ico{width:14px;height:14px}
+.share-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+.share-list li{display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:10px}
+.share-list code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.share-qr{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}.share-qr img{width:120px;height:120px;border-radius:var(--r-sm);background:#fff}
+.embed-code{margin:8px 0 0;padding:12px;border-radius:var(--r-sm);background:var(--paper);border:1px solid var(--line);overflow:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-all}.embed-code code{padding:0;background:none}
+@media(max-width:700px){.share-list li{grid-template-columns:1fr auto}.share-list li strong{grid-column:1/-1}}

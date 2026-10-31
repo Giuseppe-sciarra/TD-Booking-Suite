@@ -9,7 +9,7 @@ from .booking import queue
 
 TOKEN=re.compile(r"\d{5,12}:[A-Za-z0-9_-]{30,60}")
 CHAT=re.compile(r"-?\d{1,20}|@[A-Za-z0-9_]{5,32}")
-TITLES={"created":"Nuova prenotazione","moved":"Prenotazione spostata","cancelled":"Prenotazione annullata"}
+TITLES={"created":"Nuova prenotazione","requested":"Richiesta da confermare","moved":"Prenotazione spostata","cancelled":"Prenotazione annullata"}
 
 def summary(tenant,booking,event):
     tz=ZoneInfo(tenant.timezone);d=booking.data;s=booking.snapshot
