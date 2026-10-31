@@ -72,6 +72,11 @@ def test_outside_calendar_becomes_busy_blocks(sample,monkeypatch):
     spans=feeds.events(text,ROME,timezone.now())
     assert len(spans)==5  # the free one out; the weekly one three times; the alarm does not change the first
     assert spans[0][1]-spans[0][0]==timedelta(hours=1)
+    week=lambda n:f"{day+timedelta(weeks=n):%Y%m%d}"
+    moved=("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=Europe/Rome:"+week(0)+"T160000\r\nDURATION:PT30M\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\n"
+        "EXDATE;TZID=Europe/Rome:"+week(1)+"T160000\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:a\r\nRECURRENCE-ID;TZID=Europe/Rome:"+week(2)+"T160000\r\n"
+        "DTSTART;TZID=Europe/Rome:"+week(2)+"T180000\r\nDURATION:PT30M\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+    assert [f"{a.astimezone(ROME):%d %H}" for a,z in sorted(feeds.events(moved,ROME,timezone.now()))]==[f"{day+timedelta(weeks=n):%d} {h}" for n,h in ((0,16),(2,18),(3,16))]
     monkeypatch.setattr(feeds,"fetch",lambda url:text)
     with scope(t):
         marco.busy=encrypt(t,"webcal://calendar.example/secret.ics","busy:"+str(marco.pk));marco.save()

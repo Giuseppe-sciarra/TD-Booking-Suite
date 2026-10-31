@@ -19,11 +19,12 @@ AHEAD=timedelta(days=180)  # the outside events read, from now on
 WEEKDAYS=["MO","TU","WE","TH","FR","SA","SU"]
 
 def link(resource,slug):
-    return f"{settings.PUBLIC_ORIGIN}/action/{slug}/feed/{signing.dumps([str(resource.pk),resource.feed],salt=SALT)}/calendario.ics"
+    # without a timestamp: the same link every time the page shows it
+    return f"{settings.PUBLIC_ORIGIN}/action/{slug}/feed/{signing.Signer(salt=SALT).sign_object([str(resource.pk),resource.feed])}/calendario.ics"
 
 def opened(token):
     """The resource id of a valid feed link and its version, or None."""
-    try:pk,version=signing.loads(token,salt=SALT);return pk,int(version)
+    try:pk,version=signing.Signer(salt=SALT).unsign_object(token);return pk,int(version)
     except (signing.BadSignature,ValueError,TypeError):return None
 
 def feed(tenant,resource,now=None):
@@ -59,7 +60,7 @@ def duration(value):
 
 def repeat(start,rule,last):
     """The starts of a repeated event until last.
-    shortcut: DAILY and WEEKLY (with BYDAY) only, EXDATE ignored (a cancelled date stays busy); the others once."""
+    shortcut: DAILY and WEEKLY (with BYDAY) only; MONTHLY and YEARLY count once, add them if someone needs them."""
     r=dict(x.split("=",1) for x in rule.upper().split(";") if "=" in x)
     if r.get("FREQ") not in ("DAILY","WEEKLY"):return [start]
     step=max(int(r.get("INTERVAL") or 1),1);count=int(r.get("COUNT") or 0)
@@ -75,26 +76,36 @@ def repeat(start,rule,last):
     return out
 
 def events(text,tz,now):
-    """(start, end) of the busy events from now on; the free (TRANSP:TRANSPARENT) and cancelled ones are left out."""
-    out=[];ev=None;inner=0;last=now+AHEAD
+    """(start, end) of the busy events from now on; the free (TRANSP:TRANSPARENT) and cancelled ones are left out, and so
+    are the dates a repeated event dropped (EXDATE) or moved to another event (RECURRENCE-ID, as Google writes them)."""
+    found=[];ev=None;inner=0;last=now+AHEAD;out=[]
     for line in re.sub(r"\r?\n[ \t]","",text).splitlines():
         name,_,value=line.partition(":");key,_,params=name.partition(";");key=key.upper();value=value.strip()
         if key=="BEGIN":
-            if value.upper()=="VEVENT":ev={}
+            if value.upper()=="VEVENT":ev={"EXDATE":[]}
             elif ev is not None:inner+=1  # VALARM inside: its DURATION is not the event's
         elif key=="END" and ev is not None:
-            if inner:inner-=1;continue
-            try:
-                if "DTSTART" in ev and ev.get("TRANSP",("",""))[1].upper()!="TRANSPARENT" and ev.get("STATUS",("",""))[1].upper()!="CANCELLED":
-                    start=moment(ev["DTSTART"][1],ev["DTSTART"][0],tz)
-                    if "DTEND" in ev:length=moment(ev["DTEND"][1],ev["DTEND"][0],tz)-start
-                    elif "DURATION" in ev:length=duration(ev["DURATION"][1])
-                    else:length=timedelta(days=1) if len(ev["DTSTART"][1])==8 else timedelta(0)
-                    for s in repeat(start,ev["RRULE"][1],last) if "RRULE" in ev else [start]:
-                        if s+length>now and s<last and length>timedelta(0):out.append((s,s+length))
-            except (ValueError,KeyError):pass  # one event we cannot read does not stop the others
-            ev=None
-        elif ev is not None and not inner:ev[key]=(params,value)
+            if inner:inner-=1
+            else:found.append(ev);ev=None
+        elif ev is not None and not inner:
+            if key=="EXDATE":ev["EXDATE"]+=[(params,x) for x in value.split(",")]
+            else:ev[key]=(params,value)
+    moved=set()
+    for ev in found:
+        try:
+            if "RECURRENCE-ID" in ev:moved.add((ev.get("UID",("",""))[1],moment(ev["RECURRENCE-ID"][1],ev["RECURRENCE-ID"][0],tz)))
+        except ValueError:pass
+    for ev in found:
+        try:
+            if "DTSTART" in ev and ev.get("TRANSP",("",""))[1].upper()!="TRANSPARENT" and ev.get("STATUS",("",""))[1].upper()!="CANCELLED":
+                start=moment(ev["DTSTART"][1],ev["DTSTART"][0],tz)
+                if "DTEND" in ev:length=moment(ev["DTEND"][1],ev["DTEND"][0],tz)-start
+                elif "DURATION" in ev:length=duration(ev["DURATION"][1])
+                else:length=timedelta(days=1) if len(ev["DTSTART"][1])==8 else timedelta(0)
+                skip={moment(v,p,tz) for p,v in ev["EXDATE"]}|{m for u,m in moved if u==ev.get("UID",("",""))[1]} if "RRULE" in ev else set()
+                for s in repeat(start,ev["RRULE"][1],last) if "RRULE" in ev else [start]:
+                    if s+length>now and s<last and length>timedelta(0) and s not in skip:out.append((s,s+length))
+        except (ValueError,KeyError):pass  # one event we cannot read does not stop the others
     return out
 
 def blocks(spans,tz):
