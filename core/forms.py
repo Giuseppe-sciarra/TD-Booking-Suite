@@ -153,6 +153,9 @@ class ResourceForm(ScopedForm):
         elif r.busy_at:
             from zoneinfo import ZoneInfo
             self.fields["busy_url"].help_text+=f". Letto il {r.busy_at.astimezone(ZoneInfo(self.tenant.timezone)):%d/%m alle %H:%M}"
+        from . import gcal  # 2.14.0: Google Calendar, both ways, once the agency set the OAuth client (its own box under the form)
+        ready=bool(self.tenant and gcal.config(self.tenant))
+        self.google=None if new or not (ready or r.google or r.google_error) else {"ready":ready,"on":bool(r.google),"error":r.google_error,"at":r.google_at,"account":gcal.state(r).get("account","")}
         if not self.photo_preview:del self.fields["photo_remove"]
         bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
         f=self.fields["services"];f.queryset=bookable
@@ -631,7 +634,7 @@ class TimeBlockForm(ScopedForm):
         f=self.fields["resource"];f.queryset=resources;f.required=True;f.empty_label=None
         from .presets import units
         f.label=units(getattr(self.tenant,"business_type",""))[0]
-        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0] not in ("closed","busy")]  # busy: only from an outside calendar (feeds.py)
+        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0] not in ("closed","busy","google")]  # busy, google: only from an outside calendar (feeds.py, gcal.py)
         if self.instance.pii:self.initial["note"]=self.instance.note
         self.order_fields(["resource","day","start","end","reason","note","weekly","until"])
     def clean(self):

@@ -109,7 +109,19 @@ def texts_view(request,slug):
     if request.method=="POST":
         fresh(request)
         try:
-            if request.POST.get("action")=="test":
+            if request.POST.get("action")=="google":
+                from . import gcal
+                conf=gcal.clean(request.POST,gcal.config(tenant))
+                with transaction.atomic():
+                    t=Tenant.objects.select_for_update().get(pk=tenant.pk)
+                    t.google=encrypt(t,conf,"google") if conf else "";t.save(update_fields=["google"])
+                    if not conf:  # switched off: the operators' connections go with it, and the blocks read
+                        Resource.objects.exclude(google="").update(google="",google_at=None,google_error="Google Calendar spento dall'agenzia.")
+                        from .models import TimeBlock
+                        TimeBlock.objects.filter(reason="google").delete()
+                    audit(t,request.user,"google.saved",on=bool(conf))
+                messages.success(request,"Google Calendar salvato.")
+            elif request.POST.get("action")=="test":
                 from .booking import normalize_phone
                 to=normalize_phone(request.POST.get("test_to",""))
                 if not to or not saved:raise ValueError("Salva prima un canale e scrivi un numero di cellulare.")
@@ -129,7 +141,9 @@ def texts_view(request,slug):
                 messages.success(request,"SMS e WhatsApp salvati.")
             return redirect("texts",slug)
         except ValueError as ex:error=str(ex)
-    return render(request,"texts.html",{"tenant":tenant,"conf":saved,"channel":texts.channel(saved),"providers":texts.PROVIDERS,"error":error})
+    from . import gcal
+    return render(request,"texts.html",{"tenant":tenant,"conf":saved,"channel":texts.channel(saved),"providers":texts.PROVIDERS,"error":error,
+        "google":gcal.config(tenant),"google_uri":settings.PUBLIC_ORIGIN+"/oauth/google-calendar/"})
 def team_admin(request):
     """2.13.0: who has access to a business and with which role is the agency's, like its type and locations:
     the owner does not even see the page."""

@@ -25,12 +25,12 @@ class ApiError(ValueError):
     """A clear message for the page; status is the HTTP status, 0 when the service was not reached."""
     def __init__(self,message,status=0):super().__init__(message);self.status=status
 
-def http(url,form=None,body=None,headers=None,timeout=15):
-    """POST (form or raw body) or GET; returns (status, parsed JSON or {})."""
+def http(url,form=None,body=None,headers=None,timeout=15,method=None):
+    """POST (form or raw body) or GET, or the method given; returns (status, parsed JSON or {})."""
     data=None;h=dict(headers or {})
     if form is not None:data=urllib.parse.urlencode(form).encode();h["Content-Type"]="application/x-www-form-urlencoded"
     elif body is not None:data=body if isinstance(body,bytes) else body.encode()
-    req=urllib.request.Request(url,data=data,headers=h,method="POST" if data is not None else "GET")
+    req=urllib.request.Request(url,data=data,headers=h,method=method or ("POST" if data is not None else "GET"))
     try:
         with urllib.request.urlopen(req,timeout=timeout) as r:raw=r.read();status=r.status
     except urllib.error.HTTPError as ex:raw=ex.read();status=ex.code

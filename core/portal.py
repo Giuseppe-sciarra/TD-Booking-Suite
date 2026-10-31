@@ -996,6 +996,29 @@ def catalog_edit(request,slug,kind,item_id=None):
     heading=(("Modifica: " if instance else "Nuovo: ")+edit_title)
     return render(request,"form.html",{"form":form,"title":heading,"list_title":title,"description":edit_help,"kind":kind,"need_confirm":need_confirm,
         "custom_fields":getattr(instance,"fields",[]) if instance else []})
+def google_return(request):
+    """2.14.0: Google comes back to one address for the whole installation: on to the business that asked."""
+    slug=(request.session.get("gcal_oauth") or {}).get("slug")
+    if not slug:messages.error(request,"Collegamento a Google scaduto: riprova dalla scheda.");return redirect("/")
+    return redirect(reverse("google_back",args=[slug])+"?"+request.GET.urlencode())
+def google_view(request,slug,item_id=None):
+    """2.14.0: Collega / Scollega Google Calendar from an operator's card (POST), and Google's answer coming back (GET)."""
+    from . import gcal
+    require(request,"catalog.write")
+    if not catalog_allowed(request,"resources"):raise PermissionDenied
+    if item_id is None:
+        r=gcal.finish(request)
+        if not r:messages.error(request,"Collegamento a Google non riuscito o scaduto: riprova dalla scheda.");return redirect("catalog",slug,"resources")
+        audit(request.tenant,request.user,"google.connected" if not r.google_error else "google.failed",r.pk)
+        if not r.google_error:messages.success(request,"Google Calendar collegato: entro 5 minuti si allinea.")
+        return redirect("catalog_edit",slug,"resources",r.pk)
+    if request.method!="POST":raise PermissionDenied
+    r=get_object_or_404(Resource.objects.select_related("tenant"),pk=item_id)
+    if request.POST.get("action")=="disconnect":
+        gcal.disconnect(r);audit(request.tenant,request.user,"google.disconnected",r.pk)
+        messages.success(request,"Google Calendar scollegato.");return redirect("catalog_edit",slug,"resources",r.pk)
+    if not gcal.config(request.tenant):raise PermissionDenied
+    return redirect(gcal.start(request,r))
 REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","options":"Variante","turns":"Turno","occurrences":"Data"}
 def calendar_remove(request,slug,kind,item_id):
     if request.method!="POST" or kind not in CATALOG:raise PermissionDenied

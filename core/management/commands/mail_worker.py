@@ -24,6 +24,8 @@ class Command(BaseCommand):
             if time.time()-last_busy>300:
                 from core.feeds import refresh as busy  # 2.14.0: the operators' outside calendars, each every 15 minutes
                 if busy():self.stdout.write("Calendari esterni letti.")
+                from core.gcal import refresh as google  # 2.14.0: Google Calendar of the operators, both ways, every 5 minutes
+                if google():self.stdout.write("Google Calendar allineati.")
                 last_busy=time.time()
             from core.waitlist import run as waitlist  # 2.14.0: places freed, offered to the waiting list; kept places that expire
             if waitlist():self.stdout.write("Avvisi della lista d'attesa accodati.")

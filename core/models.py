@@ -127,6 +127,8 @@ class Tenant(models.Model):
     # with its own daily budget as the emails
     texts=models.TextField(blank=True)
     texts_daily_limit=models.PositiveIntegerField(default=100)
+    # 2.14.0: the agency's Google OAuth client (ID and secret, encrypted) for Google Calendar on the operators (gcal.py)
+    google=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
     logo=models.BinaryField(null=True,blank=True)
@@ -220,6 +222,10 @@ class Resource(Scoped):
     busy=models.TextField(blank=True)
     busy_at=models.DateTimeField(null=True,blank=True)
     busy_error=models.CharField(max_length=200,blank=True)
+    # 2.14.0: its Google Calendar (gcal.py): tokens and sync state encrypted, when last synced and what went wrong
+    google=models.TextField(blank=True)
+    google_at=models.DateTimeField(null=True,blank=True)
+    google_error=models.CharField(max_length=200,blank=True)
     # 2.14.0: a room or a holiday home (stays.py): its cleaning, and the calendars of the portals read as closures
     # (addresses sealed: they hold the portal's secret), when last read and what went wrong
     housekeeping=models.CharField(max_length=5,default="clean",choices=[("clean","Pulita"),("dirty","Da pulire"),("out","Fuori servizio")])
@@ -356,7 +362,7 @@ class ShiftRule(Scoped):
     valid_until=models.DateField(null=True,blank=True)
     active=models.BooleanField(default=True)
     def __str__(self):return self.name
-BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso"),("busy","Occupato")]
+BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso"),("busy","Occupato"),("google","Occupato su Google")]
 class TimeBlock(Scoped):
     """2.14.0: time taken off the agenda without a booking: an operator's pause, training or meeting (Blocca orario),
     or a restaurant turn closed for one day (service). It takes the time as a booking does and is counted nowhere."""
