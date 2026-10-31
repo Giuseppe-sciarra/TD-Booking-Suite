@@ -417,10 +417,11 @@ def problem(where,n,reason):where.setdefault(reason,[]).append(n)
 def apply(tenant,p,actor,ask=False,batch=""):
     """Write a plan made with lock=True, inside the transaction that holds the business lock."""
     from .privacy import record as consent_event
-    keys=p["keys"];who=str(getattr(actor,"pk","") or "")
-    for c in p["created"]+p["changed"]:c.pii=keys.seal(c.d,"contact",c.pk)
+    from .clients import stamp,search_keys,INDEXES
+    keys=p["keys"];who=str(getattr(actor,"pk","") or "");h=search_keys(keys.key)
+    for c in p["created"]+p["changed"]:c.pii=keys.seal(c.d,"contact",c.pk);stamp(c,c.d,keys.key,h)  # 2.14.0: found by phone and name
     Contact.objects.bulk_create(p["created"],batch_size=500)
-    Contact.objects.bulk_update(p["changed"],["pii","email_index"],batch_size=500)
+    Contact.objects.bulk_update(p["changed"],["pii","email_index",*INDEXES],batch_size=500)
     rows=[]
     for c,d in p["treatments"]:
         t=Treatment(tenant=tenant,contact=c,date=d["date"],author=who)

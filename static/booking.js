@@ -61,7 +61,7 @@
   buildFields(s);loadSlots();
  }
  async function loadSlots(){
-  const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();
+  const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();if(waitBox)waitBox.hidden=true;
   const s=current();forceOk=false;submit.textContent=label;
   if(force){$("force-time").hidden=!typed();force.closest(".force-box").hidden=s?.kind==="day";day.min=forcing()?"":config.today;}
   // 2.14.0: a client without appointment starts now: nothing to choose but the service and with whom
@@ -74,7 +74,7 @@
   $("slot-status").textContent="Controllo delle disponibilità…";
   try{
    const query=new URLSearchParams({service:s.id,date:day.value,option:option.value,resource:resource.value,party:party.value,end_date:departure.value,...(forcing()?{forza:"1"}:{})});
-   const response=await fetch(config.slots+"?"+query,{signal:controller.signal,credentials:"same-origin"});
+   const response=await fetch(config.slots+(config.slots.includes("?")?"&":"?")+query,{signal:controller.signal,credentials:"same-origin"});
    let result;try{result=await response.json();}catch{throw Error("Impossibile verificare le disponibilità. Riprova.");}
    if(seq!==sequence)return;
    if(!response.ok)throw Error(result.error||"Disponibilità non verificabile.");
@@ -93,8 +93,30 @@
    // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
    if(config.prefill?.time&&!selected){const hit=[...$("slots").querySelectorAll("button")].find(b=>b.firstChild?.textContent===config.prefill.time);if(hit){hit.click();hit.scrollIntoView({block:"nearest"});}}
    $("slot-status").textContent=result.slots.length?(units?"Scegli l'unità che preferisci.":"Scegli uno degli orari disponibili."):(units?"Nessuna unità libera per tutte le date scelte.":"Nessun orario disponibile: prova un'altra data.");
+   waitShow(!result.slots.length);
   }catch(e){if(e.name!=="AbortError"&&seq===sequence)$("slot-status").textContent=e.message;}
  }
+ // 2.14.0: Avvisami se si libera: the day full, or not the hours wanted; name and email from the contacts above
+ const waitBox=$("wait-box");
+ function waitShow(empty){
+  if(!waitBox||config.editing||waitBox.dataset.done)return;const s=current();
+  waitBox.hidden=!s||!day.value;$("wait-title").textContent=empty?(s?.kind==="day"?"Tutto pieno in queste date.":"Tutto pieno in questo giorno."):"Non trovi l'orario che vuoi?";
+  $("wait-range").hidden=s?.kind==="day";$("wait-last").min=day.value;
+ }
+ $("wait-open")?.addEventListener("click",()=>{$("wait-form").hidden=false;$("wait-open").hidden=true;$("wait-consent").focus();});
+ $("wait-send")?.addEventListener("click",async()=>{
+  const s=current(),b=$("wait-send");if(!s||![$("first-name"),$("customer-email")].every(el=>el.reportValidity()))return;
+  if(!$("wait-consent").checked){$("wait-status").textContent="Spunta la casella per ricevere l'avviso.";return;}
+  b.disabled=true;$("wait-status").textContent="";
+  try{
+   const body={service:s.id,resource:resource.value,party:party.value,first:day.value,last:s.kind==="day"?departure.value:($("wait-last").value||day.value),
+    time_from:$("wait-from").value,time_to:$("wait-to").value,first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,consent:true};
+   const r=await fetch(config.wait,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":form.querySelector("[name=csrfmiddlewaretoken]").value,"X-TDBS-Ticket":config.ticket},body:JSON.stringify(body),credentials:"same-origin"});
+   let res;try{res=await r.json();}catch{throw Error("Non è andata: riprova tra poco.");}
+   if(!r.ok)throw Error(res.error||"Non è andata: riprova tra poco.");
+   waitBox.dataset.done="1";$("wait-form").hidden=true;$("wait-title").textContent="Fatto: ti scriviamo appena si libera un posto.";
+  }catch(e){$("wait-status").textContent=e.message;}finally{b.disabled=false;}
+ });
  service.addEventListener("change",changeService);
  [option,resource,party,day,departure,force,forceAt].forEach(el=>el?.addEventListener("change",loadSlots));
  // 2.12.0: with operators' photos, one face each to choose with whom; the select stays, for the keyboard and the logic
@@ -158,7 +180,10 @@
   // 2.14.0: the client moving from his link keeps service, operator and people: he chooses only when
   if(config.locked)["resource-wrap","party-wrap"].forEach(id=>{$(id).hidden=true;});
   loadSlots();
- }else if(config.services.some(s=>s.id===new URLSearchParams(location.search).get("service"))){service.value=new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
+ }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
+ // 2.14.0: from the waiting list's link: how many, the departure and who, then the times of that day
+ if(config.prefill?.contact){const p=config.prefill;party.value=p.party||1;if(p.end_date)departure.value=p.end_date;
+  [["first-name","first_name"],["last-name","last_name"],["customer-email","email"],["phone","phone"]].forEach(([id,k])=>{if($(id))$(id).value=p.contact[k]||"";});loadSlots();}
  // inside the WordPress frame the page is as tall as its content, so the frame can also shrink
  if(window.parent!==window){document.documentElement.classList.add("framed");new ResizeObserver(()=>{window.parent.postMessage({tdbsHeight:document.body.scrollHeight},"*");}).observe(document.body);}
  // 2.7.0: manual booking, the client from the address book or a new one

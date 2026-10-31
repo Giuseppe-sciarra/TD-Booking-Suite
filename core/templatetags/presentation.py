@@ -94,7 +94,13 @@ ICONS.update({
  "user":'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.9-4 3.8-6 7.5-6s6.6 2 7.5 6"/>',
  # 2.14.0: a booking forced at the desk; Nascondi nomi
  "bolt":'<path d="M13 2.5 4.5 13.5H11L10 21.5l8.5-11H13z"/>',
- "eye":'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'})
+ "eye":'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+ # 2.14.0: the client card on a booking: VIP, absences, cancelled at the last moment, not bookable online; the waiting list; birthdays
+ "star":'<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/>',
+ "absent":'<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
+ "late":'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
+ "hourglass":'<path d="M6.5 3h11M6.5 21h11M7.5 3c0 5 9 5 9 9s-9 4-9 9M16.5 3c0 5-9 5-9 9s9 4 9 9"/>',
+ "gift":'<rect x="3.5" y="8.5" width="17" height="4" rx="1"/><path d="M5 12.5V20h14v-7.5M12 8.5V20M12 8.5C10 4 6.5 4.5 7.5 7c.5 1.2 2.5 1.5 4.5 1.5zm0 0c2-4.5 5.5-4 4.5-1.5-.5 1.2-2.5 1.5-4.5 1.5z"/>'})
 @register.simple_tag
 def icon(name):
     from django.utils.safestring import mark_safe
@@ -123,3 +129,28 @@ def reason_label(code):
     """2.14.0: why a booking was cancelled, in words."""
     from core.booking import REASON_LABELS
     return REASON_LABELS.get(code,"")
+
+@register.filter
+def client_marks(booking,full=""):
+    """2.14.0: VIP, absences, cancellations at the last moment and "not bookable online" of the booking's client
+    (clients.mark, only for who sees the client cards); full: in words, with the tags, on the booking's page."""
+    from django.utils.html import format_html,format_html_join
+    from django.utils.safestring import mark_safe
+    m=getattr(booking,"marks",None)
+    if not m:return ""
+    items=[("vip","star","","Cliente VIP")] if m["vip"] else []
+    if m["no_show"]:items.append(("absent","absent",m["no_show"],f"{m['no_show']} assenz{'a' if m['no_show']==1 else 'e'}"))
+    if m["late"]:items.append(("late","late",m["late"],f"{m['late']} disdett{'a' if m['late']==1 else 'e'} all'ultimo momento"))
+    if m["blocked"]:items.append(("blocked","absent","","Non prenotabile online"))
+    html=format_html_join("",'<span class="cmark {}{}" title="{}"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">{}</svg>{}<span class="{}">{}</span></span>',
+        ((cls," full" if full else "",label,mark_safe(ICONS[icon]),"" if full else n,"" if full else "sr-only",label) for cls,icon,n,label in items))
+    if full and m["tags"]:html+=format_html_join("",'<span class="tag-chip">{}</span>',((t,) for t in m["tags"]))
+    return html
+
+@register.filter
+def birthday(iso):
+    """2.14.0: "1985-03-12" -> "12 marzo"."""
+    from datetime import date
+    from django.utils.formats import date_format
+    try:return date_format(date.fromisoformat(iso),"j F").lower()
+    except (TypeError,ValueError):return ""

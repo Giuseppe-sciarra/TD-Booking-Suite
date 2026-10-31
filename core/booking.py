@@ -64,6 +64,9 @@ def capacity_available(service,start,end,party,resource=None,occurrence=None,exc
     for row in rows:
         n=1 if resource else row.party
         events.extend([(max(row.busy_start,start),n),(min(row.busy_end,end),-n)])
+    if service.tenant.wait_mode=="queue":
+        from .waitlist import holds
+        events+=holds(service,start,end,resource,occurrence)  # 2.14.0: places kept for the first in the waiting list
     occupied=0
     for _,delta in sorted(events,key=lambda x:(x[0],x[1])):
         occupied+=delta
@@ -269,8 +272,14 @@ def overrun(issues,data):
     if data.get("force_ok") is not True:raise ForceWarning("Stai forzando: "+", ".join(issues)+". Se va bene, conferma.")
 def needs_request(service,party,pii,contact):
     """2.14.0: an online booking waits for the business's yes when its service says so (immediate confirmation stays
-    the default). Phase 6 adds here the clients the business flags."""
-    return service.request_all or 0<service.request_above<party or (service.request_allergies and bool(pii.get("allergies")))
+    the default), or when its client did not come as many times as the business says (Al banco)."""
+    n=service.tenant.absences_request
+    return (service.request_all or 0<service.request_above<party or (service.request_allergies and bool(pii.get("allergies")))
+        or bool(n and contact and contact.pk and Booking.objects.filter(contact=contact,status="no_show").count()>=n))
+def refused(tenant,service):
+    """2.14.0: the words for a client the business made not bookable online: neutral, with the phone to call."""
+    phone=service.location.phone
+    return BookingError("Per prenotare contatta l'attività"+(f": {phone}." if phone else "."))
 def action_token(tenant,kind,contact=None,booking=None,days=30):
     token=secrets.token_urlsafe(32)
     ActionToken.objects.create(tenant=tenant,digest=token_hash(token),kind=kind,contact=contact,booking=booking,expires=timezone.now()+timedelta(days=days))
@@ -279,9 +288,10 @@ def queue(tenant,payload,contact=None,campaign=None):
     delivery=Delivery(tenant=tenant,contact=contact,campaign=campaign,next_attempt=timezone.now())
     delivery.payload=encrypt(tenant,payload,"delivery:"+str(delivery.pk));delivery.save()
     return delivery
-def create_booking(tenant,data,actor=None,origin="public",source=""):
+def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
     """origin and source (2.14.0): the channel of an online booking, from the signed ticket of its page (public.py);
-    the staff's bookings are the desk's, or of a client without appointment (walkin: now, already in progress)."""
+    the staff's bookings are the desk's, or of a client without appointment (walkin: now, already in progress).
+    wait: the waiting-list entry whose link opened the page: the place kept for it is its own (waitlist.claim)."""
     # All inventory writers take the same stable tenant row lock.
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
@@ -299,6 +309,8 @@ def create_booking(tenant,data,actor=None,origin="public",source=""):
         staff=actor is not None
         walkin=staff and data.get("walkin") is True
         pii=personal(data,service,staff,walkin)
+        from .waitlist import claim,booked
+        if wait:claim(tenant,wait)
         when={**data,"start":timezone.now().replace(second=0,microsecond=0).isoformat()} if walkin else data
         start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=staff and (walkin or data.get("force") is True))
         overrun(issues,data)
@@ -319,10 +331,14 @@ def create_booking(tenant,data,actor=None,origin="public",source=""):
             from .clients import by_phone
             if contact is None:known_by_phone=by_phone(tenant,pii["phone"],without_email=True)
             contact=contact or known_by_phone
+            # 2.14.0: Non prenotabile online, also with another email on the phone of a card the business marked
+            from .clients import phone_index
+            if (contact and contact.online_blocked) or Contact.objects.filter(phone_index=phone_index(tenant,pii["phone"]),online_blocked=True).exists():raise refused(tenant,service)
             new_contact=contact is None
             if new_contact:
+                from .clients import seal_card
                 contact=Contact(tenant=tenant,email_index=idx)
-                contact.pii=encrypt(tenant,{k:pii[k] for k in ("first_name","last_name","email","phone")},"contact:"+str(contact.pk))
+                seal_card(tenant,contact,{k:pii[k] for k in ("first_name","last_name","email","phone")})
         # An unverified public request never rewrites an existing contact card,
         # its consent state or its proof: the declared data stay in the booking.
         # a card found by phone has no email: this request cannot confirm marketing for it
@@ -358,6 +374,7 @@ def create_booking(tenant,data,actor=None,origin="public",source=""):
             queue(tenant,{"to":pii["email"],"subject":"Conferma iscrizione · "+tenant.name,"body":f"Conferma la richiesta di iscrizione alle comunicazioni di {tenant.name}:\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\nSe non hai richiesto l'iscrizione, ignora il messaggio."},contact)
         from .notify import notify_staff
         notify_staff(tenant,booking,"requested" if status=="pending" else "created")
+        booked(tenant,booking,wait)
         audit(tenant,actor,"booking.created",booking.pk,origin=booking.origin,**({"forced":issues} if issues else {}))
         return booking,True
 def move_booking(tenant,booking_id,data,actor,desk=True):
@@ -370,7 +387,7 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=desk,force=desk and data.get("force") is True)
         overrun(issues,data)
         key=lambda b:(b.start,b.party,b.option_id,b.resource_id,b.occurrence_id,b.service_id)
-        before=key(booking)
+        before=key(booking);left=(booking.start,booking.end)
         booking.start,booking.end,booking.busy_start,booking.busy_end,booking.party,booking.option,booking.resource,booking.occurrence=values
         booking.service=service
         # 2.14.0: only the end changed (stretched in the agenda): for the client nothing moved, no email, the reminders
@@ -391,6 +408,8 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
             return booking
         # Confermo / Non vengo of the old day must not answer for the new one
         ActionToken.objects.filter(booking=booking,kind__in=("confirm","decline"),used=False).update(expires=timezone.now())
+        from .waitlist import freed
+        freed(tenant,*left)  # 2.14.0: the place it left, to the waiting list
         from .client_mails import send
         send(tenant,booking,"moved")
         from .notify import notify_staff
@@ -430,6 +449,9 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False)
         # back from cancelled: the client's link to cancel works again
         if old=="cancelled":ActionToken.objects.filter(booking=booking,kind="cancel").update(used=False)
         booking.save(update_fields=["status","snapshot","pii"])
+        if old in HOLDING and status not in HOLDING:
+            from .waitlist import freed
+            freed(tenant,booking.start,booking.end)  # 2.14.0: the place given up, to the waiting list
         if not undo:
             from .client_mails import send
             mail={"cancelled":"rejected" if reason=="rejected" else "cancelled","confirmed":"accepted" if old=="pending" else ""}.get(status)

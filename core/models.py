@@ -112,6 +112,13 @@ class Tenant(models.Model):
     # 2.14.0: the patron saint of the town, added to the public holidays (calendar.holidays): "06-29" and its name
     patron_day=models.CharField(max_length=5,blank=True)
     patron_name=models.CharField(max_length=60,blank=True)
+    # 2.14.0: the waiting list (waitlist.py): "all" tells every waiting client at once, the first who books wins; "queue"
+    # holds the place for the first in line for wait_minutes, then for the next. wait_check: when the worker looks again
+    wait_mode=models.CharField(max_length=5,default="all",choices=[("all","Avvisa tutti, vince chi prenota prima"),("queue","Uno alla volta, in ordine di iscrizione")])
+    wait_minutes=models.PositiveSmallIntegerField(default=60)
+    wait_check=models.DateTimeField(null=True,blank=True,db_index=True)
+    # 2.14.0: after this many absences the client's online bookings wait for the business's yes (booking.needs_request); 0 = never
+    absences_request=models.PositiveSmallIntegerField(default=0)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -314,6 +321,16 @@ class Contact(Scoped):
     discount=models.DecimalField(max_digits=8,decimal_places=2,default=0)
     # 2.13.0: the client wants the emails about his bookings (confirmation, reminder, changes)
     notices=models.BooleanField(default=True)
+    # 2.14.0: the card of a client: VIP, refused on the online page (booking.create_booking), and the keyed indexes that find
+    # it without opening it (clients.stamp): its phone, the starts of the words of its name, its tags, its birthday
+    vip=models.BooleanField(default=False)
+    online_blocked=models.BooleanField(default=False)
+    phone_index=models.CharField(max_length=64,blank=True,db_index=True)
+    name_index=models.TextField(blank=True)
+    tag_index=models.TextField(blank=True)
+    birthday_index=models.CharField(max_length=16,blank=True,db_index=True)
+    # 2.14.0: a card merged into another one stays, without data, for its consent history (append-only)
+    merged_into=models.ForeignKey("self",null=True,blank=True,on_delete=models.PROTECT,related_name="merged")
     created=models.DateTimeField(auto_now_add=True)
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant","email_index"],name="contact_email_unique")]
     @property
@@ -344,6 +361,29 @@ class Booking(Scoped):
         indexes=[models.Index(fields=["tenant","start","end"]),models.Index(fields=["resource","busy_start","busy_end"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"booking:"+str(self.pk))
+class WaitEntry(Scoped):
+    """2.14.0: a client waiting for a place (waitlist.py): a service, an operator or anyone, a day or some days, a time
+    window and how many. Name and contacts sealed like a booking's; snapshot: the consent to the notice, the free times
+    already told (seen), who added it. Entries go away once their last day has passed (privacy.apply_retention, daily from the worker)."""
+    service=models.ForeignKey(Service,on_delete=models.CASCADE)
+    resource=models.ForeignKey(Resource,null=True,blank=True,on_delete=models.SET_NULL)
+    contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="waits")
+    first=models.DateField()
+    last=models.DateField()  # a stay: the departure
+    time_from=models.TimeField(null=True,blank=True)
+    time_to=models.TimeField(null=True,blank=True)
+    party=models.PositiveIntegerField(default=1)
+    status=models.CharField(max_length=8,default="waiting",choices=[("waiting","In attesa"),("done","Fatta")])
+    due=models.BooleanField(default=False)  # something freed on its days: the worker looks at it
+    # queue mode: the place kept for this client until then (snapshot["hold"]: when, with whom, how many); it counts as
+    # taken for everyone else (booking.capacity_available)
+    held_until=models.DateTimeField(null=True,blank=True,db_index=True)
+    pii=models.TextField()
+    snapshot=models.JSONField(default=dict)
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:indexes=[models.Index(fields=["tenant","status","last"])]
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"wait:"+str(self.pk))
 class Treatment(Scoped):
     """2.8.0: one entry of the client record: when, what was done, by whom and the details (colour formula,
     products, inks). Sealed with the business key, never shown to the client, erased with the contact."""
@@ -359,7 +399,7 @@ class Treatment(Scoped):
 class ConsentEvent(Scoped):
     """Append-only consent history. No personal data: who and what live in Contact."""
     contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="consent_events")
-    kind=models.CharField(max_length=12,choices=[("requested","Richiesto"),("confirmed","Confermato"),("revoked","Revocato"),("suppressed","Escluso dagli invii"),("erased","Dati cancellati"),("imported","Importato")])
+    kind=models.CharField(max_length=12,choices=[("requested","Richiesto"),("confirmed","Confermato"),("revoked","Revocato"),("suppressed","Escluso dagli invii"),("erased","Dati cancellati"),("imported","Importato"),("merged","Schede unite")])
     purpose=models.CharField(max_length=30,default="email_marketing")
     channel=models.CharField(max_length=20)
     text_hash=models.CharField(max_length=64,blank=True)
@@ -391,6 +431,8 @@ class Campaign(Scoped):
     body=models.TextField()
     status=models.CharField(max_length=15,default="draft")
     scheduled=models.DateTimeField(null=True,blank=True)
+    # 2.14.0: who among the subscribers: tag, VIP, last visit before or after, at least N bookings (mail.campaign_contacts)
+    filters=models.JSONField(default=dict,blank=True)
     created=models.DateTimeField(auto_now_add=True)
 class Delivery(Scoped):
     channel=models.CharField(max_length=10,default="email")  # email | telegram

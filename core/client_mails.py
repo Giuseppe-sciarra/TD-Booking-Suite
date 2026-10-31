@@ -22,8 +22,9 @@ KINDS=[("confirmed","Conferma","Appena la prenotazione è fatta, online o da voi
        ("moved","Modifica","Quando la prenotazione cambia giorno, orario o servizio, da voi o dal cliente"),
        ("cancelled","Annullamento","Quando la prenotazione viene annullata, da voi o dal cliente"),
        ("arrival","Prima dell'arrivo","Soggiorni ed eventi: le istruzioni scritte nel servizio, per esempio check-in o punto d'incontro"),
-       ("review","Dopo la visita","Il grazie con il link per la recensione, solo a chi è iscritto alle comunicazioni, al massimo una volta a settimana")]
-GROUPS=[("Promemoria e conferme",("confirmed","reminder","reminder2","requested","accepted","rejected","moved","cancelled")),("Prima dell'arrivo",("arrival",)),("Dopo la visita",("review",))]
+       ("review","Dopo la visita","Il grazie con il link per la recensione, solo a chi è iscritto alle comunicazioni, al massimo una volta a settimana"),
+       ("waitlist","Si è liberato un posto","A chi è in lista d'attesa, quando si libera un posto che aspetta, con il link per prenotarlo")]
+GROUPS=[("Promemoria e conferme",("confirmed","reminder","reminder2","requested","accepted","rejected","moved","cancelled")),("Prima dell'arrivo",("arrival",)),("Dopo la visita",("review",)),("Lista d'attesa",("waitlist",))]
 # the standard emails go and stop with the agency's switch, as in 2.13.0; the others are switched by the business
 STANDARD=("confirmed","requested","accepted","rejected","moved","cancelled")
 DEFAULTS={
@@ -38,6 +39,8 @@ DEFAULTS={
  "reminder2":{"on":False,"hours":2,"subject":"A tra poco · {attivita}","body":"Ciao {nome},\nti aspettiamo tra poco: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
  "arrival":{"on":False,"hours":48,"subject":"Prima del tuo arrivo · {attivita}","body":"Ciao {nome},\nti aspettiamo: {servizio}, {quando}.\n{istruzioni}\nPer gestire la prenotazione: {link}"},
  "review":{"on":False,"hours":3,"url":"","subject":"Com'è andata? · {attivita}","body":"Ciao {nome},\ngrazie di aver scelto {attivita}. Se ti va, lasciaci una recensione: per noi conta molto."},
+ # 2.14.0: the line on who takes the place (everyone told, or kept for him until...) is added after the text (offer)
+ "waitlist":{"on":True,"subject":"Si è liberato un posto · {attivita}","body":"Ciao {nome},\nsi è liberato un posto che aspettavi: {servizio}, {quando}.\nPrenota da qui: {link}"},
 }
 HOURS=[2,3,6,12,24,48,72]
 # when each timed message goes: hours before the start, hours after the end for the review
@@ -124,6 +127,24 @@ def send(tenant,booking,kind):
         from .ics import ics
         payload["ics"]=ics(booking)
     return queue(tenant,payload,booking.contact)
+
+def offer(tenant,entry,slots,link,until=None):
+    """2.14.0: Si è liberato un posto, to a client of the waiting list who left an email and did not say no to the
+    emails about his bookings: the free times of the day, the link of the booking page on it and who takes the place."""
+    from django.template.loader import render_to_string
+    from .booking import queue
+    from .branding import contrast_color
+    conf=current(tenant)["waitlist"];d=entry.data
+    if not conf["on"] or not d.get("email") or not entry.contact.notices:return None
+    tz=ZoneInfo(tenant.timezone);first=datetime.fromisoformat(slots[0]["start"]).astimezone(tz)
+    if entry.service.kind=="day":quando=when(first,datetime.fromisoformat(slots[0]["end"]).astimezone(tz),True)
+    else:quando=f"{WEEKDAYS[first.weekday()]} {first:%d/%m/%Y} alle "+", ".join(datetime.fromisoformat(x["start"]).astimezone(tz).strftime("%H:%M") for x in slots[:6])+(" e altri orari" if len(slots)>6 else "")
+    v={"nome":d.get("first_name",""),"servizio":entry.service.name,"quando":quando,"data":f"{first:%d/%m/%Y}","ora":f"{first:%H:%M}","sede":entry.service.location.name,
+        "operatore":entry.resource.name if entry.resource else "","attivita":tenant.name,"istruzioni":"","link":link}
+    body=fill(conf["body"],v)+"\n"+(f"Il posto è tenuto per te fino alle {until.astimezone(tz):%H:%M} di {WEEKDAYS[until.astimezone(tz).weekday()]}, poi passa a chi viene dopo in lista." if until
+        else "Lo abbiamo scritto a tutti quelli in lista: lo prende chi prenota per primo. Se non c'è più, sulla pagina vedi cosa resta libero.")
+    return queue(tenant,{"to":d["email"],"subject":" ".join(fill(conf["subject"],v).split()),"body":body,
+        "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":[("Prenota",link)],"color":contrast_color(tenant.brand_color)})},entry.contact)
 
 def clean(post,enabled=True,saved=None):
     """The emails as the business set them. Words, and whether the standard emails go, only while the agency lets it

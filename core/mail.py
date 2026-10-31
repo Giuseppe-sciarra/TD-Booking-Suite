@@ -5,7 +5,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q, Case, When, IntegerField
+from django.db.models import Q, Case, When, IntegerField, Max, Count
 from django.utils import timezone
 from .models import Tenant,Campaign,Contact,Delivery,audit
 from .crypto import decrypt,encrypt
@@ -109,15 +109,29 @@ def describe(config):
     if m=="gmail":return "Google / Gmail, account "+(config.get("account") or config["sender"])
     if m=="graph":return "Microsoft 365, casella "+config.get("mailbox","")
     return "server "+str(config.get("host",""))+", porta "+str(config.get("port",""))
-def campaign_contacts():
-    return Contact.objects.filter(consent="yes",suppressed=False).order_by("created")
+def campaign_contacts(tenant=None,filters=None):
+    """Who has the confirmed consent; 2.14.0: among them, a campaign's own people: a tag, VIP, last visit after or
+    before a day, at least N visits (bookings that took place)."""
+    rows=Contact.objects.filter(consent="yes",suppressed=False).order_by("created")
+    f=filters or {}
+    if not f:return rows
+    from .booking import ACCEPTED
+    from .clients import with_tag
+    now=timezone.now();done=Q(booking__status__in=ACCEPTED,booking__start__lte=now)
+    if f.get("tag"):rows=with_tag(tenant,rows,f["tag"])
+    if f.get("vip"):rows=rows.filter(vip=True)
+    if f.get("after") or f.get("before") or f.get("visits"):rows=rows.annotate(last_visit=Max("booking__start",filter=done),visits=Count("booking",filter=done))
+    if f.get("after"):rows=rows.filter(last_visit__date__gte=f["after"])
+    if f.get("before"):rows=rows.filter(Q(last_visit__date__lt=f["before"])|Q(last_visit__isnull=True))
+    if f.get("visits"):rows=rows.filter(visits__gte=f["visits"])
+    return rows
 def enqueue_campaign(tenant,campaign,actor):
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
         campaign=Campaign.objects.select_for_update().get(pk=campaign.pk)
         if not tenant.marketing_enabled or not tenant.smtp or not operational(tenant):raise BookingError("Invio marketing non abilitato o SMTP non configurato.")
         if campaign.status!="draft":raise BookingError("Campagna già accodata.")
-        recipients=campaign_contacts()
+        recipients=campaign_contacts(tenant,campaign.filters)
         if recipients.count()>5000:raise BookingError("Massimo 5.000 destinatari per campagna; suddividi gli invii.")
         if not recipients.exists():raise BookingError("Nessun destinatario con consenso confermato.")
         for contact in recipients.iterator(chunk_size=100):

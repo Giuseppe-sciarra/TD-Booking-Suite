@@ -1147,8 +1147,8 @@ button,.button{padding:8px 15px}
 .privacy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.privacy-grid .card{margin:0}
 .pill.discount{background:color-mix(in srgb,var(--pink) 14%,var(--paper));color:color-mix(in srgb,var(--pink) 80%,var(--ink))}
 @media(max-width:1200px){.metrics.five{grid-template-columns:repeat(3,minmax(0,1fr))}.metrics.five .metric:nth-child(4){border-left:0}.metrics.five .metric:nth-child(n+4){border-top:1px solid var(--line)}}
-@media(max-width:1000px){.client-page{grid-template-columns:1fr}.client-side{position:static}.overview-grid,.privacy-grid{grid-template-columns:1fr}}
-@media(max-width:700px){.client-history li{grid-template-columns:80px minmax(0,1fr)}.client-history li .price,.client-history li .pill,.client-history li>a{grid-column:2;text-align:left}.metrics.five{grid-template-columns:1fr 1fr}}
+@media(max-width:1000px){.client-page{grid-template-columns:minmax(0,1fr)}.client-side{position:static}.overview-grid,.privacy-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.client-history li{grid-template-columns:80px minmax(0,1fr)}.client-history li .price,.client-history li .pill,.client-history li>a{grid-column:2;text-align:left}.metrics.five{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .agenda.week .agenda-head .week-head strong{border:0;padding:0;overflow:visible}
 .agenda-alert{display:inline-grid;place-items:center;width:15px;height:15px;margin-right:5px;border-radius:50%;background:var(--warn);color:var(--paper);font:800 10px/1 var(--head);vertical-align:1px}
 .agenda-off{margin:-4px 0 12px;font-size:13px;color:var(--muted)}
@@ -1438,3 +1438,36 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
  .agenda-head{position:static}a{color:inherit}
  :root[data-privacy] :is(.pv,.today-who strong,.week-col li a span,.month-day li){color:inherit!important;text-shadow:none}
 }
+
+/* 2.14.0: the client card on the bookings: VIP, absences, last-moment cancellations, not bookable online, tags */
+.cmark{display:inline-flex;align-items:center;gap:2px;margin-right:4px;padding:0 5px 0 3px;height:18px;border-radius:999px;font-size:11.5px;font-weight:700;vertical-align:1px;background:var(--soft);color:var(--brand)}
+.cmark .nav-ico{width:12px;height:12px;opacity:1}
+.cmark.vip{background:color-mix(in srgb,#d4a017 18%,var(--paper));color:color-mix(in srgb,#b8860b 85%,var(--ink))}.cmark.vip .nav-ico{fill:currentColor}
+.cmark.absent,.cmark.blocked{background:var(--danger-soft);color:var(--danger)}
+.cmark.late{background:var(--warn-soft);color:var(--warn)}
+.cmark.full{height:auto;padding:4px 10px;gap:6px;font-size:13px}
+.tag-chip{display:inline-flex;align-items:center;margin:0 4px 4px 0;padding:2px 9px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:12.5px;font-weight:600;white-space:nowrap}
+.client-chips .tag-chip{margin:0}
+.state-legend .cmark{margin:0}
+/* 2.14.0: the waiting list */
+.wait-list{list-style:none;margin:0;padding:0}
+.wait-list>li{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:6px 18px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.wait-list>li:first-child{border-top:0}
+.wait-list strong,.wait-list small{display:block}.wait-list small{color:var(--muted)}
+.wait-state{display:inline-block;margin-top:4px;padding:2px 10px;border-radius:999px;background:var(--soft);color:var(--muted);font-size:12.5px;font-weight:600}
+.wait-state.free{background:var(--ok-soft);color:var(--ok)}.wait-state.held{background:var(--warn-soft);color:var(--warn)}
+.wait-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center}.wait-actions form{display:contents}
+@media (max-width:720px){.wait-list>li{grid-template-columns:1fr}.wait-actions{justify-content:flex-start}}
+.wait-box{margin-top:14px;padding:14px 16px;border-radius:var(--r);background:var(--soft)}
+.wait-box>p{margin:0}
+.wait-box .form-grid{margin-top:12px}
+.wait-open{margin-top:6px}
+.merge-table{width:100%;border-collapse:collapse}.merge-table th,.merge-table td{padding:10px 8px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+.merge-table label.check{margin:0;font-weight:500;overflow-wrap:anywhere}.merge-table input[type=radio]{width:18px;min-height:18px;margin:3px 10px 0 0;padding:0;accent-color:var(--brand);flex:none}.merge-table small{display:block}.merge-table th{width:22%}
+.merge-table thead th{color:var(--muted);font-size:13px;font-weight:600}
+.birthday-list{list-style:none;margin:0;padding:0}.birthday-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line)}.birthday-list li:first-child{border-top:0}
+.rules-grid{margin-top:18px}
+/* 2.14.0: on a phone the top bar keeps Nascondi nomi as its eye only, so Esci stays in view */
+@media (max-width:560px){.privacy-toggle span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
+.client-filter>.tag-pick{flex:0 1 200px}.client-filter .vip-filter{margin:0 0 12px;align-items:center;white-space:nowrap}.client-filter .vip-filter input{width:18px}
+@media (max-width:560px){.filters.client-filter{align-items:stretch}.client-filter>div,.client-filter>.tag-pick{flex:none}.client-filter .vip-filter{margin:0}}

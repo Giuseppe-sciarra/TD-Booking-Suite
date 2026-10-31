@@ -27,7 +27,8 @@ def source_tag(value):
     """2.14.0: the tag of a link per channel (?src=instagram): a few plain characters, otherwise none."""
     value=str(value or "").strip().lower()
     return value if re.fullmatch(r"[a-z0-9_-]{1,30}",value) else ""
-def widget_data(request,booking=None):
+def widget_data(request,booking=None,wait=None):
+    """wait (2.14.0): the waiting-list entry of an offer's link: its booking takes the place kept for it."""
     tenant=request.tenant
     services=[]
     rows=Service.objects.filter(active=True,location__active=True).select_related("location").order_by("name")
@@ -57,8 +58,8 @@ def widget_data(request,booking=None):
     result={"service_label":service_word(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
         # 2.14.0: where the page was opened, signed with the ticket, so the booking keeps its channel.
         # shortcut: the WordPress plugin is told apart by the theme= its frame always adds; a link with theme= counts as WordPress
-        "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src"))},salt="public-booking"),"internal":internal,
-        "allergens":tenant.asked_allergens,"can_force":internal and can(request,"booking.force")}
+        "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src")),**({"wait":str(wait.pk)} if wait else {})},salt="public-booking"),"internal":internal,
+        "allergens":tenant.asked_allergens,"can_force":internal and can(request,"booking.force"),"wait":"" if internal else f"/book/{tenant.slug}/api/attesa/"}
     if booking:
         result["submit"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-api/"
         result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party}
@@ -85,9 +86,19 @@ def first_step(widget):
     return "service"
 INTRO={"none":"Scegli giorno e orario","location":"Scegli la sede, poi giorno e orario","service":"Scegli il servizio, poi giorno e orario"}
 def booking_page(request,slug):
-    widget=widget_data(request)
+    # 2.14.0: from the link of "Si è liberato un posto": the day, the service, with whom, how many and who, already chosen;
+    # the rules of the page stay the same, so a place taken meanwhile is simply not there
+    from .waitlist import opened
+    offer=opened(request.tenant,request.GET.get("attesa"))
+    widget=widget_data(request,wait=offer[0] if offer else None)
+    if offer:
+        e,day=offer;d=e.data
+        widget["prefill"]={"service":str(e.service_id),"resource":str(e.resource_id or ""),"date":e.first.isoformat() if e.service.kind=="day" else day.isoformat(),
+            "end_date":e.last.isoformat() if e.service.kind=="day" else "","party":e.party,"contact":{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
+        widget["slots"]+="?attesa="+request.GET["attesa"]
     from .client_mails import current
-    return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)],"reminder":current(request.tenant)["reminder"]["on"]})
+    return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)],"reminder":current(request.tenant)["reminder"]["on"],
+        "waitlist":True,"offer":bool(offer)})
 def manual_booking(request,slug):
     require_role(request,write=True)
     widget=widget_data(request)
@@ -123,7 +134,12 @@ def slots_api(request,slug,booking_id=None):
         if booking_id is not None:exclude=choice(visible_bookings(request,Booking.objects.all()),booking_id,status__in=MOVABLE).pk
         # 2.14.0: in the portal the desk's rules; Forza lists every date of an event of the day, also full
         desk=request.path.startswith("/t/");force=desk and request.GET.get("forza")=="1" and can(request,"booking.force")
-        return JsonResponse({"slots":free_slots(request,request.GET,exclude,desk,force)})
+        # 2.14.0: the page of an offer's link sees the place kept for its client as free
+        from .waitlist import opened,OWN
+        offer=None if desk else opened(request.tenant,request.GET.get("attesa"))
+        token=OWN.set(offer[0].pk if offer else None)
+        try:return JsonResponse({"slots":free_slots(request,request.GET,exclude,desk,force)})
+        finally:OWN.reset(token)
     except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or "Richiesta non valida."},status=400)
 def free_slots(request,params,exclude=None,desk=False,force=False):
     """The free times of a day, or the units free for a stay, as the booking form asks for them (params: its query)."""
@@ -159,6 +175,25 @@ def public_submit(request,slug):
     except signing.BadSignature:return JsonResponse({"error":"Pagina scaduta. Ricarica e riprova."},status=403)
     throttle(request,"booking:"+str(request.tenant.pk),20,3600)
     return submit(request,actor=None,ticket=ticket)
+@csrf_exempt
+@require_POST
+@json_denied
+def public_wait(request,slug):
+    """2.14.0: Avvisami se si libera, from the booking page: the same checks as a booking sent from it (origin, signed
+    ticket, limits per address and per email)."""
+    if request.headers.get("Origin") not in (settings.PUBLIC_ORIGIN,page_origin(request)):raise PermissionDenied
+    try:
+        ticket=signing.loads(request.headers.get("X-TDBS-Ticket",""),salt="public-booking",max_age=3600)
+        if ticket.get("tenant")!=str(request.tenant.pk):raise PermissionDenied
+    except signing.BadSignature:return JsonResponse({"error":"Pagina scaduta. Ricarica e riprova."},status=403)
+    throttle(request,"booking:"+str(request.tenant.pk),20,3600)
+    from .waitlist import add
+    try:
+        data=json_body(request)
+        throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
+        add(request.tenant,data)
+        return JsonResponse({"ok":True},status=201)
+    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or "Controlla i dati."},status=400)
 @require_POST
 @json_denied
 def internal_submit(request,slug):
@@ -178,7 +213,7 @@ def submit(request,actor,ticket=None):
     try:
         data=json_body(request)
         if actor is None:throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
-        booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src"))} if ticket else {}))
+        booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src")),"wait":ticket.get("wait","")} if ticket else {}))
         if actor:return JsonResponse({"redirect":f"/t/{request.tenant.slug}/bookings/{booking.pk}/"})
         own=f"/action/{request.tenant.slug}/{booking.data['cancel_token']}/"
         # 2.14.0: the confirmed booking into the client's calendar (a request waits for the business's yes)

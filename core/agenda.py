@@ -129,7 +129,8 @@ def day_view(request):
     start=datetime.combine(day,time.min,tz);end=start+timedelta(days=1)
     rows=visible_bookings(request,Booking.objects.filter(location=location,start__lt=end,end__gt=start,status__in=statuses(request))).select_related("service","resource","tenant").order_by("start")
     if chosen:rows=rows.filter(resource=chosen)
-    rows=list(rows) if location else []
+    from .clients import mark
+    rows=mark(request,rows) if location else []
     memo={};mine=services_of(ops)
     spans={op.pk:open_spans(t,day,op,memo,mine[op.pk]) for op in ops}
     # 2.11.0: like the salon programs, the day shows who works: an operator off that day, with nothing booked,
@@ -215,7 +216,8 @@ def week_view(request):
     rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=statuses(request))).select_related("service","resource","tenant").order_by("start")
     if location:rows=rows.filter(location=location)
     if chosen:rows=rows.filter(resource=chosen)
-    rows=list(rows) if location else []
+    from .clients import mark
+    rows=mark(request,rows) if location else []
     writer=can(request,"booking.write")
     now=timezone.now()
     columns=[{"day":d,"col":i,"today":d==today,"items":[],"closed":[],"cells":[]} for i,d in enumerate(days,start=2)]
@@ -357,6 +359,8 @@ def block_view(request,slug,block_id=None):
     if block and request.method=="POST" and request.POST.get("remove"):
         with transaction.atomic():
             block.delete();audit(t,request.user,"agenda.unblock",block_id)
+            from .waitlist import freed
+            freed(t)  # 2.14.0: the time is free again: the waiting list looks at it
         messages.success(request,"Blocco tolto: quell'orario si prenota di nuovo.");return redirect(back)
     initial={"day":day}
     if not block:
@@ -377,6 +381,9 @@ def block_view(request,slug,block_id=None):
                 if hit and not request.POST.get("confirm_conflicts"):
                     raise ValidationError(f"In quell'orario ci sono già {len(hit)} prenotazioni: "+listed(hit)+". Restano valide: chiamale per spostarle. Conferma esplicitamente per bloccare lo stesso.")
                 audit(t,request.user,"agenda.block",obj.pk,kind=obj.reason,weekly=obj.weekly,conflicts=len(hit))
+                if block:
+                    from .waitlist import freed
+                    freed(t)  # a block made shorter frees time
             messages.success(request,"Orario bloccato: online e al banco non si prenota."+(f" {len(hit)} prenotazioni da ricontattare." if hit else ""))
             return redirect(reverse("bookings",args=[slug])+f"?vista=giorno&data={obj.day.isoformat()}")
         except ValidationError as ex:
@@ -421,6 +428,8 @@ def turn_switch(request,slug):
         with transaction.atomic():
             gone=[x.pk for _,_,x in block_spans(t,day,day,service=s) if x.reason=="closed" and not x.weekly and x.day==day]
             TimeBlock.objects.filter(pk__in=gone).delete();audit(t,request.user,"agenda.turn_open",s.pk,day=day.isoformat(),start=a.isoformat())
+            from .waitlist import freed
+            freed(t,a,b)
         messages.success(request,f"{label}: di nuovo aperto, si prenota.");return redirect(back)
     if turn["closed"]:return redirect(back)  # closed meanwhile, from another screen
     held=Booking.objects.filter(service=s,status__in=OPEN,busy_start__lt=b,busy_end__gt=a).select_related("service","tenant").order_by("start")

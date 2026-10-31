@@ -19,6 +19,8 @@ class Command(BaseCommand):
                 if remind():self.stdout.write("Messaggi accodati ai clienti.")
                 if evening():self.stdout.write("Riepiloghi serali accodati.")
                 last_remind=time.time()
+            from core.waitlist import run as waitlist  # 2.14.0: places freed, offered to the waiting list; kept places that expire
+            if waitlist():self.stdout.write("Avvisi della lista d'attesa accodati.")
             result=worker_once()
             from core.trial import notify_pending
             if notify_pending():self.stdout.write("Richieste di prova inoltrate all'agenzia.")

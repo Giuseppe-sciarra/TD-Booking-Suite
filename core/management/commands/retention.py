@@ -16,4 +16,4 @@ class Command(BaseCommand):
             from core import importer
             importer.purge()  # client files of an import left halfway
         verb="Applicato" if kw["apply"] else "Simulazione"
-        self.stdout.write(f"{verb}: {report['bookings']} prenotazioni, {report['contacts']} contatti, {report['treatments']} voci della scheda cliente, {report['deliveries']} email.")
+        self.stdout.write(f"{verb}: {report['bookings']} prenotazioni, {report['contacts']} contatti, {report['treatments']} voci della scheda cliente, {report['deliveries']} email, {report.get('waits',0)} richieste in lista d'attesa scadute.")

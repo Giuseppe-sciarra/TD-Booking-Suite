@@ -422,7 +422,22 @@ class OccurrenceForm(ScopedForm):
             for o in dates:place(o,o.start.astimezone(tz).date()+shift)
         return obj
 class CampaignForm(ScopedForm):
+    # 2.14.0: to whom among the subscribers; all empty = all of them, as before
+    tag=forms.ChoiceField(required=False,label="Solo i clienti con l'etichetta")
+    vip=forms.BooleanField(required=False,label="Solo i clienti VIP")
+    after=forms.DateField(required=False,label="Ultima visita dal",widget=forms.DateInput(attrs={"type":"date"},format="%Y-%m-%d"))
+    before=forms.DateField(required=False,label="Nessuna visita dal",help_text="Per esempio per chi non torna da sei mesi",widget=forms.DateInput(attrs={"type":"date"},format="%Y-%m-%d"))
+    visits=forms.IntegerField(required=False,min_value=1,max_value=1000,label="Almeno quante visite")
     class Meta:model=Campaign;fields=["name","subject","body","scheduled"]
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        from .clients import known_tags
+        self.fields["tag"].choices=[("","Tutti")]+[(t,t) for t in known_tags(self.tenant)]
+        for k,v in (self.instance.filters or {}).items():self.initial[k]=v
+    def save(self,commit=True):
+        d=self.cleaned_data
+        self.instance.filters={k:(d[k].isoformat() if hasattr(d[k],"isoformat") else d[k]) for k in ("tag","vip","after","before","visits") if d.get(k)}
+        return super().save(commit)
     def clean_subject(self):
         value=self.cleaned_data["subject"]
         if "\n" in value or "\r" in value:raise ValidationError("Oggetto non valido.")

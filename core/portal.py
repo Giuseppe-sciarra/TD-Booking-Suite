@@ -10,17 +10,19 @@ from django.http import HttpResponse
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.urls import reverse
+from django.db.models import Q
 from .models import *
 from .forms import LocationForm,ResourceForm,ServiceForm,OptionForm,ScheduleForm,ExceptionForm,OccurrenceForm,CampaignForm,ShiftForm
 from .tenancy import scope
 from .middleware import require_role
-from .permissions import can,require,visible_bookings,shown
+from .permissions import can,require,visible_bookings,shown,check_new_booking
 from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,OPEN,ACCEPTED,MOVABLE,REASONS
 from .calendar import fits,blocked_stay,blocked,covering,holidays
 from .crypto import index,tenant_key,encrypt
 from .mail import enqueue_campaign,campaign_contacts
 from .site import mail_ready
 from .client_mails import whatsapp
+from .waitlist import WAIT_MINUTES
 CATALOG={
  "locations":(Location,LocationForm,"Sedi"),
  "schedules":(Schedule,ScheduleForm,"Orari di apertura"),
@@ -113,7 +115,7 @@ def setup(request,slug):
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
     return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
-        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
+        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
@@ -140,15 +142,23 @@ def setup_brand(request,slug):
     else:messages.error(request," ".join(e for errors in form.errors.values() for e in errors))
     return redirect(reverse("setup",args=[slug])+"#aspetto")
 
+ABSENCES=range(0,6)
 def setup_desk(request,slug):
-    """2.14.0: Forza at the desk also for reception and operators: the owner's choice (Tenant.force_all)."""
+    """2.14.0: Forza at the desk also for reception and operators: the owner's choice (Tenant.force_all). With the same
+    card: after how many absences a client's online bookings wait for a yes, and how the waiting list works."""
     from django.http import Http404
     if request.method!="POST":raise Http404
     require(request,"users.manage")
-    on=request.POST.get("force_all")=="on"
-    Tenant.objects.filter(pk=request.tenant.pk).update(force_all=on)
-    audit(request.tenant,request.user,"tenant.force_all",request.tenant.pk,on=on)
-    messages.success(request,"Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")
+    t=request.tenant;on=request.POST.get("force_all")=="on"
+    try:
+        absences=int(request.POST.get("absences_request",t.absences_request));minutes=int(request.POST.get("wait_minutes",t.wait_minutes))
+        mode=request.POST.get("wait_mode",t.wait_mode)
+        if absences not in ABSENCES or minutes not in WAIT_MINUTES or mode not in ("all","queue"):raise ValueError
+    except ValueError:
+        messages.error(request,"Scelta non valida.");return redirect(reverse("setup",args=[slug])+"#banco")
+    Tenant.objects.filter(pk=t.pk).update(force_all=on,absences_request=absences,wait_mode=mode,wait_minutes=minutes)
+    audit(t,request.user,"tenant.force_all",t.pk,on=on,absences=absences,wait_mode=mode,wait_minutes=minutes)
+    messages.success(request,("Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")+" Regole salvate.")
     return redirect(reverse("setup",args=[slug])+"#banco")
 
 def booking_qr(request,slug):
@@ -330,7 +340,8 @@ def dashboard(request,slug):
         next_days["daily"]=True
         stats={"outcome":outcome_rows(counts,total),"outcome_total":total,"weekly":bars(weekly,first,width=440,height=170),"next_days":next_days,
             "services":[{"name":s["snapshot__service"] or "Servizio","n":s["n"],"share":round(100*s["n"]/top)} for s in services]}
-    shown_rows=list(rows.select_related("tenant")[:50])
+    from .clients import mark
+    shown_rows=mark(request,rows.select_related("tenant")[:50])
     for row in shown_rows:row.shown=shown(request,row.data)
     # 2.13.0: the next 7 days too, day by day, who and at what time (the list behind "Prossimi 7 giorni")
     # shortcut: at most 300 bookings in the list, the agenda has all of them
@@ -358,7 +369,15 @@ def dashboard(request,slug):
         try:turn_day=date.fromisoformat(request.GET.get("turni",""))
         except ValueError:pass
         turn_list=turns(request.tenant,turn_day)
-    return render(request,"dashboard.html",{"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),
+    # 2.14.0: the waiting list, how many wait and how many have a place freed for them; the birthdays of the week
+    from .models import WaitEntry
+    waits=WaitEntry.objects.filter(status="waiting",last__gte=today) if can(request,"booking.read") else WaitEntry.objects.none()
+    wait={"n":waits.count(),"free":waits.filter(snapshot__has_key="free").count()}
+    born=None
+    if can(request,"contacts.read") and can(request,"pii.read"):
+        from .clients import birthdays
+        born=birthdays(request.tenant,today)[:20]
+    return render(request,"dashboard.html",{"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),
         "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists(),"turns":turn_list,"turn_day":turn_day,"many_locations":Location.objects.filter(active=True).count()>1})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
@@ -383,7 +402,8 @@ def bookings(request,slug):
     rows=visible_bookings(request,Booking.objects.filter(start__lt=b,end__gt=a)).select_related("service","resource","tenant").order_by("start")
     if request.GET.get("status"):rows=rows.filter(status=request.GET["status"])
     page=Paginator(rows,50).get_page(request.GET.get("page"))
-    for row in page:row.shown=shown(request,row.data)
+    from .clients import mark
+    for row in mark(request,page):row.shown=shown(request,row.data)
     return render(request,"bookings.html",{"page":page,"start":a.date(),"end":(b-timedelta(days=1)).date(),"agenda":agenda})
 def booking_detail(request,slug,booking_id):
     require(request,"booking.read")
@@ -413,6 +433,8 @@ def booking_detail(request,slug,booking_id):
         except BookingError as ex:
             messages.error(request,str(ex))
             if back:return redirect("dashboard",slug)
+    from .clients import mark
+    mark(request,[booking])  # 2.14.0: VIP, tags, absences of the client, for who sees the client cards
     data=shown(request,booking.data)
     answers=[{"label":booking.snapshot.get("field_labels",{}).get(k,k),"value":"Sì" if v is True else v} for k,v in data.get("answers",{}).items() if v not in ("",None,False)]
     tz=ZoneInfo(request.tenant.timezone);day=booking.start.astimezone(tz).date()
@@ -476,14 +498,20 @@ def contacts(request,slug):
             return redirect("contact_detail",slug,c.pk)
         except BookingError as ex:error=str(ex)
     q=request.GET.get("q",request.GET.get("email","")).strip()
-    if q:
-        found=find(request.tenant,q,limit=200)
-        page=Paginator(found,50).get_page(request.GET.get("page"))
-    else:
-        page=Paginator(Contact.objects.exclude(email_index__startswith="erased:").order_by("-created"),50).get_page(request.GET.get("page"))
-    counts=visit_counts(list(page))
-    for c in page:c.shown=shown(request,c.data);c.stats=counts.get(c.pk,{})
-    return render(request,"contacts.html",{"page":page,"search":q,"error":error,"form":request.POST if error else {}})
+    # 2.14.0: the clients with a tag, the VIPs
+    from .clients import known_tags,with_tag,opener
+    rows=Contact.objects.exclude(email_index__startswith="erased:")
+    tag=request.GET.get("tag","").strip();vip=request.GET.get("vip")=="1"
+    if tag:rows=with_tag(request.tenant,rows,tag)
+    if vip:rows=rows.filter(vip=True)
+    if q:page=Paginator(find(request.tenant,q,limit=200,rows=rows),50).get_page(request.GET.get("page"))
+    else:page=Paginator(rows.order_by("-created"),50).get_page(request.GET.get("page"))
+    counts=visit_counts(list(page));read=opener(request.tenant)
+    for c in page:c.shown=shown(request,read(c));c.stats=counts.get(c.pk,{})
+    from urllib.parse import urlencode
+    keep="&"+urlencode({k:v for k,v in (("tag",tag),("vip","1" if vip else "")) if v}) if tag or vip else ""
+    return render(request,"contacts.html",{"page":page,"search":q,"error":error,"form":request.POST if error else {},"tags":known_tags(request.tenant),"tag":tag,"vip":vip,
+        "filtered":bool(q or tag or vip),"keep":keep})
 def contacts_search(request,slug):
     """Quick search for the manual booking form: at most 8 clients, only for who sees names."""
     from .clients import search as find
@@ -545,7 +573,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -586,6 +614,18 @@ def contact_detail(request,slug,contact_id):
         audit(request.tenant,request.user,"contact.notices",contact.pk,on=contact.notices)
         messages.success(request,"Il cliente riceve le email delle sue prenotazioni." if contact.notices else "Il cliente non riceve più le email delle sue prenotazioni.")
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#privacy")
+    if request.method=="POST" and request.POST.get("action")=="profile":
+        # 2.14.0: tags, birthday, VIP and "not bookable online": who edits the card's data
+        require(request,"booking.write","pii.read")
+        from .clients import clean_profile,save_profile
+        try:
+            with transaction.atomic():
+                p=clean_profile(request.POST,timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date())
+                save_profile(request.tenant,contact,p)
+                audit(request.tenant,request.user,"contact.profile",contact.pk,vip=p["vip"],online_blocked=p["online_blocked"],tags=len(p["tags"]),birthday=bool(p["birthday"]))
+            messages.success(request,"Scheda aggiornata.")
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#profilo")
     if request.method=="POST" and request.POST.get("action") in ("notes","card"):
         require(request,"booking.write",*(("notes.read",) if request.POST["action"]=="notes" else ("pii.read",)))
         try:
@@ -606,7 +646,12 @@ def contact_detail(request,slug,contact_id):
     upcoming=sorted((b for b in rows if b.start>timezone.now() and b.status in MOVABLE),key=lambda b:b.start)[:3]
     for b in upcoming:b.shown=shown(request,b.data)
     data=shown(request,raw)
+    from .clients import reliability
+    stats["late"]=reliability([contact.pk]).get(contact.pk,(0,0))[1]
+    from .waitlist import WaitEntry
     ctx={"contact":contact,"data":data,"raw":raw if can(request,"pii.read") else {},"events":history(contact),"page":page,"stats":stats,
+        "waits":list(WaitEntry.objects.filter(contact=contact,status="waiting").select_related("service").order_by("first")),
+        "merge_ok":can(request,"privacy.manage") and can(request,"pii.read"),
         "upcoming":upcoming,"discount":discount_label(contact),
         # 2.14.0: WhatsApp with the text about the next booking, or an empty chat
         "whatsapp":whatsapp(request.tenant,data.get("phone",""),upcoming[0] if upcoming else None),
@@ -627,6 +672,74 @@ def contact_detail(request,slug,contact_id):
             if b:prefill=from_booking(b,tz)
         ctx.update(tpage=Paginator(entries,30).get_page(request.GET.get("tp")),entries_count=len(entries),prefill=prefill,today=now.astimezone(tz).date(),**record_options(spec))
     return render(request,"contact_detail.html",ctx)
+def waitlist_view(request,slug):
+    """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;
+    Chiama, WhatsApp, Prenota, Fatta, Togli. Names and contacts as the role may see them, the entries of its scope."""
+    from .waitlist import add,close
+    require(request,"booking.read")
+    t=request.tenant;tz=ZoneInfo(t.timezone);now=timezone.now();m=request.member
+    rows=WaitEntry.objects.filter(status="waiting",last__gte=now.astimezone(tz).date()).select_related("service__location","resource","contact").order_by("first","created")
+    if m and (m.locations or m.role=="operator" and not m.resources):rows=rows.filter(service__location_id__in=m.locations or [])
+    if m and m.resources:rows=rows.filter(Q(resource_id__in=m.resources)|Q(resource__isnull=True))
+    error="";form={}
+    if request.method=="POST":
+        require(request,"booking.write")
+        action=request.POST.get("action")
+        try:
+            if action=="add":
+                form=request.POST
+                chosen=Contact.objects.exclude(email_index__startswith="erased:").filter(pk=uid(request.POST.get("contact"))).first() if can(request,"pii.read") else None
+                if m:check_new_booking(request,choice(Service,request.POST.get("service"),active=True),request.POST.get("resource"))  # inside the user's scope
+                e,created=add(t,request.POST,request.user,chosen)
+                messages.success(request,"Aggiunto alla lista d'attesa." if created else "Era già in lista per questi giorni.")
+                return redirect("waitlist",slug)
+            e=get_object_or_404(rows,pk=uid(request.POST.get("entry")))
+            close(t,e,request.user,remove=action=="remove")
+            messages.success(request,"Tolto dalla lista." if action=="remove" else "Segnato come fatto.")
+            return redirect("waitlist",slug)
+        except BookingError as ex:error=str(ex)
+    rows=list(rows)
+    for e in rows:
+        e.shown=shown(request,e.data);e.whatsapp=whatsapp(t,e.shown.get("phone","")) if not e.shown.get("masked") else ""
+        e.free=[datetime.fromisoformat(x).astimezone(tz) for x in e.snapshot.get("free",[])]
+        e.held=e.held_until.astimezone(tz) if e.held_until and e.held_until>now else None
+    client=None
+    if request.GET.get("cliente") and can(request,"pii.read"):
+        client=Contact.objects.exclude(email_index__startswith="erased:").filter(pk=uid(request.GET["cliente"])).first()
+        if client:client.shown=client.data
+    from .presets import units
+    return render(request,"waitlist.html",{"rows":rows,"error":error,"form":form,"client":client,"services":Service.objects.filter(active=True,location__active=True).select_related("location").order_by("name"),
+        "resources":Resource.objects.filter(active=True,location__active=True,id__in=ServiceResource.objects.filter(service__active=True,service__kind__in=("resource","day")).values("resource_id")).order_by("name"),
+        "one":units(t.business_type)[0],"today":now.astimezone(tz).date(),"many_locations":Location.objects.filter(active=True).count()>1})
+def contact_merge(request,slug,contact_id):
+    """2.14.0: two cards of the same person made one (clients.merge): the other card searched by name, phone or email,
+    then field by field which value stays, which card is the main one, and a confirmation: it cannot be undone."""
+    from .clients import search as find,merge,MERGE_FIELDS
+    require(request,"contacts.read","pii.read","booking.write","privacy.manage")
+    alive=Contact.objects.exclude(email_index__startswith="erased:")
+    contact=get_object_or_404(alive,pk=contact_id)
+    other=alive.exclude(pk=contact.pk).filter(pk=uid(request.GET.get("con") or request.POST.get("con"))).first()
+    error=""
+    if request.method=="POST" and other:
+        from .identity import fresh
+        fresh(request)
+        try:
+            if request.POST.get("confirm")!="UNISCI":raise BookingError("Scrivi UNISCI per confermare.")
+            main,second=(other,contact) if request.POST.get("main")=="other" else (contact,other)
+            # the choices are made on the page as "this card" and "the other one": turned to main and second here
+            keep={f:("other" if (request.POST.get("keep_"+f)=="other")==(main.pk==contact.pk) else "main") for f,_ in MERGE_FIELDS}
+            merge(request.tenant,main,second,keep,request.user)
+            messages.success(request,"Schede unite: prenotazioni, scheda, lista d'attesa e consensi sono ora qui.")
+            return redirect("contact_detail",slug,main.pk)
+        except BookingError as ex:error=str(ex)
+    found=[c for c in find(request.tenant,request.GET.get("q",""),limit=10) if c.pk!=contact.pk] if request.GET.get("q") and not other else []
+    rows=[]
+    if other:
+        a,b=contact.data,other.data
+        rows=[{"key":f,"label":l,"mine":a.get(f,""),"theirs":b.get(f,""),"pick":"this" if a.get(f) or not b.get(f) else "other"} for f,l in MERGE_FIELDS]
+        for c in (contact,other):c.bookings=Booking.objects.filter(contact=c).count()
+    return render(request,"contact_merge.html",{"contact":contact,"other":other,"found":found,"rows":rows,"error":error,"q":request.GET.get("q",""),
+        "mine":contact.data,"theirs":other.data if other else {}})
 def csv_cell(value,profile):
     s=str(value if value is not None else "")
     if profile=="sheet" and (s.lstrip().startswith(("=","+","-","@")) or s.startswith(("\t","\r","\n"))):s="'"+s
@@ -769,6 +882,8 @@ def catalog_edit(request,slug,kind,item_id=None):
                         raise BookingError("Il turno è fuori dagli orari di apertura di quel giorno: cambia l'ora o allarga gli orari in Orari di apertura.")
                 conflicts=calendar_conflicts(request.tenant)
                 if conflicts and not request.POST.get("confirm_conflicts"):raise BookingError(unsettled(conflicts))
+                from .waitlist import freed
+                freed(request.tenant)  # 2.14.0: more hours, more places: the waiting list looks again
                 audit(request.tenant,request.user,"catalog."+kind,obj.pk,conflicts=len(conflicts))
             messages.success(request,"Salvato."+(f" {len(conflicts)} prenotazioni da ricontattare." if conflicts else ""))
             return redirect("catalog",slug,kind)
@@ -815,6 +930,8 @@ def calendar_remove(request,slug,kind,item_id):
             get_object_or_404(model.objects,pk=item_id).delete()
             conflicts=calendar_conflicts(request.tenant)
             if conflicts and request.POST.get("confirm_conflicts")!="on":raise BookingError("Rimozione non eseguita: esistono prenotazioni in conflitto. Modifica la fascia e conferma la gestione dei conflitti.")
+            from .waitlist import freed
+            freed(request.tenant)  # 2.14.0: a closure removed: the waiting list looks again
             audit(request.tenant,request.user,"calendar.deleted",item_id)
         messages.success(request,"Fascia rimossa.")
     except BookingError as ex:messages.error(request,str(ex))
@@ -920,7 +1037,7 @@ def campaign_preview(request,slug,campaign_id):
             else:raise BookingError("Operazione non valida.")
             return redirect("marketing",slug)
         except BookingError as ex:messages.error(request,str(ex))
-    return render(request,"campaign_preview.html",{"campaign":campaign,"eligible":campaign_contacts().count()})
+    return render(request,"campaign_preview.html",{"campaign":campaign,"eligible":campaign_contacts(request.tenant,campaign.filters).count()})
 def audit_view(request,slug):
     require(request,"audit.read")
     return render(request,"audit.html",{"page":Paginator(Audit.objects.order_by("-created"),100).get_page(request.GET.get("page"))})
