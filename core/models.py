@@ -129,6 +129,10 @@ class Tenant(models.Model):
     texts_daily_limit=models.PositiveIntegerField(default=100)
     # 2.14.0: the agency's Google OAuth client (ID and secret, encrypted) for Google Calendar on the operators (gcal.py)
     google=models.TextField(blank=True)
+    # 2.14.0: Alloggiati Web through the Polizia's web service (stays.ws_send): {"user","password","wskey","auto","error"},
+    # encrypted; set by the agency, or by the owner when the agency allows it
+    alloggiati=models.TextField(blank=True)
+    alloggiati_self=models.BooleanField(default=False)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
     logo=models.BinaryField(null=True,blank=True)
@@ -201,6 +205,14 @@ class Location(Scoped):
     tax_rate=models.DecimalField(max_digits=6,decimal_places=2,null=True,blank=True)
     tax_nights=models.PositiveSmallIntegerField(default=0)
     tax_age=models.PositiveSmallIntegerField(default=0)
+    # 2.14.0: the town's rules (stays.tax): the category of the structure, the rates by period or season and category
+    # [{"category","from","until","yearly","rate","nights"}], the nights a year taxed to workers and students (0 = no cap),
+    # one tour escort exempt every tax_escort guests, the reduction in percent for the guests marked reduced
+    tax_category=models.CharField(max_length=20,blank=True)
+    tax_rules=models.JSONField(default=list,blank=True)
+    tax_year_nights=models.PositiveSmallIntegerField(default=0)
+    tax_escort=models.PositiveSmallIntegerField(default=25)
+    tax_reduction=models.PositiveSmallIntegerField(default=0)
     # 2.14.0: who gets "Il primo disponibile" (booking.ranked), and online no hole shorter than min_gap minutes
     assign=models.CharField(max_length=8,default="alpha",choices=[("alpha","Il primo libero, in ordine di nome"),("last","L'operatore dell'ultima visita del cliente"),("even","Chi ha meno appuntamenti quel giorno"),("priority","L'ordine scelto per ogni operatore")])
     min_gap=models.PositiveIntegerField(default=0)
@@ -211,6 +223,13 @@ class Location(Scoped):
     tables=models.CharField(max_length=7,default="off",choices=[("off","Nessuna gestione dei tavoli"),("manual","Li assegnate voi"),("suggest","Il programma propone il tavolo più adatto")])
     tables_online=models.BooleanField(default=False)
     def __str__(self):return self.name
+class Receipt(Scoped):
+    """2.14.0: the Alloggiati Web receipt of a day of sending (stays.receipts): how many guests went, the Polizia's PDF
+    once downloaded. Kept five years, as the law asks."""
+    day=models.DateField()
+    rows=models.PositiveIntegerField(default=0)
+    pdf=models.BinaryField(null=True,blank=True)
+    class Meta: constraints=[models.UniqueConstraint(fields=["tenant","day"],name="receipt_day")]
 class Area(Scoped):
     """2.14.0: a room of a restaurant (Sala, Dehors): the client may ask for it; capacity its own covers at once, 0 = none."""
     location=models.ForeignKey(Location,on_delete=models.CASCADE)

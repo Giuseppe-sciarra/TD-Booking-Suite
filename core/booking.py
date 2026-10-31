@@ -162,7 +162,7 @@ def free_units(tenant,service,bs,be,party,resource=None,exclude=None):
     """Named units of a day service free for the whole interval, in name order."""
     units=linked(service)
     if resource:units=units.filter(pk=resource.pk)
-    return [u for u in units if (u.capacity==0 or u.capacity>=party)
+    return [u for u in units if u.housekeeping!="out" and (u.capacity==0 or u.capacity>=party)
         and capacity_available(service,bs,be,1,resource=u,exclude=exclude)
         and not blocked_stay(tenant,bs,be,service,u)]
 def candidates(tenant,service,day,option=None,resource=None,desk=False,force=False,party=1):
