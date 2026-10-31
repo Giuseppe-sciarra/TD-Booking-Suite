@@ -65,6 +65,8 @@
  });
  // 2.13.0: the emails to the clients: the preview with an example booking, a field put where the cursor is, the
  // standard text back with one click
+ // 2.14.0: the SMS length, as the providers count it (160 characters, 153 each when longer; 70/67 with accents and emoji)
+ document.querySelectorAll("[data-sms-count]").forEach(area=>{const out=area.parentElement.querySelector("[data-sms-counter]");const show=()=>{const n=area.value.length,gsm=/^[\x20-\x7e\n£¥èéùìòÇØøÅåÄÖÑÜ§äöñüà€]*$/.test(area.value),one=gsm?160:70,many=gsm?153:67;out.textContent=n+" caratteri · "+(n<=one?1:Math.ceil(n/many))+" SMS"+(gsm?"":" (con caratteri speciali valgono di più)")+" · i campi cambiano la lunghezza";};area.addEventListener("input",show);show();});
  document.querySelectorAll("[data-mails]").forEach(box=>{
   const sample=JSON.parse(document.getElementById("mail-sample").textContent);
   const fill=t=>t.replace(/\{(\w+)\}/g,(m,k)=>k in sample?sample[k]:m);

@@ -5,7 +5,7 @@ singleEvents and syncToken) into "Occupato su Google" blocks, without titles, an
 and time, the client's name only when the business chose it for his feed. Only outgoing HTTPS, standard library."""
 import base64,hashlib,json,re,secrets
 from datetime import date,datetime,timedelta,time,timezone as TZ
-from urllib.parse import urlencode,urlsplit
+from urllib.parse import quote,urlencode,urlsplit
 from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.db import transaction
@@ -15,7 +15,8 @@ from django.utils import timezone
 AUTH="https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN="https://oauth2.googleapis.com/token"
 REVOKE="https://oauth2.googleapis.com/revoke"
-EVENTS="https://www.googleapis.com/calendar/v3/calendars/primary/events"
+CALENDARS="https://www.googleapis.com/calendar/v3/users/me/calendarList"
+def events_url(cal):return "https://www.googleapis.com/calendar/v3/calendars/"+quote(cal or "primary",safe="")+"/events"
 SCOPE="https://www.googleapis.com/auth/calendar.events"
 EVERY=timedelta(minutes=4)  # the worker looks every 5 minutes
 AHEAD=timedelta(days=180)
@@ -118,35 +119,79 @@ def busy(e,tz):
     except (KeyError,ValueError,TypeError):return None
     return [a.isoformat(),b.isoformat()] if b>a else None
 
+def listing(token,cal,sync,since):
+    """The events of a calendar changed since its syncToken, or all from since without one: (events, next token,
+    calendar name); None when Google no longer knows the token (410)."""
+    params={"singleEvents":"true","maxResults":"2500",**({"syncToken":sync} if sync else {"timeMin":since})}
+    items=[];page=""
+    while True:
+        try:r=call("GET",events_url(cal)+"?"+urlencode({**params,**({"pageToken":page} if page else {})}),token=token)
+        except GoogleError as ex:
+            if ex.status==410 and sync:return None
+            raise
+        items+=r.get("items",[])
+        if not (page:=r.get("nextPageToken")):return items,r.get("nextSyncToken",""),r.get("summary","")
+
 def read(tenant,resource,token,st,now):
     """His events into the blocks: the first time (and once a day, for the far ones coming closer) all from yesterday on,
-    then only the changes since the last syncToken; a token Google no longer knows (410) means all again."""
+    then only the changes since the last syncToken; a token Google no longer knows (410) means all again. 2.14.0: from
+    the calendar chosen on his card, and our events changed in Google go to the desk as a warning (changed)."""
     from .feeds import blocks
     from .models import TimeBlock
-    tz=ZoneInfo(tenant.timezone);before=st.get("events",{})
+    tz=ZoneInfo(tenant.timezone);before=st.get("events",{});cal=st.get("read","primary");wcal=st.get("write","primary")
     full=not st.get("sync") or st.get("full",0)<now.timestamp()-86400
-    params={"singleEvents":"true","maxResults":"2500"}
-    if full:params["timeMin"]=(now-timedelta(days=1)).astimezone(TZ.utc).strftime("%Y-%m-%dT%H:%M:%SZ");seen={}
-    else:params["syncToken"]=st["sync"];seen=dict(before)
-    page=""
-    while True:
-        try:r=call("GET",EVENTS+"?"+urlencode({**params,**({"pageToken":page} if page else {})}),token=token)
-        except GoogleError as ex:
-            if ex.status!=410 or full:raise
-            st.pop("sync",None);return read(tenant,resource,token,st,now)
-        for e in r.get("items",[]):
-            if span:=busy(e,tz):seen[e["id"]]=span
-            else:seen.pop(e.get("id"),None)
-        if not (page:=r.get("nextPageToken")):break
+    since=(now-timedelta(days=1)).astimezone(TZ.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    got=listing(token,cal,"" if full else st["sync"],since)
+    if got is None:st.pop("sync",None);return read(tenant,resource,token,st,now)
+    items,st["sync"],account=got;seen={} if full else dict(before)
+    for e in items:
+        if span:=busy(e,tz):seen[e["id"]]=span
+        else:seen.pop(e.get("id"),None)
     # the past and the too far are forgotten: the far ones come back with the daily full read
     st["events"]={k:v for k,v in seen.items() if datetime.fromisoformat(v[1])>now and datetime.fromisoformat(v[0])<now+AHEAD}
-    st["sync"]=r.get("nextSyncToken","");st["account"]=r.get("summary",st.get("account",""))
+    st["account"]=account or st.get("account","")
     if full:st["full"]=now.timestamp()
     if full or st["events"]!=before:
         spans=[(datetime.fromisoformat(a),datetime.fromisoformat(b)) for a,b in st["events"].values()]
         with transaction.atomic():
             TimeBlock.objects.filter(resource=resource,reason="google").delete()
             TimeBlock.objects.bulk_create([TimeBlock(tenant=tenant,resource=resource,day=d,start=a,end=z,reason="google") for d,a,z in blocks(spans,tz)[:3000]])
+    if wcal!=cal:  # the bookings go to another calendar: its changes read on their own
+        got=listing(token,wcal,st.get("wsync",""),since) or listing(token,wcal,"",since)
+        items,st["wsync"],_=got
+    changed(tenant,resource,items,st)
+
+def changed(tenant,resource,items,st):
+    """2.14.0: our events moved or deleted in Google: a warning on the booking ("google" in its snapshot), never applied;
+    it goes away when the event is as the booking again (put back in Google, or the booking moved and written)."""
+    from .booking import ACCEPTED
+    from .models import Booking
+    ours={event_id(tenant,pk,resource):pk for pk in st.get("written",{})}
+    found={ours[e["id"]]:e for e in items if e.get("id") in ours}
+    for b in Booking.objects.filter(pk__in=list(found),status__in=ACCEPTED):
+        e=found[str(b.pk)];note="deleted"
+        if e.get("status")!="cancelled":
+            try:a,z=datetime.fromisoformat(e["start"]["dateTime"]),datetime.fromisoformat(e["end"]["dateTime"])
+            except (KeyError,ValueError,TypeError):a=z=None  # turned into an all-day event
+            note="" if (a,z)==(b.start,b.end) else "moved:"+(a.isoformat() if a else "")
+        if b.snapshot.get("google","")!=note:
+            if note:b.snapshot["google"]=note
+            else:b.snapshot.pop("google",None)
+            b.save(update_fields=["snapshot"])
+
+def calendars(token,st):
+    """2.14.0: his calendars, to choose on his card which one is read and which one gets the bookings."""
+    r=call("GET",CALENDARS+"?"+urlencode({"minAccessRole":"reader","maxResults":"250"}),token=token)
+    st["calendars"]=[[c["id"],c.get("summaryOverride") or c.get("summary") or c["id"],c.get("accessRole") in ("owner","writer")] for c in r.get("items",[]) if c.get("id")][:250]
+
+def choose(resource,read_cal,write_cal):
+    """The calendars chosen on his card, among his; a new read calendar is read whole, a new write calendar gets the
+    bookings at the next run (and they leave the old one)."""
+    st=state(resource);known={c[0]:c[2] for c in st.get("calendars",[])}
+    if read_cal not in known and read_cal!="primary" or write_cal!="primary" and not known.get(write_cal):raise ValueError("Scegli uno dei calendari dell'elenco.")
+    if read_cal!=st.get("read","primary"):st.pop("sync",None)
+    if write_cal!=st.get("write","primary"):st.pop("wsync",None)
+    st.update(read=read_cal,write=write_cal);keep(resource,st)
 
 def event_id(tenant,booking_pk,resource):
     # base32hex as Google wants, the same every time: an insert retried after a timeout answers 409 instead of doubling
@@ -158,15 +203,15 @@ def event(tenant,b,resource):
     return {"summary":what.strip(" ·"),"start":{"dateTime":b.start.isoformat(),"timeZone":tenant.timezone},"end":{"dateTime":b.end.isoformat(),"timeZone":tenant.timezone},
         "transparency":"opaque","status":"confirmed","extendedProperties":{"private":{"tdb_booking_id":str(b.pk)}}}
 
-def put(token,eid,body,known):
+def put(token,eid,body,known,cal="primary"):
     """Patch what we wrote, insert the rest; 409 on insert means it is there already (a retry, or deleted in Google:
     the patch with status confirmed brings it back), 404 on patch that it is gone: inserted again."""
-    url=f"{EVENTS}/{eid}?sendUpdates=none"
+    base=events_url(cal);url=f"{base}/{eid}?sendUpdates=none"
     if known:
         try:return call("PATCH",url,body,token)
         except GoogleError as ex:
             if ex.status not in (404,410):raise
-    try:call("POST",EVENTS+"?sendUpdates=none",{"id":eid,**body},token)
+    try:call("POST",base+"?sendUpdates=none",{"id":eid,**body},token)
     except GoogleError as ex:
         if ex.status!=409:raise
         call("PATCH",url,body,token)
@@ -176,17 +221,24 @@ def write(tenant,resource,token,st,now):
     shortcut: the first time all of the next 180 days go in one run of the worker; fine up to a few hundred."""
     from .booking import ACCEPTED
     from .models import Booking
-    written=st.setdefault("written",{});want={}
+    written=st.setdefault("written",{});want={};cal=st.get("write","primary")
+    if st.get("wrote","primary")!=cal:  # 2.14.0: another calendar chosen: out of the old one, all into the new one
+        for pk in list(written):
+            try:call("DELETE",f"{events_url(st.get('wrote'))}/{event_id(tenant,pk,resource)}?sendUpdates=none",token=token)
+            except GoogleError as ex:
+                if ex.status not in (404,410):raise
+            del written[pk]
+        st["wrote"]=cal
     for b in Booking.objects.filter(resource=resource,status__in=ACCEPTED,end__gte=now,start__lte=now+AHEAD).select_related("service"):
         body=event(tenant,b,resource);want[str(b.pk)]=(body,hashlib.sha256(json.dumps(body,sort_keys=True).encode()).hexdigest()[:16])
     for pk,(body,sig) in want.items():
-        if written.get(pk)!=sig:put(token,event_id(tenant,pk,resource),body,pk in written);written[pk]=sig
+        if written.get(pk)!=sig:put(token,event_id(tenant,pk,resource),body,pk in written,cal);written[pk]=sig
     gone=[pk for pk in written if pk not in want]
     # ended as planned: they stay in his calendar, as history
     done={str(x) for x in Booking.objects.filter(pk__in=gone,resource=resource,status__in=ACCEPTED,end__lt=now).values_list("pk",flat=True)}
     for pk in gone:
         if pk not in done:
-            try:call("DELETE",f"{EVENTS}/{event_id(tenant,pk,resource)}?sendUpdates=none",token=token)
+            try:call("DELETE",f"{events_url(cal)}/{event_id(tenant,pk,resource)}?sendUpdates=none",token=token)
             except GoogleError as ex:
                 if ex.status not in (404,410):raise  # already deleted in Google
         del written[pk]
@@ -196,7 +248,10 @@ def sync(tenant,resource,now):
     from .models import TimeBlock
     conf=config(tenant);st=state(resource);error=""
     try:
-        token=access(conf,st,now);read(tenant,resource,token,st,now);write(tenant,resource,token,st,now)
+        token=access(conf,st,now)
+        if "calendars" not in st or not st.get("sync"):calendars(token,st)  # at the first run and with each full read
+        # written first: what Google gives back then is already as the bookings, so only Google's own changes warn
+        write(tenant,resource,token,st,now);read(tenant,resource,token,st,now)
     except (KeyError,ValueError,TypeError):error="Google ha dato una risposta che non capiamo: si riprova tra 5 minuti."  # never stops the worker
     except GoogleError as ex:
         error=message(ex)

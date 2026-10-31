@@ -21,7 +21,7 @@ def unprotect(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0037_visits"),
+        ("core", "0039_secondary_groups_posa"),
     ]
 
     operations = [

@@ -166,7 +166,7 @@
    const s=current(),answers={};
    document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
    const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value,area:area.value};
-   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
+   if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,channel:$("channel")&&$("phone").value.trim()?$("channel").value:"",allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
    if(config.walkin)payload.walkin=true;
    if(extras.length)Object.assign(payload,{extra:extras.map(x=>x.id),visit:true});
@@ -201,7 +201,7 @@
  if(config.editing){
   service.value=config.editing.service;changeService();option.value=config.editing.option;resource.value=config.editing.resource;party.value=config.editing.party;
   // 2.14.0: the client moving from his link keeps service, operator and people: he chooses only when
-  if(config.locked)["resource-wrap","party-wrap"].forEach(id=>{$(id).hidden=true;});
+  if(config.locked)(config.pick_resource?["party-wrap"]:["resource-wrap","party-wrap"]).forEach(id=>{$(id).hidden=true;});  // 2.14.0: another operator, same service
   if(config.editing.extra)service.disabled=true;  // 2.14.0: a visit moves with its services
   loadSlots();
  }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}

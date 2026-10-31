@@ -157,6 +157,10 @@ class Tenant(models.Model):
     # 2.14.0: the read-only API (api.py): the key's hash, never the key; the webhook, sealed {"url","secret"}
     api_key=models.CharField(max_length=64,blank=True,db_index=True)
     webhook=models.TextField(blank=True)
+    api_enabled=models.BooleanField("Permetti all'attività di gestire API e webhook",default=False)  # 2.14.0: the agency lets the owner set API key and webhook himself
+    # 2.14.0: the English page and emails; empty = the Italian text
+    privacy_text_en=models.TextField("Informativa in inglese (facoltativa)",blank=True)
+    consent_text_en=models.TextField("Consenso in inglese (facoltativo)",blank=True)
     created=models.DateTimeField(auto_now_add=True)
     def save(self,*a,**kw):
         if not self.wrapped_key:self.wrapped_key=protect(b64(secrets.token_bytes(32)),"tenant-key:"+str(self.pk))
@@ -293,6 +297,8 @@ class ResourcePhoto(Scoped):
 class Service(Scoped):
     location=models.ForeignKey(Location,on_delete=models.PROTECT)
     name=models.CharField(max_length=120)
+    name_en=models.CharField("Nome in inglese (facoltativo)",max_length=120,blank=True)  # 2.14.0: on the English page and emails; empty = name
+    description_en=models.TextField("Descrizione in inglese (facoltativa)",blank=True)
     kind=models.CharField(max_length=16,choices=[("resource","Appuntamento / risorsa"),("capacity","Capienza"),("event","Evento / tour"),("shift","Ristorante / pizzeria a turni"),("day","Soggiorno / noleggio")],default="resource")
     description=models.TextField(blank=True)
     duration=models.PositiveIntegerField(default=60)
@@ -439,6 +445,8 @@ class Contact(Scoped):
     discount=models.DecimalField(max_digits=8,decimal_places=2,default=0)
     # 2.13.0: the client wants the emails about his bookings (confirmation, reminder, changes)
     notices=models.BooleanField(default=True)
+    # 2.14.0: how he wants the reminders; empty = the business's channel (texts.py)
+    channel=models.CharField(max_length=10,blank=True,choices=[("","Come imposta l'attività"),("email","Solo email"),("sms","SMS"),("whatsapp","WhatsApp")])
     # 2.14.0: the card of a client: VIP, refused on the online page (booking.create_booking), and the keyed indexes that find
     # it without opening it (clients.stamp): its phone, the starts of the words of its name, its tags, its birthday
     vip=models.BooleanField(default=False)
@@ -573,6 +581,10 @@ class Delivery(Scoped):
     sent_at=models.DateTimeField(null=True)
     claimed_at=models.DateTimeField(null=True)
     last_code=models.CharField(max_length=40,blank=True)
+    # 2.14.0: a text about a booking, the provider's id of it and what the provider says of it later (texts.receipts)
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="+")
+    ref=models.CharField(max_length=80,blank=True)
+    receipt=models.CharField(max_length=10,blank=True,choices=[("","Non ancora"),("delivered","Consegnato"),("failed","Non consegnato")])
     created=models.DateTimeField(auto_now_add=True)
     class Meta:constraints=[models.UniqueConstraint(fields=["campaign","contact"],name="campaign_recipient_unique")]
 class ClientProfile(Scoped):

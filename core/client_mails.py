@@ -58,7 +58,7 @@ def current(tenant):
     """What goes and with which words. The words, and whether the standard emails go, are the business's own only while
     the agency lets it choose; the reminders, the other messages and their timing always (2.14.0)."""
     own=tenant.client_mails or {}
-    mine=lambda k,x:tenant.client_mails_enabled or x not in ("subject","body") and not (x=="on" and k in STANDARD)
+    mine=lambda k,x:tenant.client_mails_enabled or x not in ("subject","body","subject_en","body_en") and not (x=="on" and k in STANDARD)
     return {k:{**v,**{x:y for x,y in (own.get(k) or {}).items() if mine(k,x)}} for k,v in DEFAULTS.items()}
 
 def fill(text,values):
@@ -75,7 +75,8 @@ def values(tenant,booking,data):
     rows=visit_rows(booking)  # 2.14.0: a visit of several services is told whole, from its first to its last
     start=rows[0].start.astimezone(tz);end=rows[-1].end.astimezone(tz)
     token=data.get("cancel_token")
-    return {"nome":data.get("first_name",""),"servizio":" + ".join(" · ".join(x for x in (r.snapshot.get("service") or r.service.name,r.snapshot.get("option")) if x) for r in rows),
+    en=translation.get_language()=="en"  # 2.14.0: the English name of the service, when written
+    return {"nome":data.get("first_name",""),"servizio":" + ".join(" · ".join(x for x in (en and r.service.name_en or r.snapshot.get("service") or r.service.name,r.snapshot.get("option")) if x) for r in rows),
         "quando":when(start,end,booking.service.kind=="day"),"data":f"{start:%d/%m/%Y}","ora":f"{start:%H:%M}",
         "sede":s.get("location",""),"operatore":", ".join(dict.fromkeys(r.snapshot["resource"] for r in rows if r.snapshot.get("resource"))),"attivita":tenant.name,"istruzioni":booking.service.instructions,
         "link":f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/" if token else ""}
@@ -130,7 +131,9 @@ def send(tenant,booking,kind):
     mails=current(tenant);conf=mails[kind];data=booking.data
     if not conf["on"] or not data.get("email") or booking.snapshot.get("notices") is False:return None
     if booking.contact_id and not booking.contact.notices:return None
-    v=values(tenant,booking,data);body=fill(gettext(conf["body"]),v);links=[]
+    # 2.14.0: the business's English words on an English page, when written; otherwise the standard ones translated
+    en=translation.get_language()=="en" and conf.get("body_en")
+    v=values(tenant,booking,data);body=fill(conf["body_en"] if en else gettext(conf["body"]),v);links=[]
     if kind in ("confirmed","accepted") and mails["confirmed"]["price"] and booking.snapshot.get("total"):
         from .prices import euro
         body+="\n"+gettext("Prezzo indicativo: {prezzo}, si paga in sede").format(prezzo=euro(booking.snapshot['total']))
@@ -144,7 +147,7 @@ def send(tenant,booking,kind):
         v["link"]=f"{settings.PUBLIC_ORIGIN}/book/{tenant.slug}/";body=fill(conf["body"],v);links=[("Prenota",v["link"])]
     # 2.14.0: a distanza: the video-call link with the confirmation, the change and the reminders
     if booking.service.remote_url and kind in ("confirmed","accepted","moved","reminder","reminder2"):links.insert(0,("Entra nella videochiamata",booking.service.remote_url))
-    payload={"to":data["email"],"subject":" ".join(fill(gettext(conf["subject"]),v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
+    payload={"to":data["email"],"subject":" ".join(fill(conf.get("subject_en") if en and conf.get("subject_en") else gettext(conf["subject"]),v).split()),"body":body+"".join(f"\n{label}: {url}" for label,url in links),
         "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":links,"color":contrast_color(tenant.brand_color)})}
     if kind in ("confirmed","accepted","moved"):
         from .ics import ics
@@ -198,12 +201,19 @@ def clean(post,enabled=True,saved=None):
             if len(body)>4000:raise BookingError(f"{label}: il testo è troppo lungo, al massimo 4000 caratteri.")
             if any(ord(c)<32 and c!="\n" for c in subject+body):raise BookingError(f"{label}: il testo contiene caratteri non validi.")
             mine.update(subject=subject,body=body)
+            # 2.14.0: the English version, optional: empty = the standard text translated
+            subject_en=" ".join(str(post.get(key+"_subject_en","")).split());body_en=str(post.get(key+"_body_en","")).replace("\r\n","\n").strip()
+            if len(subject_en)>150 or len(body_en)>4000 or any(ord(c)<32 and c!="\n" for c in subject_en+body_en):raise BookingError(f"{label}: il testo in inglese è troppo lungo o contiene caratteri non validi.")
+            mine.update(subject_en=subject_en,body_en=body_en)
         if enabled or key not in STANDARD:mine["on"]=post.get(key+"_on")=="on"
         if key in TIMING:
             try:mine["hours"]=int(post.get(key+"_hours",mine.get("hours",d["hours"])))
             except ValueError:mine["hours"]=0
             if mine["hours"] not in TIMING[key]:raise BookingError(f"{label}: scegli quando parte.")
         out[key]=mine
+    from .texts import clean_texts
+    try:out["texts"]=clean_texts(post)  # 2.14.0: the SMS and WhatsApp words, in the same page
+    except ValueError as ex:raise BookingError(str(ex))
     out["confirmed"]["price"]=post.get("confirmed_price")=="on"
     try:cancel=int(post.get("reminder_autocancel",0))
     except ValueError:cancel=-1

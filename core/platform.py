@@ -125,7 +125,7 @@ def texts_view(request,slug):
                 from .booking import normalize_phone
                 to=normalize_phone(request.POST.get("test_to",""))
                 if not to or not saved:raise ValueError("Salva prima un canale e scrivi un numero di cellulare.")
-                try:used=texts.deliver(tenant,texts.channel(saved),{"to":to,"body":f"Messaggio di prova di {tenant.name}: l'invio funziona.","params":["Prova","Servizio","domani alle 10:30",tenant.name]})
+                try:used,_=texts.deliver(tenant,texts.channel(saved),{"to":to,"body":f"Messaggio di prova di {tenant.name}: l'invio funziona.","params":["Prova","Servizio","domani alle 10:30",tenant.name]})
                 except texts.TextError as ex:raise ValueError("Il servizio ha rifiutato il messaggio: "+ex.code)
                 messages.success(request,"Prova inviata via "+("WhatsApp" if used=="whatsapp" else "SMS")+".")
             else:
@@ -324,10 +324,11 @@ def notifications_view(request,slug):
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
     from . import client_mails as cm
     from .notify import operators
+    from .texts import TEXT as SMS_TEXT
     now=cm.current(tenant)
     mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD} for k,label,help in cm.KINDS}
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
-        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,
+        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
         "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None})
 SUMMARY_HOURS=range(16,23)

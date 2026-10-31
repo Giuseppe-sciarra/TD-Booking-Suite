@@ -166,7 +166,7 @@ class ResourceForm(ScopedForm):
             self.fields["busy_url"].help_text+=f". Letto il {r.busy_at.astimezone(ZoneInfo(self.tenant.timezone)):%d/%m alle %H:%M}"
         from . import gcal  # 2.14.0: Google Calendar, both ways, once the agency set the OAuth client (its own box under the form)
         ready=bool(self.tenant and gcal.config(self.tenant))
-        self.google=None if new or not (ready or r.google or r.google_error) else {"ready":ready,"on":bool(r.google),"error":r.google_error,"at":r.google_at,"account":gcal.state(r).get("account","")}
+        self.google=None if new or not (ready or r.google or r.google_error) else {"ready":ready,"on":bool(r.google),"error":r.google_error,"at":r.google_at,"account":(st:=gcal.state(r)).get("account",""),"calendars":st.get("calendars",[]),"read":st.get("read","primary"),"write":st.get("write","primary")}
         if not self.photo_preview:del self.fields["photo_remove"]
         bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
         f=self.fields["services"];f.queryset=bookable
@@ -309,13 +309,13 @@ class ServiceForm(ScopedForm):
     party_durations=forms.CharField(required=False,max_length=200)  # 2.14.0: "2:90, 4:105", kept as [[2,90],[4,105]]
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","online_capacity","max_party","turnover","last_arrival","duration","party_durations","interval","pace_covers","pace_bookings","pace_desk","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","pause_start","pause_minutes","client_picks","instructions","remote_url","recall_days","test_days","resource_label","fields","active"]
+        fields=["name","name_en","location","kind","description","description_en","price","capacity","online_capacity","max_party","turnover","last_arrival","duration","party_durations","interval","pace_covers","pace_bookings","pace_desk","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","pause_start","pause_minutes","client_picks","instructions","remote_url","recall_days","test_days","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online","pause_start":"Lavoro prima della posa (minuti)","pause_minutes":"Tempo di posa (minuti)","client_picks":"Il cliente sceglie con chi"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia","pause_start":"Per esempio 30 per l'applicazione del colore. Dopo la posa viene la finitura, fino alla fine della durata",
             "pause_minutes":"0 = nessuna posa. Durante la posa il cliente resta, l'operatore è libero e si può prenotare con lui un servizio breve",
             "client_picks":"Spento: online il cliente sceglie solo l'orario e il programma assegna la persona o il posto libero, per esempio il ponte dell'officina"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
-        widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2}),"instructions":forms.Textarea(attrs={"rows":3})}
+        widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2}),"description_en":forms.Textarea(attrs={"rows":2}),"instructions":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,agency=False,**kw):
         super().__init__(*a,**kw)
         self.agency=agency
@@ -585,7 +585,7 @@ class TenantForm(forms.ModelForm):
     embed_origins_text=forms.CharField(required=False,label="Siti autorizzati a mostrare il widget (una origine HTTPS per riga)",widget=forms.Textarea(attrs={"rows":3}))
     class Meta:
         model=Tenant
-        fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","export_enabled","client_mails_enabled","alloggiati_self","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","consent_text","retention_days","receive_schedule"]
+        fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","export_enabled","client_mails_enabled","alloggiati_self","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","privacy_text_en","consent_text","consent_text_en","retention_days","receive_schedule","api_enabled"]
         labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Marketing: l'attività invia campagne email ai clienti iscritti","export_enabled":"Marketing: l'attività scarica il CSV dei clienti iscritti (Brevo, Mailchimp, fogli)","client_mails_enabled":"Email ai clienti: l'attività sceglie quali inviare e ne scrive oggetto e testo (in Notifiche). Promemoria e altri messaggi li accende comunque lei","alloggiati_self":"Alloggiati Web: l'attività inserisce da sola utente, password e chiave del servizio web (in Alloggi)","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
         widgets={"trial_until":forms.DateInput(attrs={"type":"date"}),"brand_color":forms.TextInput(attrs={"type":"color"}),"privacy_text":forms.Textarea(attrs={"rows":4}),"consent_text":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):

@@ -105,6 +105,13 @@
 - **Ross1000 completo**: motivo del viaggio e mezzo di trasporto chiesti nel check-in (al banco e online), giorni di chiusura della sede inviati come struttura chiusa.
 - **Camere fuori servizio** (Alloggi): non si prenotano più finché tornano in uso, con l'elenco delle prenotazioni da spostare.
 - **Invio diretto ad Alloggiati Web** (Alloggi): servizio web della Polizia con credenziali cifrate inserite dall'agenzia o dal titolare se abilitato, pulsante Invia ad Alloggiati e invio automatico ogni ora, ricevute scaricate e conservate cinque anni, dati dei documenti cancellati dopo l'invio riuscito; il file resta come alternativa.
+- **Promemoria per SMS o WhatsApp, a scelta del cliente**: nella scheda del cliente (Avvisi) e nel modulo di prenotazione, quando lascia il telefono, si sceglie Email, SMS o WhatsApp; con WhatsApp, se l'API rifiuta il numero o il modello, parte l'SMS.
+- **Testi di SMS e WhatsApp scritti dal titolare**: in Notifiche, accanto alle email, il testo dell'SMS con il conteggio di caratteri e SMS, e il testo del modello WhatsApp approvato, con gli stessi campi delle email.
+- **SMS consegnato o no**: ogni 5 minuti il programma chiede a Twilio e Skebby/Aruba com'è andato l'SMS e lo scrive sulla prenotazione.
+- **Google Calendar, quale calendario**: nella scheda dell'operatore si sceglie da quale calendario leggere gli impegni e in quale scrivere le prenotazioni. Se su Google qualcuno sposta o cancella una prenotazione scritta dal programma, la prenotazione resta com'è e in agenda compare l'avviso.
+- **API e webhook anche al titolare**: l'agenzia lo permette da Impostazioni dell'attività; il webhook si collega solo all'indirizzo pubblico controllato in quel momento.
+- **Testi dell'attività in inglese**: nomi e descrizioni dei servizi, informativa, consenso e testi delle email hanno una versione inglese facoltativa, usata sulla pagina e nelle email in inglese; la prova del consenso conserva il testo che il cliente ha letto.
+- **Dal link Gestisci anche un altro operatore**: il cliente che sposta la prenotazione può scegliere un altro operatore dello stesso servizio, se il servizio lascia scegliere l'operatore.
 
 ## 2.13.0 — email ai clienti con promemoria, logo dell'attività, dashboard che mostra chi viene, persone e marketing all'amministratore
 
