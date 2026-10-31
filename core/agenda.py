@@ -36,7 +36,7 @@ def fits(request):
 def operators(request,location):
     """Who works in this location for appointments, as the staff member may see them."""
     linked=ServiceResource.objects.filter(service__active=True,service__kind="resource",service__location=location).values("resource_id")
-    rows=Resource.objects.filter(active=True,location=location,id__in=linked).order_by("name")
+    rows=Resource.objects.filter(active=True,secondary=False,location=location,id__in=linked).order_by("name")
     m=getattr(request,"member",None)
     if m and m.resources:rows=rows.filter(pk__in=m.resources)
     return list(rows)
