@@ -11,7 +11,7 @@ def denied(request,message):
     from django.shortcuts import render
     return render(request,"403.html",{"exception":message},status=403)
 
-TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog"}
+TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","api"}
 
 class GuardMiddleware:
     def __init__(self,get_response):self.get_response=get_response
@@ -25,7 +25,7 @@ class GuardMiddleware:
         path=request.path
         try:
             # the client file of the old program can reach 20 MB, every other request stays small
-            if int(request.META.get("CONTENT_LENGTH") or 0)>(21000000 if path.endswith("/contacts/import/") else 2200000):return HttpResponse("Richiesta troppo grande.",status=413)
+            if int(request.META.get("CONTENT_LENGTH") or 0)>(21000000 if path.endswith(("/contacts/import/","/bookings/import/")) else 2200000):return HttpResponse("Richiesta troppo grande.",status=413)
         except ValueError:return HttpResponse(status=400)
         protected=path=="/" or path.startswith(("/t/","/platform/","/security/","/guida/"))
         if request.user.is_authenticated:

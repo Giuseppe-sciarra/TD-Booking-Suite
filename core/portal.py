@@ -377,7 +377,7 @@ def dashboard(request,slug):
     if can(request,"contacts.read") and can(request,"pii.read"):
         from .clients import birthdays
         born=birthdays(request.tenant,today)[:20]
-    return render(request,"dashboard.html",{"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).count(),
+    return render(request,"dashboard.html",{"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").exclude(channel="webhook").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).exclude(channel="webhook").count(),
         "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists(),"turns":turn_list,"turn_day":turn_day,"many_locations":Location.objects.filter(active=True).count()>1})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
@@ -1003,7 +1003,7 @@ def marketing(request,slug):
         request.tenant.marketing_requested=True;request.tenant.save(update_fields=["marketing_requested"])
         audit(request.tenant,request.user,"marketing.requested")
         messages.success(request,"Richiesta registrata per l'amministratore.")
-    return render(request,"marketing.html",{"campaigns":Campaign.objects.order_by("-created")[:100],"eligible":campaign_contacts().count(),"deliveries":Delivery.objects.order_by("-created")[:30]})
+    return render(request,"marketing.html",{"campaigns":Campaign.objects.order_by("-created")[:100],"eligible":campaign_contacts().count(),"deliveries":Delivery.objects.exclude(channel="webhook").order_by("-created")[:30]})
 def campaign_edit(request,slug,campaign_id=None):
     require(request,"campaign.manage")
     tenant=request.tenant

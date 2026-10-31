@@ -351,7 +351,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
         if contact:contact.save()
         status="in_progress" if walkin else "pending" if not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
-            status=status,origin=("walkin" if walkin else "desk") if staff else origin,source="" if staff else source,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
+            status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
         if issues:booking.snapshot["forced"]=issues
@@ -364,7 +364,8 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
         pii["cancel_token"]=token;booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
         from django.conf import settings
         from .client_mails import send
-        if not walkin:send(tenant,booking,"requested" if status=="pending" else "confirmed")
+        # 2.14.0: the appointments imported from the old program were already agreed: no email, no notice to the staff
+        if not walkin and booking.origin!="import":send(tenant,booking,"requested" if status=="pending" else "confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
             booking.snapshot["consent_request"]={"text":tenant.consent_text,"requested":timezone.now().isoformat(),"source":"booking"}
@@ -373,8 +374,10 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
             record(tenant,contact,"requested","booking",actor,tenant.consent_text,booking.pk)
             queue(tenant,{"to":pii["email"],"subject":"Conferma iscrizione · "+tenant.name,"body":f"Conferma la richiesta di iscrizione alle comunicazioni di {tenant.name}:\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\nSe non hai richiesto l'iscrizione, ignora il messaggio."},contact)
         from .notify import notify_staff
-        notify_staff(tenant,booking,"requested" if status=="pending" else "created")
+        if booking.origin!="import":notify_staff(tenant,booking,"requested" if status=="pending" else "created")
         booked(tenant,booking,wait)
+        from .api import emit
+        emit(tenant,booking,"created")
         audit(tenant,actor,"booking.created",booking.pk,origin=booking.origin,**({"forced":issues} if issues else {}))
         return booking,True
 def move_booking(tenant,booking_id,data,actor,desk=True):
@@ -414,6 +417,8 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         send(tenant,booking,"moved")
         from .notify import notify_staff
         notify_staff(tenant,booking,"moved")
+        from .api import emit
+        emit(tenant,booking,"moved")
         audit(tenant,actor,"booking.moved",booking.pk,**({"forced":issues} if issues else {}))
         return booking
 def can_undo(booking,now=None):
@@ -459,5 +464,7 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False)
             if status=="cancelled":
                 from .notify import notify_staff
                 notify_staff(tenant,booking,"cancelled")
+                from .api import emit
+                emit(tenant,booking,"cancelled")
         audit(tenant,actor,"booking.undo" if undo else "booking."+status,booking.pk,**{"from":old},**({"reason":booking.snapshot["cancel_reason"]} if status=="cancelled" else {}))
         return booking

@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
+from core import api,reports,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
@@ -49,6 +49,9 @@ urlpatterns=[
  path("t/<slug:slug>/setup/qr.png",portal.booking_qr,name="booking_qr"),
  path("t/<slug:slug>/guida/",portal.guide,name="tenant_guide"),
  path("t/<slug:slug>/settings/",platform.tenant_settings,name="tenant_settings"),
+ path("t/<slug:slug>/api/",api.settings_view,name="api_settings"),
+ path("t/<slug:slug>/report/",reports.view,name="reports"),
+ path("t/<slug:slug>/bookings/import/",reports.import_view,name="bookings_import"),
  path("t/<slug:slug>/smtp/",platform.smtp_view,name="smtp"),
  path("t/<slug:slug>/members/",platform.members_view,name="members"),
  path("t/<slug:slug>/support/",platform.support_view,name="support_grants"),
@@ -87,6 +90,9 @@ urlpatterns=[
  path("book/<slug:slug>/api/slots/",public.slots_api,name="public_slots"),
  path("book/<slug:slug>/api/submit/",public.public_submit,name="public_submit"),
  path("book/<slug:slug>/api/attesa/",public.public_wait,name="public_wait"),
+ path("book/<slug:slug>/api/v1/bookings/",api.bookings,name="api_bookings"),
+ path("book/<slug:slug>/api/v1/services/",api.services,name="api_services"),
+ path("book/<slug:slug>/api/v1/availability/",api.availability,name="api_availability"),
  path("book/<slug:slug>/api/config/",wpconnect.config_view,name="public_config"),
  path("api/wordpress/connect/",wpconnect.connect_view,name="wp_connect"),
  path("action/<slug:slug>/<str:token>/",public.action_view,name="action"),

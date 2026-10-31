@@ -167,7 +167,7 @@ def worker_once():
                     if contact.consent!="yes" or contact.suppressed:
                         delivery.status="skipped";delivery.last_code="not_eligible";delivery.save();counts["skipped"]+=1;continue
                 channel=delivery.channel
-                if channel=="telegram":
+                if channel in ("telegram","webhook"):
                     delivery.status="sending";delivery.claimed_at=timezone.now();delivery.attempts+=1;delivery.save()
                     payload=decrypt(tenant,delivery.payload,"delivery:"+str(delivery.pk))
                 else:
@@ -182,12 +182,13 @@ def worker_once():
                     payload=decrypt(tenant,delivery.payload,"delivery:"+str(delivery.pk))
                     # the logo goes with the message, not in every queued email
                     if "cid:logo" in payload.get("html","") and tenant.logo:payload["logo"]=bytes(tenant.logo)
-            if channel=="telegram":
+            if channel in ("telegram","webhook"):
                 from .notify import send_telegram,TelegramError
+                from .api import send_webhook,WebhookError
                 status="accepted";code="";retry=False
-                try:send_telegram(tenant,payload)
-                except TelegramError as ex:
-                    code=ex.code;retry=ex.temporary and delivery.attempts<5;status="pending" if retry else "failed"
+                try:(send_webhook if channel=="webhook" else send_telegram)(tenant,payload)
+                except (TelegramError,WebhookError) as ex:
+                    code=ex.code;retry=ex.temporary and delivery.attempts<(8 if channel=="webhook" else 5);status="pending" if retry else "failed"
                 except Exception:status="unknown";code="delivery_uncertain"
                 with scope(tenant):
                     d=Delivery.objects.select_for_update().get(pk=delivery_id)

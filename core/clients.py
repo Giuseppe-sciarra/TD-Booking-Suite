@@ -237,8 +237,11 @@ def reliability(contact_ids):
     for cid,status,start,snap in Booking.objects.filter(contact_id__in=contact_ids,status__in=("no_show","cancelled")).values_list("contact_id","status","start","snapshot"):
         n=out.setdefault(cid,[0,0])
         if status=="no_show":n[0]+=1
-        elif snap.get("cancel_reason") in ("client","unconfirmed") and snap.get("undo") and datetime.fromisoformat(snap["undo"]["at"])>start-timedelta(hours=LATE_HOURS):n[1]+=1
+        elif late(status,start,snap):n[1]+=1
     return out
+def late(status,start,snap):
+    """Cancelled by the client (or not confirmed) in the last LATE_HOURS before the start; also used by the reports."""
+    return status=="cancelled" and snap.get("cancel_reason") in ("client","unconfirmed") and bool(snap.get("undo")) and datetime.fromisoformat(snap["undo"]["at"])>start-timedelta(hours=LATE_HOURS)
 
 def mark(request,rows):
     """2.14.0: VIP, tags, absences and late cancellations of the client, as row.marks on each booking, only for who may see
