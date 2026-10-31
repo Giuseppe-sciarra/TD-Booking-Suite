@@ -148,6 +148,9 @@ class Tenant(models.Model):
     # 2.6.0: one-time code that connects a WordPress site (sha256 of the code, valid one day)
     connect_hash=models.CharField(max_length=64,blank=True,db_index=True)
     connect_until=models.DateTimeField(null=True,blank=True)
+    # 2.14.0: the read-only API (api.py): the key's hash, never the key; the webhook, sealed {"url","secret"}
+    api_key=models.CharField(max_length=64,blank=True,db_index=True)
+    webhook=models.TextField(blank=True)
     created=models.DateTimeField(auto_now_add=True)
     def save(self,*a,**kw):
         if not self.wrapped_key:self.wrapped_key=protect(b64(secrets.token_bytes(32)),"tenant-key:"+str(self.pk))
@@ -466,7 +469,7 @@ class Campaign(Scoped):
     filters=models.JSONField(default=dict,blank=True)
     created=models.DateTimeField(auto_now_add=True)
 class Delivery(Scoped):
-    channel=models.CharField(max_length=10,default="email")  # email | telegram
+    channel=models.CharField(max_length=10,default="email")  # email | telegram | webhook
     campaign=models.ForeignKey(Campaign,null=True,on_delete=models.PROTECT)
     contact=models.ForeignKey(Contact,null=True,on_delete=models.PROTECT)
     payload=models.TextField()

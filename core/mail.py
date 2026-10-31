@@ -190,12 +190,14 @@ def worker_once():
             if channel!="email":
                 from .notify import send_telegram,TelegramError
                 from .texts import deliver,TextError
+                from .api import send_webhook,WebhookError
                 status="accepted";code="";retry=False;used=channel
                 try:
                     if channel=="telegram":send_telegram(tenant,payload)
+                    elif channel=="webhook":send_webhook(tenant,payload)
                     else:used=deliver(tenant,channel,payload)
-                except (TelegramError,TextError) as ex:
-                    code=ex.code;retry=ex.temporary and delivery.attempts<5;status="pending" if retry else "failed"
+                except (TelegramError,TextError,WebhookError) as ex:
+                    code=ex.code;retry=ex.temporary and delivery.attempts<(8 if channel=="webhook" else 5);status="pending" if retry else "failed"
                 except Exception:status="unknown";code="delivery_uncertain"
                 with scope(tenant):
                     d=Delivery.objects.select_for_update().get(pk=delivery_id)
