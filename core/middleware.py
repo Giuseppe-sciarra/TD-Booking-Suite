@@ -11,6 +11,13 @@ def denied(request,message):
     from django.shortcuts import render
     return render(request,"403.html",{"exception":message},status=403)
 
+def public_lang(request):
+    """2.14.0: the language of the client's pages: ?lang= (links, the WordPress frame), then the browser's; Italian otherwise."""
+    from django.conf import settings
+    from django.utils import translation
+    lang=request.GET.get("lang","")
+    return lang if lang in dict(settings.LANGUAGES) else translation.get_language_from_request(request)
+
 TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi","api"}
 
 class GuardMiddleware:
@@ -70,7 +77,8 @@ class GuardMiddleware:
             elif match[1]=="book" and not operational(tenant):
                 return HttpResponse("Le prenotazioni online non sono disponibili.",status=503 if tenant.maintenance else 402)
             from django.utils import timezone
-            with scope(tenant), timezone.override(tenant.timezone):
+            from django.utils import translation
+            with scope(tenant), timezone.override(tenant.timezone), translation.override("it" if match[1]=="t" else public_lang(request)):
                 if request.support:
                     from .models import audit
                     audit(tenant,request.user,"support.access",request.support.pk,method=request.method,path=path[:200])

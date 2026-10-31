@@ -7,7 +7,8 @@ from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import render,redirect
-from django.utils import timezone
+from django.utils import timezone,translation
+from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
@@ -20,9 +21,9 @@ from .permissions import visible_bookings,check_new_booking,can
 from .privacy import record
 
 def human_minutes(m):
-    if m%1440==0:return f"{m//1440} giorni" if m>=2880 else "1 giorno"
-    if m%60==0:return f"{m//60} ore" if m>=120 else "1 ora"
-    return f"{m} minuti"
+    if m%1440==0:return _("{n} giorni").format(n=m//1440) if m>=2880 else _("1 giorno")
+    if m%60==0:return _("{n} ore").format(n=m//60) if m>=120 else _("1 ora")
+    return _("{n} minuti").format(n=m)
 def source_tag(value):
     """2.14.0: the tag of a link per channel (?src=instagram): a few plain characters, otherwise none."""
     value=str(value or "").strip().lower()
@@ -56,11 +57,13 @@ def widget_data(request,booking=None,wait=None):
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     from .presets import service_word
-    result={"service_label":service_word(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
+    result={"service_label":_(service_word(tenant.business_type)),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
         # 2.14.0: where the page was opened, signed with the ticket, so the booking keeps its channel.
         # shortcut: the WordPress plugin is told apart by the theme= its frame always adds; a link with theme= counts as WordPress
         "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src")),**({"wait":str(wait.pk)} if wait else {})},salt="public-booking"),"internal":internal,
         "allergens":tenant.asked_allergens,"can_force":internal and can(request,"booking.force"),"wait":"" if internal else f"/book/{tenant.slug}/api/attesa/"}
+    # 2.14.0: the page's language also for its answers and for the booking it makes
+    if not internal and translation.get_language()!="it":result.update({k:result[k]+"?lang="+translation.get_language() for k in ("slots","submit","wait")})
     if booking:
         result["submit"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-api/"
         result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party}
@@ -76,7 +79,7 @@ def json_denied(view):
     @wraps(view)
     def wrapper(request,*a,**kw):
         try:return view(request,*a,**kw)
-        except PermissionDenied as ex:return JsonResponse({"error":str(ex) or "Operazione non consentita."},status=403)
+        except PermissionDenied as ex:return JsonResponse({"error":str(ex) or _("Operazione non consentita.")},status=403)
     return wrapper
 def first_step(widget):
     """What the customer chooses first: nothing with a single service, the location when the same service
@@ -96,9 +99,9 @@ def booking_page(request,slug):
         e,day=offer;d=e.data
         widget["prefill"]={"service":str(e.service_id),"resource":str(e.resource_id or ""),"date":e.first.isoformat() if e.service.kind=="day" else day.isoformat(),
             "end_date":e.last.isoformat() if e.service.kind=="day" else "","party":e.party,"contact":{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
-        widget["slots"]+="?attesa="+request.GET["attesa"]
+        widget["slots"]+=("&" if "?" in widget["slots"] else "?")+"attesa="+request.GET["attesa"]
     from .client_mails import current,codes_line
-    return render(request,"booking.html",{"widget":widget,"public":True,"intro":INTRO[first_step(widget)],"reminder":current(request.tenant)["reminder"]["on"],
+    return render(request,"booking.html",{"widget":widget,"public":True,"intro":_(INTRO[first_step(widget)]),"reminder":current(request.tenant)["reminder"]["on"],
         "waitlist":True,"offer":bool(offer),"codes":[x for x in (codes_line(l) for l in Location.objects.filter(active=True).order_by("name")) if x]})
 def manual_booking(request,slug):
     require_role(request,write=True)
@@ -141,7 +144,7 @@ def slots_api(request,slug,booking_id=None):
         token=OWN.set(offer[0].pk if offer else None)
         try:return JsonResponse({"slots":free_slots(request,request.GET,exclude,desk,force)})
         finally:OWN.reset(token)
-    except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or "Richiesta non valida."},status=400)
+    except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or _("Richiesta non valida.")},status=400)
 def free_slots(request,params,exclude=None,desk=False,force=False):
     """The free times of a day, or the units free for a stay, as the booking form asks for them (params: its query)."""
     day=date.fromisoformat(params.get("date",""))
@@ -173,7 +176,7 @@ def public_submit(request,slug):
     try:
         ticket=signing.loads(request.headers.get("X-TDBS-Ticket",""),salt="public-booking",max_age=3600)
         if ticket.get("tenant")!=str(request.tenant.pk):raise PermissionDenied
-    except signing.BadSignature:return JsonResponse({"error":"Pagina scaduta. Ricarica e riprova."},status=403)
+    except signing.BadSignature:return JsonResponse({"error":_("Pagina scaduta. Ricarica e riprova.")},status=403)
     throttle(request,"booking:"+str(request.tenant.pk),20,3600)
     return submit(request,actor=None,ticket=ticket)
 @csrf_exempt
@@ -186,7 +189,7 @@ def public_wait(request,slug):
     try:
         ticket=signing.loads(request.headers.get("X-TDBS-Ticket",""),salt="public-booking",max_age=3600)
         if ticket.get("tenant")!=str(request.tenant.pk):raise PermissionDenied
-    except signing.BadSignature:return JsonResponse({"error":"Pagina scaduta. Ricarica e riprova."},status=403)
+    except signing.BadSignature:return JsonResponse({"error":_("Pagina scaduta. Ricarica e riprova.")},status=403)
     throttle(request,"booking:"+str(request.tenant.pk),20,3600)
     from .waitlist import add
     try:
@@ -194,7 +197,7 @@ def public_wait(request,slug):
         throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
         add(request.tenant,data)
         return JsonResponse({"ok":True},status=201)
-    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or "Controlla i dati."},status=400)
+    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or _("Controlla i dati.")},status=400)
 @require_POST
 @json_denied
 def internal_submit(request,slug):
@@ -222,7 +225,7 @@ def submit(request,actor,ticket=None):
         calendar=None if booking.status=="pending" else {**links(booking),"ics":own+"calendario.ics"}
         return JsonResponse({"ok":True,"created":created,"pending":booking.status=="pending","reference":str(booking.pk)[:8],"cancel":own,"calendar":calendar},status=201 if created else 200)
     except ForceWarning as ex:return warned(ex)
-    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or "Controlla i dati."},status=400)
+    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or _("Controlla i dati.")},status=400)
 def get_visible(request,booking_id):
     from django.http import Http404
     try:return choice(visible_bookings(request,Booking.objects.all()),booking_id,status__in=MOVABLE)
@@ -246,16 +249,21 @@ def move_api(request,slug,booking_id):
     except ForceWarning as ex:return warned(ex)
     except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex)},status=400)
 TITLES={"cancel":"La tua prenotazione","confirm":"Ci sarai?","decline":"Non puoi venire?","consent":"Conferma iscrizione","unsubscribe":"Disiscriviti"}
+def own_lang(request,b):
+    """2.14.0: the client's links open in the language he booked in, unless he switches (?lang=); the middleware's
+    override puts the language back after the request."""
+    if b and "lang" not in request.GET and b.snapshot.get("lang"):translation.activate(b.snapshot["lang"])
 def action_view(request,slug,token):
     throttle(request,"action",60,60)
     obj=ActionToken.objects.filter(digest=token_hash(token),expires__gt=timezone.now()).first()
-    if not obj:return render(request,"message.html",{"title":"Collegamento scaduto","text":"Contatta l'attività per assistenza.","public":True},status=400)
+    if not obj:return render(request,"message.html",{"title":_("Collegamento scaduto"),"text":_("Contatta l'attività per assistenza."),"public":True},status=400)
+    own_lang(request,obj.booking)
     if request.method=="POST":
         try:
-            title,text=apply_action(request,obj) or ("Operazione completata","La tua richiesta è stata registrata.")
+            title,text=apply_action(request,obj) or (_("Operazione completata"),_("La tua richiesta è stata registrata."))
             return render(request,"message.html",{"title":title,"text":text,"public":True})
-        except BookingError as ex:return render(request,"message.html",{"title":"Operazione non disponibile","text":str(ex),"public":True},status=400)
-    ctx={"title":TITLES.get(obj.kind,"Conferma"),"done":obj.used,"kind":obj.kind,"public":True}
+        except BookingError as ex:return render(request,"message.html",{"title":_("Operazione non disponibile"),"text":str(ex),"public":True},status=400)
+    ctx={"title":_(TITLES.get(obj.kind,"Conferma")),"done":obj.used,"kind":obj.kind,"public":True}
     if obj.booking_id and obj.kind in ("cancel","confirm","decline"):ctx.update(manage(obj.booking),moved="spostata" in request.GET)
     return render(request,"action.html",ctx)
 def too_late(booking):
@@ -269,9 +277,9 @@ def manage(b):
     from .client_mails import values
     from .ics import links,place
     cutoff=too_late(b)
-    late=("La prenotazione è annullata" if b.status=="cancelled" else "La prenotazione è già iniziata o conclusa" if b.status not in MOVABLE or b.start<=timezone.now()
-        else f"Il termine per annullare o spostare online è scaduto ({human_minutes(cutoff)} prima dell'inizio)" if cutoff else "")
-    if late:late+=f": per qualsiasi cosa chiama {b.location.phone}." if b.location.phone else ": per qualsiasi cosa contatta l'attività."
+    late=(_("La prenotazione è annullata") if b.status=="cancelled" else _("La prenotazione è già iniziata o conclusa") if b.status not in MOVABLE or b.start<=timezone.now()
+        else _("Il termine per annullare o spostare online è scaduto ({tempo} prima dell'inizio)").format(tempo=human_minutes(cutoff)) if cutoff else "")
+    if late:late+=_(": per qualsiasi cosa chiama {telefono}.").format(telefono=b.location.phone) if b.location.phone else _(": per qualsiasi cosa contatta l'attività.")
     return {"booking":b,"what":values(b.tenant,b,{}),"where":place(b),"late":late,"calendar":links(b) if b.status in ACCEPTED else None,
         "can_move":not late and b.service.active and b.service.location.active,
         "checkin":b.service.kind=="day" and b.status in ("pending",)+ACCEPTED and b.end>timezone.now()}  # 2.14.0: stays.checkin_view
@@ -280,36 +288,36 @@ def apply_action(request,obj):
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=request.tenant.pk)
         obj=ActionToken.objects.select_for_update().get(pk=obj.pk)
-        if obj.expires<=timezone.now():raise BookingError("Collegamento scaduto.")
+        if obj.expires<=timezone.now():raise BookingError(_("Collegamento scaduto."))
         if obj.used and obj.kind!="unsubscribe":return None
         result=None
         if obj.kind=="cancel":
-            if obj.booking.start<=timezone.now():raise BookingError("La prenotazione è già iniziata. Contatta l'attività.")
+            if obj.booking.start<=timezone.now():raise BookingError(_("La prenotazione è già iniziata. Contatta l'attività."))
             if cutoff:=too_late(obj.booking):
-                raise BookingError(f"Il termine per annullare online è scaduto ({human_minutes(cutoff)} prima dell'inizio). Contatta direttamente l'attività.")
+                raise BookingError(_("Il termine per annullare online è scaduto ({tempo} prima dell'inizio). Contatta direttamente l'attività.").format(tempo=human_minutes(cutoff)))
             change_status(request.tenant,obj.booking,"cancelled",reason="client")
         elif obj.kind in ("confirm","decline"):
             # 2.14.0: the buttons of the reminder
             b=Booking.objects.select_for_update().select_related("location").get(pk=obj.booking_id)
-            if b.status not in MOVABLE or b.start<=timezone.now():raise BookingError("Questa prenotazione non è più attiva o è già iniziata. Contatta l'attività.")
+            if b.status not in MOVABLE or b.start<=timezone.now():raise BookingError(_("Questa prenotazione non è più attiva o è già iniziata. Contatta l'attività."))
             now=timezone.now().isoformat()
             if obj.kind=="confirm":
                 b.snapshot.pop("declined",None);b.snapshot["client_confirmed"]=now;b.save(update_fields=["snapshot"])
                 audit(request.tenant,None,"booking.client_confirmed",b.pk)
-                result=("Grazie, ti aspettiamo","Abbiamo detto all'attività che ci sarai.")
+                result=(_("Grazie, ti aspettiamo"),_("Abbiamo detto all'attività che ci sarai."))
             elif too_late(b):
                 # inside the cutoff nothing is cancelled by itself: the business sees it and decides
                 b.snapshot.pop("client_confirmed",None);b.snapshot["declined"]=now;b.save(update_fields=["snapshot"])
                 from .notify import notify_staff
                 notify_staff(request.tenant,b,"declined");audit(request.tenant,None,"booking.declined",b.pk)
-                result=("Abbiamo avvisato l'attività","Il termine per annullare online è scaduto, quindi la prenotazione la annulla l'attività."+(f" Per essere sicuro chiama {b.location.phone}." if b.location.phone else " Per essere sicuro chiamala."))
+                result=(_("Abbiamo avvisato l'attività"),_("Il termine per annullare online è scaduto, quindi la prenotazione la annulla l'attività.")+(_(" Per essere sicuro chiama {telefono}.").format(telefono=b.location.phone) if b.location.phone else _(" Per essere sicuro chiamala.")))
             else:
                 change_status(request.tenant,b,"cancelled",reason="client")
-                result=("Prenotazione annullata","Grazie di averci avvisato: il posto torna libero per altri.")
+                result=(_("Prenotazione annullata"),_("Grazie di averci avvisato: il posto torna libero per altri."))
         elif obj.kind in ("consent","unsubscribe"):
             c=Contact.objects.select_for_update().get(pk=obj.contact_id)
             if obj.kind=="consent":
-                if c.suppressed or c.consent=="yes":raise BookingError("Questa conferma non è più valida.")
+                if c.suppressed or c.consent=="yes":raise BookingError(_("Questa conferma non è più valida."))
                 request_proof=(obj.booking.snapshot.get("consent_request") if obj.booking_id else None) or {"text":request.tenant.consent_text,"source":"import" if ConsentEvent.objects.filter(contact=c,kind="imported").exists() else "unknown"}
                 c.consent="yes";c.consent_at=timezone.now()
                 # Proof is written only when the mailbox owner confirms.
@@ -327,9 +335,9 @@ def apply_action(request,obj):
 def manage_token(token):
     """2.14.0: the booking of a "Gestisci" link that the client may still move, or why not."""
     obj=ActionToken.objects.filter(digest=token_hash(token),kind="cancel",used=False,expires__gt=timezone.now()).select_related("booking").first()
-    if not obj:raise BookingError("Collegamento scaduto. Contatta l'attività.")
+    if not obj:raise BookingError(_("Collegamento scaduto. Contatta l'attività."))
     page=manage(obj.booking)
-    if not page["can_move"]:raise BookingError(page["late"] or "Questa prenotazione non si sposta online. Contatta l'attività.")
+    if not page["can_move"]:raise BookingError(page["late"] or _("Questa prenotazione non si sposta online. Contatta l'attività."))
     return obj.booking
 def same(b,params):
     """What the client keeps when he moves: service, variant, operator (or whoever is free, if he chose so), people;
@@ -347,18 +355,19 @@ def move_public(request,slug,token):
             return JsonResponse({"redirect":f"/action/{slug}/{token}/?spostata=1"})
         except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex)},status=400)
     try:b=manage_token(token)
-    except BookingError as ex:return render(request,"message.html",{"title":"Spostamento non disponibile","text":str(ex),"public":True},status=400)
+    except BookingError as ex:return render(request,"message.html",{"title":_("Spostamento non disponibile"),"text":str(ex),"public":True},status=400)
+    own_lang(request,b)
     widget=widget_data(request)
     widget["services"]=[{**x,"options":[],"resources":[]} for x in widget["services"] if x["id"]==str(b.service_id)]
     widget.update(submit=request.path,slots=request.path+"orari/",editing={"service":str(b.service_id),"option":"","resource":"","party":b.party},locked=True)
-    return render(request,"booking.html",{"widget":widget,"moving":True,"public":True,"booking":b,"manage":f"/action/{slug}/{token}/","intro":"Stesso servizio: scegli il nuovo giorno e l'orario"})
+    return render(request,"booking.html",{"widget":widget,"moving":True,"public":True,"booking":b,"manage":f"/action/{slug}/{token}/","intro":_("Stesso servizio: scegli il nuovo giorno e l'orario")})
 @json_denied
 def move_public_slots(request,slug,token):
     throttle(request,"availability:"+str(request.tenant.pk),120,60)
     try:
         b=manage_token(token)
         return JsonResponse({"slots":free_slots(request,same(b,request.GET),b.pk)})
-    except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or "Richiesta non valida."},status=400)
+    except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or _("Richiesta non valida.")},status=400)
 def booking_ics(request,slug,token):
     """2.14.0: the booking as a calendar file, from the client's link."""
     from django.http import Http404,HttpResponse

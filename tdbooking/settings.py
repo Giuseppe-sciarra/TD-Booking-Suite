@@ -55,6 +55,9 @@ AUTH_PASSWORD_VALIDATORS=[{"NAME":"django.contrib.auth.password_validation.Minim
 LANGUAGE_CODE="it"
 TIME_ZONE="Europe/Rome"
 USE_I18N=True
+# 2.14.0: the client's pages and emails also in English (locale/, scripts/compile_messages.py); the staff pages stay in Italian
+LANGUAGES=[("it","Italiano"),("en","English")]
+LOCALE_PATHS=[BASE_DIR/"locale"]
 USE_TZ=True
 DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
 STATIC_URL="/static/"

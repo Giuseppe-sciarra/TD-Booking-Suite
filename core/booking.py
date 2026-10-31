@@ -7,6 +7,7 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext,get_language
 from .models import Tenant,Service,Resource,ServiceResource,Option,Occurrence,Booking,Contact,ActionToken,Delivery,audit
 from .crypto import encrypt,index,tenant_key,token_hash
 from .calendar import windows,fits,local_datetime,blocked_stay,blocked
@@ -38,7 +39,7 @@ def choice(model,value,**filters):
     source=model.objects if hasattr(model,"objects") else model  # model or pre-scoped queryset
     try:obj=source.filter(pk=value,**filters).first()
     except (ValidationError,ValueError):obj=None
-    if not obj:raise BookingError("Selezione non valida o non disponibile.")
+    if not obj:raise BookingError(gettext("Selezione non valida o non disponibile."))
     return obj
 def details(service,option_id=None,resource_id=None):
     option=choice(Option,option_id,service=service,active=True) if option_id else None
@@ -241,13 +242,13 @@ def personal(data,service,staff=False,walkin=False):
         value=data.get(key,"")
         if not isinstance(value,str):raise BookingError("Recapito non valido: "+key)
         val=value.strip()
-        if not val or len(val)>(254 if key=="email" else 100) or any(ord(c)<32 for c in val):raise BookingError("Compila correttamente nome, cognome, email e telefono.")
+        if not val or len(val)>(254 if key=="email" else 100) or any(ord(c)<32 for c in val):raise BookingError(gettext("Compila correttamente nome, cognome, email e telefono."))
         result[key]=val
     try:validate_email(result["email"])
-    except ValidationError:raise BookingError("Email non valida.")
+    except ValidationError:raise BookingError(gettext("Email non valida."))
     result["email"]=result["email"].casefold()
     result["phone"]=normalize_phone(result["phone"])
-    if not result["phone"]:raise BookingError("Numero di telefono non valido, per esempio 333 123 4567.")
+    if not result["phone"]:raise BookingError(gettext("Numero di telefono non valido, per esempio 333 123 4567."))
     return {**result,**extras(data,service)}
 def extras(data,service):
     """Notes and the service's own questions, the same for online and staff bookings."""
@@ -289,9 +290,9 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
     party=integer(data.get("party",1),"Quantità",1,1000 if desk else service.max_party)
     tz=ZoneInfo(tenant.timezone);now=timezone.now()
     try:start=datetime.fromisoformat(str(data["start"]))
-    except (KeyError,ValueError):raise BookingError("Data o ora non valida.")
+    except (KeyError,ValueError):raise BookingError(gettext("Data o ora non valida."))
     if force and start.tzinfo is None:start=local_datetime(start.date(),start.time(),tz)
-    if start is None:raise BookingError("Data o ora non valida.")
+    if start is None:raise BookingError(gettext("Data o ora non valida."))
     if start.tzinfo is None:raise BookingError("Fuso orario mancante.")
     start=start.astimezone(UTC)
     day=start.astimezone(tz).date();occurrence=None;issues=[]
@@ -301,7 +302,7 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
     minutes=integer(data["minutes"],"Durata",5,1440) if desk and service.kind=="resource" and data.get("minutes") not in (None,"") else None
     if service.kind=="day":
         try:end_day=date.fromisoformat(str(data["end_date"]))
-        except (ValueError,KeyError):raise BookingError("Seleziona la data di partenza.")
+        except (ValueError,KeyError):raise BookingError(gettext("Seleziona la data di partenza."))
         nights=(end_day-day).days
         # 2.14.0: 0 nights minimum is the rental of a day, picked up and returned the same day (end>start below)
         if 0<=nights<service.min_days:raise BookingError(f"Durata minima: {service.min_days} giorni.")
@@ -313,17 +314,17 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
         expected=local_datetime(day,clock_in,tz);end=local_datetime(end_day,clock_out,tz)
         if not expected or not end or start!=expected.astimezone(UTC):raise BookingError("Ora di arrivo non valida.")
         end=end.astimezone(UTC)
-        if end<=start:raise BookingError("La partenza viene prima dell'arrivo: scegli un'altra data di partenza.")
-        if (day<now.astimezone(tz).date()) if desk else not now+timedelta(minutes=service.lead_minutes)<=start<=now+timedelta(days=service.horizon_days):raise BookingError("Data fuori dall'intervallo prenotabile.")
+        if end<=start:raise BookingError(gettext("La partenza viene prima dell'arrivo: scegli un'altra data di partenza."))
+        if (day<now.astimezone(tz).date()) if desk else not now+timedelta(minutes=service.lead_minutes)<=start<=now+timedelta(days=service.horizon_days):raise BookingError(gettext("Data fuori dall'intervallo prenotabile."))
         if not fits(tenant,start,start+timedelta(microseconds=1),service,purpose="arrival") or not fits(tenant,end,end+timedelta(microseconds=1),service,purpose="departure") or blocked_stay(tenant,start,end,service):
-            raise BookingError("Arrivo, partenza o soggiorno non consentiti dal calendario.")
+            raise BookingError(gettext("Arrivo, partenza o soggiorno non consentiti dal calendario."))
         bs=start-before;be=end+after
         if has_units(service):
             # The same named unit for every night of the stay.
             free=free_units(tenant,service,bs,be,party,resource,exclude)
             if not free:raise BookingError("Nessuna unità disponibile per le date scelte." if not resource else "L'unità scelta non è disponibile per queste date.")
             resource=free[0]
-        elif not capacity_available(service,bs,be,party,exclude=exclude):raise BookingError("Disponibilità esaurita.")
+        elif not capacity_available(service,bs,be,party,exclude=exclude):raise BookingError(gettext("Disponibilità esaurita."))
     elif force or minutes:
         if service.kind in ("event","shift"):
             occurrence=choice(Occurrence,data.get("occurrence"),service=service,active=True);start=occurrence.start
@@ -332,7 +333,7 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
             for r in ranked(service,list(linked(service)),day,prefer):
                 e=start+timedelta(minutes=length(service,option,r))
                 if fits(tenant,start-before,e+after,service,r) and capacity_available(service,start-before,e+after,party,r,exclude=exclude,gap=posa(service,start,e,r)):resource=r;break
-            else:raise BookingError("Nessuno è libero a quell'ora: scegli con chi.")
+            else:raise BookingError(gettext("Nessuno è libero a quell'ora: scegli con chi."))
         if occurrence:end=occurrence.end
         elif service.kind=="capacity" and not service.turnover:
             # a table holds its places until that opening window closes, as on the page
@@ -349,7 +350,7 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
     else:
         slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk,prefer=prefer)
         match=next((s for s in slots if datetime.fromisoformat(s["start"]).astimezone(UTC)==start and (not data.get("occurrence") or s["occurrence"]==str(data["occurrence"]))),None)
-        if not match:raise BookingError("Orario non disponibile. Aggiorna le disponibilità.")
+        if not match:raise BookingError(gettext("Orario non disponibile. Aggiorna le disponibilità."))
         resource=choice(Resource,match["resource"]) if match["resource"] else None
         occurrence=choice(Occurrence,match["occurrence"]) if match["occurrence"] else None
         end=datetime.fromisoformat(match["end"]).astimezone(UTC)
@@ -387,9 +388,9 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
     # All inventory writers take the same stable tenant row lock.
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
-        if not operational(tenant):raise BookingError("Prenotazioni non disponibili.")
+        if not operational(tenant):raise BookingError(gettext("Prenotazioni non disponibili."))
         if actor is None and tenant.receive_schedule and not fits(tenant,timezone.now(),timezone.now()+timedelta(seconds=1),purpose="receive"):
-            raise BookingError("Le richieste online sono accettate soltanto negli orari indicati dall'attività.")
+            raise BookingError(gettext("Le richieste online sono accettate soltanto negli orari indicati dall'attività."))
         key=str(data.get("request_key",""))
         if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}",key):raise BookingError("Identificativo richiesta mancante.")
         fingerprint=index(json.dumps(data,sort_keys=True,separators=(",",":")),tenant_key(tenant),"booking-request")
@@ -450,6 +451,8 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
             status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
+        # 2.14.0: the language of the client's page, for the emails that follow (client_mails.send)
+        if not staff and get_language()!="it":booking.snapshot["lang"]=get_language()
         if issues:booking.snapshot["forced"]=issues
         (booking.gap_start,booking.gap_end),booking.secondary=gap,second
         if second:booking.snapshot["secondary"]=second.name
@@ -470,7 +473,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
             booking.save(update_fields=["snapshot"])
             from .privacy import record
             record(tenant,contact,"requested","booking",actor,tenant.consent_text,booking.pk)
-            queue(tenant,{"to":pii["email"],"subject":"Conferma iscrizione · "+tenant.name,"body":f"Conferma la richiesta di iscrizione alle comunicazioni di {tenant.name}:\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\nSe non hai richiesto l'iscrizione, ignora il messaggio."},contact)
+            queue(tenant,{"to":pii["email"],"subject":gettext("Conferma iscrizione")+" · "+tenant.name,"body":gettext("Conferma la richiesta di iscrizione alle comunicazioni di {attivita}:").format(attivita=tenant.name)+f"\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\n"+gettext("Se non hai richiesto l'iscrizione, ignora il messaggio.")},contact)
         from .notify import notify_staff
         if not series and booking.origin!="import":notify_staff(tenant,booking,"requested" if status=="pending" else "created")
         booked(tenant,booking,wait)

@@ -154,3 +154,13 @@ def birthday(iso):
     from django.utils.formats import date_format
     try:return date_format(date.fromisoformat(iso),"j F").lower()
     except (TypeError,ValueError):return ""
+
+@register.filter
+def other_languages(request):
+ """2.14.0: the switch of the client's pages: the other languages, each with this page's address and its ?lang="""
+ from django.conf import settings
+ from django.utils.translation import get_language
+ def url(code):
+  q=request.GET.copy();q["lang"]=code
+  return "?"+q.urlencode()
+ return [(code,name,url(code)) for code,name in settings.LANGUAGES if code!=get_language()]

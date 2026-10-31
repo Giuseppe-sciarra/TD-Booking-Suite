@@ -9,7 +9,7 @@
 :root{color-scheme:light;
  --bg:#f6f3fa;--paper:#fff;--ink:#2b2236;--muted:#6b6079;--line:#e5ddef;--soft:#f0e9f8;--pastel:#c5b4d9;
  --brand:#7a55ad;--brand-ink:#fff;--pink:#e0569b;--violet:#8b67b8;
- --ok:#2f7d5b;--ok-soft:#e4f3ec;--warn:#a8620a;--warn-soft:#fbf0e1;--danger:#b3264a;--danger-soft:#fbe7ec;
+ --ok:#2b7353;--ok-soft:#e4f3ec;--warn:#96590a;--warn-soft:#fbf0e1;--danger:#b3264a;--danger-soft:#fbe7ec;
  --side:#2b2236;--side-ink:#ede6f6;--side-muted:#a99dbb;--side-line:#3d3249;
  --shadow:0 1px 2px #2b22360d,0 8px 24px -12px #2b223626;
  --head:Poppins,Figtree,system-ui,sans-serif;--body:Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -1471,6 +1471,8 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 @media (max-width:560px){.privacy-toggle span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}
 .client-filter>.tag-pick{flex:0 1 200px}.client-filter .vip-filter{margin:0 0 12px;align-items:center;white-space:nowrap}.client-filter .vip-filter input{width:18px}
 @media (max-width:560px){.filters.client-filter{align-items:stretch}.client-filter>div,.client-filter>.tag-pick{flex:none}.client-filter .vip-filter{margin:0}}
+/* 2.14.0, WCAG 2.1 AA on the client's pages: fields, times and chips with a border of at least 3:1 (1.4.11); the states keep their own colour */
+.public :where(input,select,textarea,.slot),.public .chip-check input:not(:checked)+span{border-color:color-mix(in srgb,var(--muted) 80%,transparent)}
 
 /* 2.14.0: a group above the request threshold, on the public page */
 .group-note{flex-basis:100%;margin:6px 0 0;padding:8px 12px;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--ink);font-size:14px}
