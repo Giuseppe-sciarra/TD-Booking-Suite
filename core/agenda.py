@@ -11,14 +11,18 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import render,redirect,get_object_or_404
+from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.utils import timezone
-from .calendar import windows,merge,minus,block_spans,blocked
+from .calendar import windows,merge,minus,block_spans,blocked,local_datetime
 from .models import Booking,Location,Resource,Service,ServiceResource,Occurrence,TimeBlock,Tenant,audit
-from .permissions import can,require,shown,visible_bookings
-from .booking import OPEN
+from .permissions import can,require,shown,visible_bookings,check_new_booking
+from .booking import OPEN,MOVABLE,BookingError,ForceWarning,move_booking
 from .presets import units
+from .public import json_denied,get_visible,check_force,warned
+from .identity import json_body
 
 STEP=15  # minutes in a row of the grid
 SHOWN=("pending","confirmed","arrived","in_progress","completed","no_show")  # 2.14.0: a request holds its place, shown as such
@@ -53,6 +57,10 @@ def services_of(ops):
         out[link.resource_id].append(link.service)
     return out
 
+def statuses(request):
+    """2.14.0: the cancelled ones stay hidden, shown on request (Mostra annullate) to see what freed up."""
+    return SHOWN+("cancelled",) if request.GET.get("annullate") else SHOWN
+
 def chosen_day(request,today):
     try:return date.fromisoformat(request.GET.get("data",""))
     except ValueError:return today
@@ -73,11 +81,14 @@ def colors(ops):
 def item(request,r,tz,color):
     data=shown(request,r.data)
     ra,rb=r.start.astimezone(tz),r.end.astimezone(tz)
-    return {"booking":r,"name":f"{data.get('first_name','')} {data.get('last_name','')}".strip() or "Cliente",
+    return {"booking":r,"data":data,"name":f"{data.get('first_name','')} {data.get('last_name','')}".strip() or "Cliente",
         "service":r.snapshot.get("service") or r.service.name,"from":ra.strftime("%H:%M"),"to":rb.strftime("%H:%M"),"start":ra,"end":rb,
         "status":r.status,"color":color.get(r.resource_id,0),"who":r.snapshot.get("resource") or "","party":r.party,
         # 2.11.0: allergies or intolerances the client ticked show on the appointment itself, as the salon programs do
-        "alert":list(data.get("allergies") or [])}
+        "alert":list(data.get("allergies") or []),
+        # 2.14.0: dragged and stretched in the agenda, an appointment of one day still to come; moves snap to its interval
+        "movable":r.status in MOVABLE and r.service.kind=="resource" and ra.date()==rb.date() and r.end>timezone.now(),
+        "minutes":int((rb-ra).total_seconds()//60),"snap":r.service.interval if 5<=r.service.interval<=60 else STEP}
 
 PHASE_ORDER={"partenza":0,"in casa":1,"arrivo":2,"":3}
 def days_of(request,r,tz,color,first,last):
@@ -100,9 +111,10 @@ def common(request,view,day,today,places,location,ops,chosen=None):
     one,many,_=units(request.tenant.business_type)
     keep=[("sede",str(location.pk))] if location and len(places)>1 else []
     if chosen:keep.append(("operatore",str(chosen.pk)))
+    plain="".join(f"&amp;{k}={v}" for k,v in keep)
     return {"view":view,"day":day,"today":today,"places":places,"location":location,"ops":ops,"chosen":chosen,"one":one,"many":many,
-        "keep":"".join(f"&amp;{k}={v}" for k,v in keep),"sede":str(location.pk) if location and len(places)>1 else "",
-        "appointments":fits(request),"legend":[{"name":o.name,"color":c} for o,c in zip(ops,colors(ops).values())] if len(ops)>1 else []}
+        "keep":plain+("&amp;annullate=1" if request.GET.get("annullate") else ""),"keep_plain":plain,"sede":str(location.pk) if location and len(places)>1 else "",
+        "appointments":fits(request),"cancelled_on":bool(request.GET.get("annullate")),"legend":[{"name":o.name,"color":c} for o,c in zip(ops,colors(ops).values())] if len(ops)>1 else []}
 
 def day_view(request):
     t=request.tenant;tz=ZoneInfo(t.timezone)
@@ -115,7 +127,7 @@ def day_view(request):
     chosen=next((o for o in everyone if str(o.pk)==request.GET.get("operatore")),None)
     ops=[chosen] if chosen else everyone
     start=datetime.combine(day,time.min,tz);end=start+timedelta(days=1)
-    rows=visible_bookings(request,Booking.objects.filter(location=location,start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
+    rows=visible_bookings(request,Booking.objects.filter(location=location,start__lt=end,end__gt=start,status__in=statuses(request))).select_related("service","resource","tenant").order_by("start")
     if chosen:rows=rows.filter(resource=chosen)
     rows=list(rows) if location else []
     memo={};mine=services_of(ops)
@@ -146,7 +158,7 @@ def day_view(request):
     for i,c in enumerate(columns,start=2):
         c["col"]=i
         mine=[r for r in rows if (r.resource_id==c["op"].pk if c["op"] else r.resource_id not in by_op)]
-        busy=[(r.start,r.end) for r in mine]
+        busy=[(r.start,r.end) for r in mine if r.status!="cancelled"]
         opened=spans.get(c["op"].pk,[]) if c["op"] else []
         for n in range(count):
             a=frame_a+timedelta(minutes=n*STEP);b=a+timedelta(minutes=STEP)
@@ -161,6 +173,7 @@ def day_view(request):
             x=item(request,r,tz,color)
             x["row"]=row_of(max(x["start"],frame_a));x["row_end"]=max(x["row"]+1,row_of(min(x["end"],frame_b)))
             c["items"].append(x)
+        c["lanes"]=lanes(c["items"])  # 2.14.0: forced or cancelled over another appointment, side by side as in the week
         for a,b,blk in (blocks.get(c["op"].pk,[]) if c["op"] else []):
             row=row_of(max(a,frame_a));c["blocks"].append({"block":blk,"row":row,"row_end":max(row+1,row_of(min(b,frame_b))),"label":blk.get_reason_display(),
                 "from":a.astimezone(tz).strftime("%H:%M"),"to":b.astimezone(tz).strftime("%H:%M")})
@@ -171,7 +184,8 @@ def day_view(request):
     ctx=common(request,"giorno",day,today,places,location,everyone,chosen)
     ctx.update({"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":day,
         "columns":columns,"hours":hours,"count":count,"now_row":now_row,"legend":[],"off":[o.name for o in off],
-        "closed_day":bool(ops) and not any(works(o) for o in ops),"total":len(rows),"writer":writer,"end_row":count+1})
+        "closed_day":bool(ops) and not any(works(o) for o in ops),"total":sum(r.status!="cancelled" for r in rows),"writer":writer,"end_row":count+1,
+        "first":frame_a.hour*60+frame_a.minute})
     return render(request,"agenda.html",ctx)
 
 def lanes(items):
@@ -198,7 +212,7 @@ def week_view(request):
     color=colors(ops)
     chosen=next((o for o in ops if str(o.pk)==request.GET.get("operatore")),None)
     start=datetime.combine(monday,time.min,tz);end=datetime.combine(monday+timedelta(days=7),time.min,tz)
-    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
+    rows=visible_bookings(request,Booking.objects.filter(start__lt=end,end__gt=start,status__in=statuses(request))).select_related("service","resource","tenant").order_by("start")
     if location:rows=rows.filter(location=location)
     if chosen:rows=rows.filter(resource=chosen)
     rows=list(rows) if location else []
@@ -210,7 +224,7 @@ def week_view(request):
     ctx=common(request,"settimana",day,today,places,location,ops,chosen)
     sunday=monday+timedelta(days=6)
     title=f"{monday.day}–{sunday.day} {MONTHS[sunday.month-1]} {sunday.year}" if monday.month==sunday.month else f"{monday.day} {MONTHS[monday.month-1]} – {sunday.day} {MONTHS[sunday.month-1]} {sunday.year}"
-    ctx.update({"prev":monday-timedelta(days=7),"next":monday+timedelta(days=7),"title_text":title,"columns":columns,"total":len(rows),"grid":appointments and bool(ops)})
+    ctx.update({"prev":monday-timedelta(days=7),"next":monday+timedelta(days=7),"title_text":title,"columns":columns,"total":sum(r.status!="cancelled" for r in rows),"grid":appointments and bool(ops),"writer":writer})
     if not ctx["grid"]:
         for c in columns:c["items"].sort(key=lambda x:(PHASE_ORDER[x.get("phase","")],x["start"]))
         return render(request,"agenda_week.html",ctx)
@@ -227,7 +241,7 @@ def week_view(request):
     row_of=lambda m:max(1,min(count+1,int((m-first)//STEP)+1))
     for c in columns:
         d=c["day"];midnight=datetime.combine(d,time.min,tz)
-        busy={op.pk:[(x["start"],x["end"]) for x in c["items"] if x["booking"].resource_id==op.pk] for op in shown_ops}
+        busy={op.pk:[(x["start"],x["end"]) for x in c["items"] if x["booking"].resource_id==op.pk and x["status"]!="cancelled"] for op in shown_ops}
         for n in range(count):
             a=midnight+timedelta(minutes=first+n*STEP);b=a+timedelta(minutes=STEP)
             free=[op for op in shown_ops if any(x<=a and b<=y for x,y in spans[(d,op.pk)])]
@@ -241,7 +255,7 @@ def week_view(request):
         c["lanes"]=lanes(c["items"])
         if c["today"] and first<=minutes(now,d)<last:c["now_row"]=(minutes(now,d)-first)/STEP
     hours=[{"row":n+1,"end":min(n+1+60//STEP,count+1),"label":f"{(first+n*STEP)//60:02d}:00"} for n in range(count) if (n*STEP)%60==0]
-    ctx.update({"hours":hours,"count":count,"end_row":count+1})
+    ctx.update({"hours":hours,"count":count,"end_row":count+1,"first":first})
     return render(request,"agenda_week.html",ctx)
 
 def month_view(request):
@@ -277,6 +291,49 @@ def month_view(request):
         # a stay is on several days, counted once
         "weeks":weeks,"total":len({x["booking"].pk for w in weeks for c in w if c["inside"] for x in by_day.get(c["day"],[])}),"names":["Lun","Mar","Mer","Gio","Ven","Sab","Dom"]})
     return render(request,"agenda_month.html",ctx)
+
+@require_POST
+@json_denied
+def drop(request,slug,booking_id):
+    """2.14.0: an appointment dragged in the agenda to another time, day or operator, or stretched by its lower edge:
+    move_booking with the desk's rules. What it goes beyond comes back as the refusal or, with Forza, as the warning
+    to confirm (409), as in the booking form. The keyboard way stays the Sposta page."""
+    require(request,"booking.write")
+    booking=get_visible(request,booking_id)
+    try:
+        data=json_body(request);check_force(request,data)
+        try:start=local_datetime(date.fromisoformat(str(data.get("date"))),time.fromisoformat(str(data.get("time"))),ZoneInfo(request.tenant.timezone))
+        except ValueError:start=None
+        if not start:raise BookingError("Giorno o ora non validi.")
+        resource=str(data.get("resource") or booking.resource_id or "")
+        check_new_booking(request,booking.service,resource)
+        move_booking(request.tenant,booking.pk,{"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":resource,"party":booking.party,
+            "start":start.isoformat(),"minutes":data.get("minutes"),"force":data.get("force") is True,"force_ok":data.get("force_ok") is True},request.user)
+        return JsonResponse({"ok":True})
+    except ForceWarning as ex:return warned(ex)
+    except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":getattr(ex,"message",None) or str(ex)},status=400)
+
+def sheet(request,slug):
+    """2.14.0: the day on paper, for everyone or one operator, room or court: time, client and service as the agenda
+    shows them to this role, people, and the phone and the notes only to who may read them."""
+    require(request,"booking.read")
+    t=request.tenant;tz=ZoneInfo(t.timezone);now=timezone.now()
+    day=chosen_day(request,now.astimezone(tz).date())
+    start=datetime.combine(day,time.min,tz)
+    rows=visible_bookings(request,Booking.objects.filter(start__lt=start+timedelta(days=1),end__gt=start,status__in=SHOWN)).select_related("service","resource","tenant").order_by("start")
+    places,location=place(request,False)
+    location=location if request.GET.get("sede") else None
+    if location:rows=rows.filter(location=location)
+    ops=list(blockable(request))
+    chosen=next((o for o in ops if str(o.pk)==request.GET.get("operatore")),None)
+    if chosen:rows=rows.filter(resource=chosen)
+    groups={}
+    for r in rows:
+        for _,x in days_of(request,r,tz,{},day,day):groups.setdefault(r.snapshot.get("resource") or x["service"],[]).append(x)
+    back=reverse("bookings",args=[slug])+f"?data={day.isoformat()}"+(f"&sede={location.pk}" if location else "")+(f"&operatore={chosen.pk}" if chosen else "")
+    return render(request,"agenda_print.html",{"day":day,"now":now,"location":location,"places":places,"ops":ops,"chosen":chosen,"back":back,
+        "groups":[{"name":k,"rows":v} for k,v in sorted(groups.items())],"count":rows.count(),"one":units(t.business_type)[0],
+        "people":any(x["party"]>1 for v in groups.values() for x in v)})
 
 def blockable(request):
     """2.14.0: the operators, rooms and courts whose time this staff member may block: the ones he books for."""

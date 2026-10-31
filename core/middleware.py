@@ -35,7 +35,8 @@ class GuardMiddleware:
             idle=settings.SESSION_REMEMBER_DAYS*86400 if request.session.get("remember") else 1800
             if request.session.get("auth_version")!=request.user.auth_version or idle and time.time()-request.session.get("last_seen",time.time())>idle:
                 logout(request)
-            else:request.session["last_seen"]=time.time()
+            # 2.14.0: the agenda refreshing itself is not someone at the screen: the 30 minutes run all the same
+            elif not request.headers.get("X-TDBS-Refresh"):request.session["last_seen"]=time.time()
         if protected:
             if not request.user.is_authenticated:return redirect("login")
             if not request.session.get("mfa") and not request.user.mfa_ready:

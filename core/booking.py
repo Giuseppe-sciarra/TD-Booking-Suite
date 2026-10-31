@@ -205,6 +205,9 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
     start=start.astimezone(UTC)
     day=start.astimezone(tz).date();occurrence=None;issues=[]
     before=timedelta(minutes=service.buffer_before);after=timedelta(minutes=service.buffer_after)
+    # 2.14.0: an appointment dragged or stretched in the agenda keeps its own length: every rule checked one by one,
+    # as with Forza, so a refusal says why (slots of the standard length would not match)
+    minutes=integer(data["minutes"],"Durata",5,1440) if desk and service.kind=="resource" and data.get("minutes") not in (None,"") else None
     if service.kind=="day":
         try:end_day=date.fromisoformat(str(data["end_date"]))
         except (ValueError,KeyError):raise BookingError("Seleziona la data di partenza.")
@@ -228,7 +231,7 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
             if not free:raise BookingError("Nessuna unità disponibile per le date scelte." if not resource else "L'unità scelta non è disponibile per queste date.")
             resource=free[0]
         elif not capacity_available(service,bs,be,party,exclude=exclude):raise BookingError("Disponibilità esaurita.")
-    elif force:
+    elif force or minutes:
         if service.kind in ("event","shift"):
             occurrence=choice(Occurrence,data.get("occurrence"),service=service,active=True);start=occurrence.start
         elif service.kind=="resource" and not resource:
@@ -241,7 +244,7 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False):
         elif service.kind=="capacity" and not service.turnover:
             # a table holds its places until that opening window closes, as on the page
             end=next((b-after for a,b in windows(tenant,day,service) if a<=start<b),start+timedelta(minutes=service.duration))
-        else:end=start+timedelta(minutes=length(service,option,resource))
+        else:end=start+timedelta(minutes=minutes or length(service,option,resource))
         bs=start-before;be=end+after
         if start<now-timedelta(minutes=1):issues.append("nel passato")
         if not fits(tenant,bs,be,service,resource):issues.append("fuori dall'orario di apertura")
@@ -366,16 +369,26 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         # 2.14.0: moving is the desk's, with the desk's rules and Forza
         *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=desk,force=desk and data.get("force") is True)
         overrun(issues,data)
+        key=lambda b:(b.start,b.party,b.option_id,b.resource_id,b.occurrence_id,b.service_id)
+        before=key(booking)
         booking.start,booking.end,booking.busy_start,booking.busy_end,booking.party,booking.option,booking.resource,booking.occurrence=values
+        booking.service=service
+        # 2.14.0: only the end changed (stretched in the agenda): for the client nothing moved, no email, the reminders
+        # and his Confermo stay
+        moved=key(booking)!=before
         booking.snapshot.pop("forced",None)
         if issues:booking.snapshot["forced"]=issues
-        booking.service=service;booking.location=service.location
+        booking.location=service.location
         booking.snapshot.update(service=service.name,location=service.location.name,resource=booking.resource.name if booking.resource else "",option=booking.option.name if booking.option else "")
         from .prices import stamp
         stamp(booking)
-        for key in REARM:booking.snapshot.pop(key,None)  # 2.13.0: the new day gets its own reminder
+        if moved:
+            for name in REARM:booking.snapshot.pop(name,None)  # 2.13.0: the new day gets its own reminder
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
+        if not moved:
+            audit(tenant,actor,"booking.resized",booking.pk,minutes=int((booking.end-booking.start).total_seconds()//60),**({"forced":issues} if issues else {}))
+            return booking
         # Confermo / Non vengo of the old day must not answer for the new one
         ActionToken.objects.filter(booking=booking,kind__in=("confirm","decline"),used=False).update(expires=timezone.now())
         from .client_mails import send

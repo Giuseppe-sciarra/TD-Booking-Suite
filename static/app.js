@@ -34,14 +34,18 @@
  if(turnover){const timed=()=>["#id_duration","#id_buffer_after"].forEach(sel=>{const box=$(sel)?.closest(".field");if(box&&!(box.dataset.kindHidden))box.classList.toggle("off-turnover",!turnover.checked);});
   turnover.addEventListener("change",timed);timed();}
  // type of business: as many location names as locations, added on the fly past the fifth
- // 2.10.0: the day agenda, placed on its grid here (the page allows no inline styles)
- document.querySelectorAll("[data-agenda]").forEach(agenda=>{agenda.style.setProperty("--rows",agenda.dataset.rows);agenda.style.setProperty("--cols",agenda.dataset.cols);
+ // 2.10.0: the day agenda, placed on its grid here (the page allows no inline styles); again after each refresh
+ const lay=()=>document.querySelectorAll("[data-agenda]").forEach(agenda=>{agenda.style.setProperty("--rows",agenda.dataset.rows);agenda.style.setProperty("--cols",agenda.dataset.cols);
   agenda.querySelectorAll("[data-row]").forEach(el=>{el.style.gridRow=el.dataset.row+" / "+(el.dataset.end||+el.dataset.row+1);el.style.gridColumn=el.dataset.col;});
   agenda.querySelectorAll(".agenda-head [data-col]").forEach(el=>{el.style.gridColumn=el.dataset.col;});
-  // 2.11.0: a day of the week puts overlapping appointments side by side, one lane each
+  // 2.11.0: a day of the week puts overlapping appointments side by side, one lane each (2.14.0: the day too)
   agenda.querySelectorAll("[data-lanes]").forEach(el=>el.style.setProperty("--lanes",el.dataset.lanes));
-  const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";
-  (now||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"nearest"});});
+  agenda.querySelectorAll("[data-lane]").forEach(el=>el.style.setProperty("--lane",el.dataset.lane));
+  // 2.14.0: the lower edge of an appointment to drag, to change how long it lasts
+  agenda.querySelectorAll("[data-move]").forEach(el=>{if(!el.querySelector(".agenda-grip")){const g=document.createElement("span");g.className="agenda-grip";g.setAttribute("aria-hidden","true");el.append(g);}});
+  const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";});
+ lay();
+ document.querySelectorAll("[data-agenda]").forEach(agenda=>(agenda.querySelector("[data-now]")||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"nearest"}));
  document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select,form[data-autosubmit] input[type=checkbox]").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));
  // 2.11.0: the tabs of the client card; without the script every panel shows, one after the other. A link to
  // something inside a panel (#nuovo-trattamento) opens that panel first
@@ -231,8 +235,142 @@
  const swap=(show,hide,url)=>{if(!show||!hide)return false;hide.hidden=true;show.hidden=false;show.classList.remove("swap-in");void show.offsetWidth;show.classList.add("swap-in");if(cta)cta.hidden=show===trialBox;try{history.replaceState(null,"",url);}catch{}show.querySelector("input:not([type=hidden])")?.focus({preventScroll:true});return true;};
  cta?.addEventListener("click",e=>{if(swap(trialBox,loginBox,cta.getAttribute("href")))e.preventDefault();});
  document.querySelectorAll("[data-trial-close]").forEach(a=>a.addEventListener("click",e=>{if(swap(loginBox,trialBox,a.getAttribute("href")))e.preventDefault();}));
- document.querySelectorAll("[data-confirm]").forEach(button=>button.addEventListener("click",e=>{if(!confirm(button.dataset.confirm))e.preventDefault();}));
+ // one listener for the whole page: the buttons of a list refreshed in place ask too (2.14.0)
+ document.addEventListener("click",e=>{const button=e.target.closest("[data-confirm]");if(button&&!confirm(button.dataset.confirm))e.preventDefault();});
  const csrf=()=>document.querySelector("[name=csrfmiddlewaretoken]")?.value||"";
+ // 2.14.0: the agenda at the desk. An appointment dragged to another time or operator (another day in the week), or
+ // its lower edge to change how long it lasts: mouse at once, a finger after a long press, a confirmation, then the
+ // desk's rules on the server, with Forza where the role has it. The Sposta page stays the way by keyboard
+ const dialog=$("[data-drop-dialog]");
+ const veiledName=text=>{const s=document.createElement("span");s.className="pv";s.textContent=text;return s;};
+ const ask=(title,parts,yes,danger)=>new Promise(done=>{
+  const ok=dialog.querySelector("[data-yes]"),no=dialog.querySelector("[data-no]");
+  dialog.querySelector("[data-title]").textContent=title;dialog.querySelector("[data-text]").replaceChildren(...parts);
+  ok.hidden=!yes;ok.textContent=yes||"";ok.className=danger?"danger":"primary";no.textContent=yes?"Annulla":"Chiudi";
+  const end=v=>{ok.onclick=no.onclick=dialog.oncancel=null;dialog.close();done(v);};
+  ok.onclick=()=>end(true);no.onclick=()=>end(false);dialog.oncancel=e=>{e.preventDefault();end(false);};
+  dialog.showModal();(yes?ok:no).focus();});
+ const say=text=>{const t=document.createElement("div");t.className="toast";t.setAttribute("role","status");t.textContent=text;document.body.append(t);setTimeout(()=>t.classList.add("out"),3600);setTimeout(()=>t.remove(),4200);};
+ const hm=m=>String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+ const lanes=agenda=>[...agenda.querySelectorAll("[data-drop]")];
+ let drag=null,swallow=false;
+ const settle=()=>{const d=drag;drag=null;if(!d)return;clearTimeout(d.timer);d.ghost?.remove();d.item.classList.remove("is-lifted");d.agenda.classList.remove("is-dragging");
+  lanes(d.agenda).forEach(l=>l.classList.remove("is-target"));};
+ const paint=()=>{const d=drag,t=d.to,b=d.body.getBoundingClientRect(),l=t.lane.getBoundingClientRect();
+  d.ghost.style.left=(l.left-b.left+3)+"px";d.ghost.style.width=Math.max(40,l.width-6)+"px";
+  d.ghost.style.top=(l.top-b.top+(t.start-d.first)/15*d.row+1)+"px";d.ghost.style.height=Math.max(d.row,t.minutes/15*d.row)-2+"px";
+  d.tag.textContent=hm(t.start)+"–"+hm(t.start+t.minutes)+(t.lane!==d.lane?" · "+(t.lane.dataset.name||t.lane.dataset.label||""):"");
+  lanes(d.agenda).forEach(x=>x.classList.toggle("is-target",x===t.lane));};
+ const track=()=>{const d=drag,b=d.body.getBoundingClientRect(),at=m=>Math.round(m/d.snap)*d.snap;
+  if(d.resize)d.to.minutes=Math.max(15,Math.min(d.last,at(d.first+(d.py-b.top)/d.row*15))-d.start);
+  else{d.to.start=Math.max(d.first,Math.min(d.last-d.minutes,at(d.first+(d.py-d.dy-b.top)/d.row*15)));
+   d.to.lane=lanes(d.agenda).find(l=>{const r=l.getBoundingClientRect();return d.px>=r.left&&d.px<r.right;})||d.to.lane;}
+  paint();};
+ const edge=()=>{const d=drag;if(!d?.live||d.asking)return;
+  const top=d.agenda.querySelector(".agenda-head").getBoundingClientRect().bottom,dy=d.py<Math.max(top,0)+16?-12:d.py>innerHeight-40?12:0;if(dy){scrollBy(0,dy);track();}
+  // narrow screens: the agenda scrolls sideways inside its card
+  const card=d.agenda.closest(".agenda-card"),r=card?.getBoundingClientRect();
+  if(card&&card.scrollWidth>card.clientWidth){const dx=d.px<r.left+44?-12:d.px>r.right-44?12:0;if(dx){card.scrollLeft+=dx;track();}}
+  requestAnimationFrame(edge);};
+ const lift=()=>{const d=drag;if(!d||d.live)return;d.live=true;
+  d.body=d.agenda.querySelector(".agenda-body");d.row=parseFloat(getComputedStyle(d.agenda).getPropertyValue("--row"))||22;
+  d.first=+d.agenda.dataset.first;d.last=d.first+ +d.agenda.dataset.rows*15;d.snap=d.resize?15:+d.item.dataset.snap||15;
+  d.dy=d.y-d.item.getBoundingClientRect().top;
+  d.ghost=d.item.cloneNode(true);d.ghost.className+=" agenda-ghost"+(d.resize?" is-resize":"");["href","data-move","data-row","data-col","data-lane"].forEach(a=>d.ghost.removeAttribute(a));
+  d.ghost.style.gridRow=d.ghost.style.gridColumn="auto";d.ghost.removeAttribute("title");d.ghost.querySelector(".agenda-grip")?.remove();
+  d.tag=document.createElement("span");d.tag.className="ghost-time";d.ghost.prepend(d.tag);
+  d.body.append(d.ghost);d.item.classList.add("is-lifted");d.agenda.classList.add("is-dragging");
+  try{d.item.setPointerCapture(d.id);}catch{}
+  if(d.touch)navigator.vibrate?.(12);  // the long press took
+  d.to={lane:d.lane,start:d.start,minutes:d.minutes};paint();requestAnimationFrame(edge);};
+ document.addEventListener("pointerdown",e=>{const item=e.target.closest("[data-move]");if(!item||e.button>0||drag||!dialog)return;
+  const agenda=item.closest("[data-agenda]"),resize=!!e.target.closest(".agenda-grip");
+  const [h,m]=item.dataset.start.split(":");
+  drag={item,agenda,resize,touch:e.pointerType!=="mouse",id:e.pointerId,x:e.clientX,y:e.clientY,px:e.clientX,py:e.clientY,start:h*60+ +m,minutes:+item.dataset.minutes,
+   lane:item.closest("[data-drop]")||agenda.querySelector('[data-drop][data-col="'+item.dataset.col+'"]')};
+  if(!drag.lane){drag=null;return;}
+  if(resize){e.preventDefault();lift();}else if(drag.touch)drag.timer=setTimeout(lift,350);});
+ document.addEventListener("pointermove",e=>{const d=drag;if(!d||e.pointerId!==d.id||d.asking)return;d.px=e.clientX;d.py=e.clientY;
+  if(!d.live){if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>(d.touch?10:4)){if(d.touch)settle();else lift();}return;}
+  e.preventDefault();track();});
+ document.addEventListener("touchmove",e=>{if(drag?.live)e.preventDefault();},{passive:false});
+ document.addEventListener("contextmenu",e=>{if(drag&&e.target.closest("[data-move]"))e.preventDefault();});
+ document.addEventListener("click",e=>{if(swallow&&e.target.closest("[data-move]")){e.preventDefault();e.stopPropagation();}},true);
+ document.addEventListener("pointercancel",e=>{if(drag&&e.pointerId===drag.id&&!drag.asking)settle();});
+ document.addEventListener("pointerup",async e=>{const d=drag;if(!d||e.pointerId!==d.id||d.asking)return;
+  if(!d.live){settle();return;}
+  swallow=true;setTimeout(()=>{swallow=false;},400);  // the click that ends a drag does not open the booking
+  const t=d.to,lane=t.lane,name=d.item.dataset.name||"Cliente";
+  if(lane===d.lane&&t.start===d.start&&t.minutes===d.minutes){settle();return;}
+  d.asking=true;
+  const other=lane!==d.lane,where=(other&&lane.dataset.label?" "+lane.dataset.label:"")+" alle "+hm(t.start)+(other&&lane.dataset.name?" con "+lane.dataset.name:"");
+  const question=d.resize?["Cambiare la durata?",[veiledName(name),`: dalle ${hm(t.start)} alle ${hm(t.start+t.minutes)}, ${t.minutes} minuti invece di ${d.minutes}.`],"Cambia durata"]
+   :["Spostare l'appuntamento?",["Spostare ",veiledName(name),where+"?"],"Sposta"];
+  if(!await ask(...question)){settle();return;}
+  const body={date:lane.dataset.day,time:hm(t.start),resource:lane.dataset.drop||"",minutes:t.minutes,force:"force" in d.agenda.dataset};
+  for(;;){
+   let r=null,out={};
+   try{r=await fetch(d.item.dataset.move,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":csrf()},body:JSON.stringify(body),credentials:"same-origin"});out=await r.json();}
+   catch{out={error:"Questa prenotazione non si sposta più da qui: aggiorna l'agenda e riprova."};}
+   if(r?.ok){await refresh(true);settle();say(d.resize?`Durata cambiata: ${t.minutes} minuti`:"Spostata"+where);return;}
+   // Forza: what the move goes beyond, said by the server, to confirm once more
+   if(r?.status===409&&out.force){if(await ask("Forzare lo spostamento?",[out.error],"Forza",true)){body.force_ok=true;continue;}break;}
+   await ask("Non si può spostare",[out.error||"Operazione non consentita."]);break;}
+  settle();});
+
+ // 2.14.0: the agenda and the Dashboard lists refresh by themselves, keeping the place on the page; never during a
+ // drag, a question, a field being filled, or with the window in the background. The refresh does not count as
+ // someone at the screen (X-TDBS-Refresh): the session still ends after the usual time
+ const parts=()=>[...document.querySelectorAll("[data-refresh]")];
+ let fetched=Date.now();
+ const quiet=()=>drag||document.querySelector("dialog[open]")||parts().some(p=>p.querySelector("details[open]")||p.contains(document.activeElement)&&document.activeElement.matches("input,select,textarea"));
+ async function refresh(now){
+  if(!parts().length||!now&&(document.hidden||quiet()))return;
+  fetched=Date.now();
+  let r;try{r=await fetch(location.href,{headers:{"X-TDBS-Refresh":"1"},credentials:"same-origin"});}catch{return;}
+  if(r.redirected&&new URL(r.url).pathname!==location.pathname){location.reload();return;}  // signed out meanwhile: the sign-in page
+  if(!r.ok)return;
+  const page=new DOMParser().parseFromString(await r.text(),"text/html");
+  if(!now&&quiet())return;
+  const card=$(".agenda-card"),left=card?.scrollLeft,x=scrollX,y=scrollY,focus=document.activeElement?.closest?.("[data-refresh]")&&document.activeElement.getAttribute("href");
+  const seen=new Set([...document.querySelectorAll(".agenda-item")].map(a=>a.getAttribute("href")));
+  parts().forEach(p=>{const fresh=page.querySelector('[data-refresh="'+p.dataset.refresh+'"]');if(fresh)p.replaceChildren(...fresh.childNodes);});
+  lay();filter();veil();
+  if(seen.size)document.querySelectorAll(".agenda-item").forEach(a=>{if(!seen.has(a.getAttribute("href")))a.classList.add("is-new");});
+  if(focus)document.querySelector('[data-refresh] [href="'+CSS.escape(focus)+'"]')?.focus({preventScroll:true});
+  const again=$(".agenda-card");if(again&&left)again.scrollLeft=left;scrollTo(x,y);}
+ if(parts().length){const every=$("[data-agenda]")?45000:60000;setInterval(()=>refresh(),every);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&Date.now()-fetched>every)refresh();});}
+
+ // 2.14.0: Cerca nel giorno: the appointments that match stand out, the others fade; Enter opens the first
+ const search=$("[data-quick-search]");
+ function filter(){if(!search)return;const q=search.value.trim().toLocaleLowerCase("it");
+  document.querySelectorAll(".agenda-item,.month-day li,.week-col li").forEach(el=>{const hit=el.textContent.toLocaleLowerCase("it").includes(q);el.classList.toggle("is-dim",!!q&&!hit);el.classList.toggle("is-hit",!!q&&hit);});}
+ search?.addEventListener("input",filter);
+ search?.addEventListener("keydown",e=>{if(e.key==="Escape"){search.value="";filter();search.blur();}
+  else if(e.key==="Enter"){e.preventDefault();const hit=$(".is-hit");(hit?.closest("a")||hit?.querySelector("a"))?.click();}});
+
+ // 2.14.0: the agenda from the keyboard: each key is the link or button marked with it (data-key); not while typing
+ document.querySelectorAll('[data-key="?"]').forEach(b=>b.addEventListener("click",()=>$("[data-shortcuts]")?.showModal()));
+ document.querySelectorAll("dialog [data-close]").forEach(b=>b.addEventListener("click",()=>b.closest("dialog").close()));
+ if($("[data-shortcuts]"))document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&drag?.live&&!drag.asking){settle();return;}
+  if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest("input,textarea,select,[contenteditable]")||document.querySelector("dialog[open]"))return;
+  if(e.key==="/"&&search){e.preventDefault();search.focus();search.select();return;}
+  const key=document.querySelector('[data-key="'+CSS.escape(e.key.length===1?e.key.toLowerCase():e.key)+'"]');
+  if(key){e.preventDefault();key.click();}});
+
+ // 2.14.0: Nascondi nomi: names and prices blurred on a screen the clients can see, remembered on this device
+ const privacy=$("[data-privacy-toggle]");
+ let veiled=false;try{veiled=localStorage.getItem("tdbs-privacy")==="1";}catch{}
+ function veil(){document.documentElement.toggleAttribute("data-privacy",veiled);
+  // a name in a tooltip would show on hover
+  document.querySelectorAll(".agenda-item[title],.agenda-item[data-title]").forEach(a=>{if(veiled&&a.title){a.dataset.title=a.title;a.removeAttribute("title");}else if(!veiled&&a.dataset.title){a.title=a.dataset.title;delete a.dataset.title;}});
+  if(privacy){privacy.setAttribute("aria-pressed",String(veiled));privacy.querySelector("span").textContent=veiled?"Mostra nomi":"Nascondi nomi";}}
+ privacy?.addEventListener("click",()=>{veiled=!veiled;try{localStorage.setItem("tdbs-privacy",veiled?"1":"0");}catch{}veil();});
+ veil();
+ document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",()=>print()));
+
  const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
  const encoded=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
  const request=async(url,data)=>{

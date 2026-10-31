@@ -1347,3 +1347,94 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .remove-form{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 @media(max-width:560px){.hours-row{display:flex;flex-wrap:wrap}.hours-row .check{flex-basis:100%}.hours-row input[type=time]{flex:1 1 30%}}
 #id_repeat_days{display:flex;flex-wrap:wrap;gap:2px 16px}
+/* 2.14.0: the agenda at the desk: colour and sign of each status, appointments side by side, drag and stretch with
+   their confirmation, legend, quick search, shortcuts, the refresh, Nascondi nomi, the day on paper */
+.agenda-item{transition:box-shadow .15s,opacity .2s,filter .2s}
+.agenda-state{display:inline-block;margin-right:4px;padding:0 6px;border-radius:999px;font-size:10.5px;font-style:normal;font-weight:700;line-height:15px;vertical-align:1px;background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+.agenda .agenda-item.pending{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 7px,color-mix(in srgb,var(--warn-soft) 45%,var(--paper)) 7px 14px);border-left-style:dashed}
+.agenda-item.pending .agenda-state{background:var(--warn);color:var(--paper)}
+.agenda-item.arrived .agenda-state{background:var(--brand);color:var(--brand-ink)}
+.agenda .agenda-item.in_progress{background:color-mix(in srgb,var(--op,var(--brand)) 30%,var(--paper))}
+.agenda-item.in_progress .agenda-state{background:var(--ok);color:var(--paper)}
+.agenda-item.in_progress .agenda-state::before{content:"";display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:currentColor;vertical-align:1px;animation:live 1.4s ease-in-out infinite}
+@keyframes live{50%{opacity:.25;transform:scale(.55)}}
+.agenda .agenda-item.completed{background:var(--ok-soft);color:color-mix(in srgb,var(--ink) 72%,transparent)}
+.agenda-item.completed .agenda-state{background:var(--paper);color:var(--ok)}
+.agenda .agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
+.agenda-item.no_show .agenda-state{background:var(--danger);color:var(--paper)}
+.agenda .agenda-item.cancelled{z-index:1;background:var(--paper);border:1px dashed color-mix(in srgb,var(--muted) 60%,transparent);border-left:3px dashed var(--muted);color:var(--muted);opacity:.75}
+.agenda-item.cancelled .pv{text-decoration:line-through}.agenda-item.cancelled .agenda-state{background:var(--soft);color:var(--muted)}
+.agenda-body>.agenda-item[data-lane]{width:calc(100% / var(--lanes) - 4px);margin-left:calc((var(--lane) - 1) * 100% / var(--lanes) + 2px);margin-right:0}
+.agenda-forced{display:inline-grid;place-items:center;width:15px;height:15px;margin-right:4px;border-radius:50%;background:var(--danger-soft);color:var(--danger);vertical-align:-2px}
+.agenda-forced .nav-ico{width:10px;height:10px;fill:currentColor;stroke:none;opacity:1}
+.week-col li a span .agenda-alert{margin-right:4px}
+.week-list-foot{margin:12px 2px 0;font-size:13px}
+/* drag and stretch */
+.agenda-item[data-move]{cursor:grab;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.agenda-grip{position:absolute;left:0;right:0;bottom:0;height:9px;cursor:ns-resize;touch-action:none}
+.agenda-grip::after{content:"";position:absolute;left:50%;bottom:3px;width:22px;height:3px;margin-left:-11px;border-radius:2px;background:color-mix(in srgb,var(--op,var(--brand)) 75%,var(--ink));opacity:0;transition:opacity .15s}
+.agenda-item:hover .agenda-grip::after{opacity:.8}
+@media(pointer:coarse){.agenda-grip{height:16px}.agenda-grip::after{opacity:.6;width:28px;margin-left:-14px}}
+.agenda.is-dragging,.agenda.is-dragging *{cursor:grabbing!important}
+.agenda.is-dragging .agenda-free{pointer-events:none}
+.agenda-item.is-lifted{opacity:.35;box-shadow:none;outline:2px dashed color-mix(in srgb,var(--op,var(--brand)) 70%,transparent);outline-offset:-2px}
+.agenda-ghost{position:absolute;z-index:8;margin:0;overflow:visible;pointer-events:none;opacity:.97;box-shadow:0 18px 36px -14px color-mix(in srgb,var(--ink) 60%,transparent),0 0 0 2px var(--op,var(--brand));transform:rotate(-.8deg) scale(1.02);transition:top .08s ease-out,left .14s ease-out,width .14s ease-out,height .08s ease-out;animation:lift-up .18s ease-out}
+@keyframes lift-up{from{transform:none;box-shadow:none}}
+.agenda-ghost.is-resize{transform:none;animation:none}
+.ghost-time{position:absolute;left:-2px;bottom:100%;margin-bottom:5px;padding:2px 9px;border-radius:999px;background:var(--ink);color:var(--paper);font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 6px 14px -6px var(--ink)}
+.agenda-lane.is-target{background-color:color-mix(in srgb,var(--brand) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 30%,transparent)}
+.agenda-item.is-new{animation:arrive 1.8s ease-out}
+@keyframes arrive{0%{transform:scale(.94);box-shadow:0 0 0 0 color-mix(in srgb,var(--pink) 75%,transparent)}25%{transform:none}100%{box-shadow:0 0 0 12px transparent}}
+/* search, shortcuts, legend */
+.agenda-filter{width:190px;min-height:36px;padding:5px 12px;font-size:14px}
+.is-dim{opacity:.25;filter:saturate(.2)}
+.agenda-item.is-hit,.month-day li.is-hit,.week-col li.is-hit a{box-shadow:0 0 0 2px var(--brand)}
+kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--paper);font:700 12px/1 var(--body);color:var(--ink)}
+.kbd-hint{margin:0;padding:0;width:36px;height:36px;border:1px solid var(--line);background:var(--paper);color:var(--muted)}.kbd-hint:hover{border-color:var(--pastel)}
+.kbd-hint kbd{border:0;background:none;min-width:0;height:auto;padding:0;color:inherit}
+.state-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:12px 2px 0;font-size:12.5px;color:var(--muted)}
+.state-legend ul{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;margin:0;padding:0}
+.state-legend li{display:inline-flex;align-items:center;gap:6px}
+.state-legend .client-ok,.state-legend .agenda-alert,.state-legend .agenda-forced,.state-legend .origin{margin:0}
+.lg{display:inline-block;width:18px;height:14px;border-radius:4px;border-left:3px solid var(--brand);background:color-mix(in srgb,var(--brand) 14%,var(--paper))}
+.lg.pending{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--warn) 30%,var(--paper)) 0 3px,var(--paper) 3px 6px);border-left:3px dashed var(--warn)}
+.lg.arrived{border-left-width:6px}.lg.in_progress{background:color-mix(in srgb,var(--brand) 32%,var(--paper))}
+.lg.completed{background:var(--ok-soft);border-left-color:var(--ok)}.lg.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
+.lg.cancelled{background:transparent;border:1px dashed var(--muted)}
+.state-toggle{font-weight:600}.state-hint{margin-left:auto}
+@media(max-width:900px){.state-hint{margin-left:0}.agenda-filter{width:100%;order:5}}
+/* the confirmation of a drag, the shortcuts, the message after a change */
+.dialog{width:min(440px,calc(100vw - 32px));padding:24px 26px 20px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper);color:var(--ink);box-shadow:0 30px 60px -20px #1d1527b3}
+.dialog::backdrop{background:color-mix(in srgb,#1d1527 30%,transparent)}
+.dialog[open]{animation:pop .2s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}}
+.dialog h2{margin:0 0 8px;font-size:20px}.dialog p{margin:0;font-size:15px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.dialog-actions button{margin:0}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;align-items:center;margin:16px 0 0}.keys dt{white-space:nowrap}.keys dd{margin:0;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:28px;z-index:60;transform:translateX(-50%);padding:12px 22px;border-radius:999px;background:var(--ink);color:var(--paper);font-size:14px;font-weight:600;box-shadow:0 18px 40px -16px #1d1527b3;animation:toast-in .35s cubic-bezier(.2,.9,.3,1.2)}
+.toast.out{opacity:0;transform:translate(-50%,12px);transition:opacity .4s,transform .4s}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,18px)}}
+/* Nascondi nomi: the text is blurred, the layout stays */
+.privacy-toggle{margin:0}.privacy-toggle .nav-ico{width:16px;height:16px}
+.privacy-toggle[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+:root[data-privacy] :is(.pv,.today-who strong,.client-main strong,.client-main small,.client-hero h1,.week-col li a span,.metric-money,.client-rows .avatar,.month-day li){color:transparent!important;text-shadow:0 0 8px color-mix(in srgb,var(--ink) 75%,transparent)}
+:root[data-privacy] .month-day li b{color:var(--ink)!important;text-shadow:none}
+/* the day on paper */
+.sheet-pick{margin:-6px 0 18px}
+.sheet-group{padding:18px 20px}.sheet-group h2{display:flex;align-items:baseline;gap:8px}.sheet-group h2 small{font-size:13px}
+.sheet{table-layout:fixed}.sheet .c-time{width:130px}.sheet .c-who{width:22%}.sheet .c-what{width:18%}.sheet .c-num{width:90px}.sheet .c-phone{width:160px}
+.sheet td{padding:10px 12px;vertical-align:top;overflow-wrap:anywhere}.sheet td small{display:block;margin-top:2px}.sheet .num{text-align:center}
+.sheet-notes{min-width:180px;max-width:360px}.sheet-notes .allergy-chip{margin:0 6px 4px 0}
+@media print{
+ @page{margin:12mm}
+ :root,:root[data-theme]{color-scheme:light;--bg:#fff;--paper:#fff;--ink:#000;--muted:#444;--line:#aaa;--soft:#f2f2f2}
+ body{background:#fff;color:#000;font-size:10.5pt}
+ .sidebar,.topbar,footer,.skip,.no-print,.agenda-bar,.state-legend,.page-heading .actions,main>.notice,.toast,dialog,.agenda-free,.agenda-grip{display:none!important}
+ .shell{margin:0!important}main{padding:0!important;max-width:none!important}
+ .page-heading{margin-bottom:10pt}.page-heading h1{font-size:18pt}
+ .card{box-shadow:none!important;border:0!important;border-radius:0!important;padding:0!important;margin:0 0 14pt!important}
+ .sheet-group h2{break-after:avoid;border-bottom:1.5pt solid #000;padding-bottom:3pt;font-size:13pt}
+ .sheet tr{break-inside:avoid}.sheet th,.sheet td{padding:4pt 6pt;border-bottom:.5pt solid #999;color:#000}tbody tr:hover td{background:none}
+ .agenda-head{position:static}a{color:inherit}
+ :root[data-privacy] :is(.pv,.today-who strong,.week-col li a span,.month-day li){color:inherit!important;text-shadow:none}
+}
