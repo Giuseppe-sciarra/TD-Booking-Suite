@@ -82,7 +82,7 @@ def item(request,r,tz,color):
     data=shown(request,r.data)
     ra,rb=r.start.astimezone(tz),r.end.astimezone(tz)
     return {"booking":r,"data":data,"name":f"{data.get('first_name','')} {data.get('last_name','')}".strip() or "Cliente",
-        "service":r.snapshot.get("service") or r.service.name,"from":ra.strftime("%H:%M"),"to":rb.strftime("%H:%M"),"start":ra,"end":rb,
+        "service":(r.snapshot.get("service") or r.service.name)+(" · visita" if r.visit else ""),"from":ra.strftime("%H:%M"),"to":rb.strftime("%H:%M"),"start":ra,"end":rb,
         "status":r.status,"color":color.get(r.resource_id,0),"who":r.snapshot.get("resource") or "","party":r.party,
         # 2.11.0: allergies or intolerances the client ticked show on the appointment itself, as the salon programs do
         "alert":list(data.get("allergies") or []),

@@ -19,10 +19,12 @@ def short(d):
 def summary(tenant,booking,event):
     tz=ZoneInfo(tenant.timezone);d=booking.data;s=booking.snapshot
     name=short(d)
-    lines=[TITLES[event]+" · "+tenant.name,"Servizio: "+(s.get("service") or "")]
+    from .booking import visit_rows
+    rows=visit_rows(booking)  # 2.14.0: a visit of several services in one notice, each with its time and operator
+    lines=[TITLES[event]+" · "+tenant.name,"Servizio: "+(s.get("service") or "") if len(rows)<2 else "Servizi: "+" + ".join(f"{r.snapshot.get('service','')} {r.start.astimezone(tz):%H:%M} ({r.snapshot.get('resource','')})" for r in rows)]
     if s.get("option"):lines.append("Prestazione: "+s["option"])
     if s.get("location"):lines.append("Sede: "+s["location"])
-    if s.get("resource"):lines.append((booking.service.resource_label or "Risorsa")+": "+s["resource"])
+    if s.get("resource") and len(rows)<2:lines.append((booking.service.resource_label or "Risorsa")+": "+s["resource"])
     if booking.service.kind=="day":
         nights=(booking.end.astimezone(tz).date()-booking.start.astimezone(tz).date()).days
         lines+=[f"Arrivo: {booking.start.astimezone(tz):%d/%m/%Y %H:%M}",f"Partenza: {booking.end.astimezone(tz):%d/%m/%Y %H:%M}",f"Notti: {nights}"]
@@ -36,7 +38,8 @@ def notify_staff(tenant,booking,event):
     if not (tenant.notify_email or tenant.telegram or tenant.notify_operators):return
     text=summary(tenant,booking,event);subject=TITLES[event]+" · "+(booking.snapshot.get("service") or "")
     to=[tenant.notify_email] if tenant.notify_email else []
-    if booking.resource_id:to+=[e for e,_ in operators(tenant,booking.resource_id)]  # 2.14.0: also the operator of this booking
+    from .booking import visit_rows
+    for rid in dict.fromkeys(b.resource_id for b in visit_rows(booking) if b.resource_id):to+=[e for e,_ in operators(tenant,rid) if e not in to]  # 2.14.0: also the operator of this booking (of each service of a visit)
     for address in to:queue(tenant,{"to":address,"subject":subject,"body":text})
     if tenant.telegram:
         d=queue(tenant,{"text":text})

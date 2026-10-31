@@ -204,6 +204,9 @@ class Location(Scoped):
     # 2.14.0: who gets "Il primo disponibile" (booking.ranked), and online no hole shorter than min_gap minutes
     assign=models.CharField(max_length=8,default="alpha",choices=[("alpha","Il primo libero, in ordine di nome"),("last","L'operatore dell'ultima visita del cliente"),("even","Chi ha meno appuntamenti quel giorno"),("priority","L'ordine scelto per ogni operatore")])
     min_gap=models.PositiveIntegerField(default=0)
+    # 2.14.0: a visit of several services (booking.visit_slots): who does them, and the longest wait between two
+    visit_split=models.CharField(max_length=5,default="need",choices=[("same","Stesso operatore"),("split","Divisibile tra operatori"),("need","Divisibile solo se serve")])
+    visit_wait=models.PositiveSmallIntegerField(default=15)
     # 2.14.0: restaurants (tables.py): tables given by hand or the best fit suggested, and online only with a table free
     tables=models.CharField(max_length=7,default="off",choices=[("off","Nessuna gestione dei tavoli"),("manual","Li assegnate voi"),("suggest","Il programma propone il tavolo più adatto")])
     tables_online=models.BooleanField(default=False)
@@ -449,6 +452,7 @@ class Booking(Scoped):
     origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata")])
     source=models.CharField(max_length=30,blank=True)
     series=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the dates repeated together from the desk (Ripeti)
+    visit=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the services of one visit, one after the other
     # 2.14.0: the room the client asked for (empty = Indifferente) and the tables given to it (ids, tables.py)
     area=models.ForeignKey(Area,null=True,blank=True,on_delete=models.SET_NULL)
     tables=models.JSONField(default=list,blank=True)

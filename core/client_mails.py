@@ -70,12 +70,14 @@ def when(start,end,stay):
     return gettext("{giorno} {data} alle {ora}").format(giorno=gettext(WEEKDAYS[start.weekday()]),data=f"{start:%d/%m/%Y}",ora=f"{start:%H:%M}")
 
 def values(tenant,booking,data):
+    from .booking import visit_rows
     tz=ZoneInfo(tenant.timezone);s=booking.snapshot
-    start=booking.start.astimezone(tz);end=booking.end.astimezone(tz)
+    rows=visit_rows(booking)  # 2.14.0: a visit of several services is told whole, from its first to its last
+    start=rows[0].start.astimezone(tz);end=rows[-1].end.astimezone(tz)
     token=data.get("cancel_token")
-    return {"nome":data.get("first_name",""),"servizio":" · ".join(x for x in (s.get("service") or booking.service.name,s.get("option")) if x),
+    return {"nome":data.get("first_name",""),"servizio":" + ".join(" · ".join(x for x in (r.snapshot.get("service") or r.service.name,r.snapshot.get("option")) if x) for r in rows),
         "quando":when(start,end,booking.service.kind=="day"),"data":f"{start:%d/%m/%Y}","ora":f"{start:%H:%M}",
-        "sede":s.get("location",""),"operatore":s.get("resource",""),"attivita":tenant.name,"istruzioni":booking.service.instructions,
+        "sede":s.get("location",""),"operatore":", ".join(dict.fromkeys(r.snapshot["resource"] for r in rows if r.snapshot.get("resource"))),"attivita":tenant.name,"istruzioni":booking.service.instructions,
         "link":f"{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/" if token else ""}
 
 def codes_line(location):return " · ".join(f"{k} {v}" for k,v in (("CIN",location.cin),("CIR",location.cir)) if v)
@@ -229,8 +231,9 @@ def remind(now=None):
                 # the instructions are needed also by who books at the last minute
                 if kind=="arrival":rows=rows.filter(service__kind__in=("day","event")).exclude(service__instructions="")
                 for b in rows:
-                    # 2.14.0: the reminders also by SMS or WhatsApp, when the agency set one (texts.py)
-                    if (kind=="arrival" or b.created<=b.start-window) and (bool(send(tenant,b,kind))|bool(texts.remind(tenant,b,kind))):
+                    # 2.14.0: the reminders also by SMS or WhatsApp, when the agency set one (texts.py); a visit has one, its first service's
+                    later=b.visit and Booking.objects.filter(visit=b.visit,start__lt=b.start).exclude(status="cancelled").exists()
+                    if not later and (kind=="arrival" or b.created<=b.start-window) and (bool(send(tenant,b,kind))|bool(texts.remind(tenant,b,kind))):
                         sent+=1
                         if kind!="arrival":b.snapshot["asked"]=now.isoformat()  # Confermo / Non vengo went out: Da chiamare
                     b.snapshot[mark]=now.isoformat();b.save(update_fields=["snapshot"])

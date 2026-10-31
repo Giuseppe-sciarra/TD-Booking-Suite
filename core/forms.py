@@ -100,17 +100,22 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","capacity","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age","assign","min_gap","tables","tables_online"]
-        labels={"tables":"Tavoli","tables_online":"Online accetta solo se c'è un tavolo adatto libero","name":"Nome della sede","active":"Attiva","assign":"«Il primo disponibile» va a","min_gap":"Online, niente buchi più corti di (minuti)","capacity":"Coperti di tutto il locale","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
-        help_texts={"tables":"Ristoranti: sale e tavoli si preparano in Sale e tavoli. Il cliente sceglie al massimo la sala, mai il tavolo","tables_online":"Acceso: online un orario compare solo se c'è un tavolo libero con i posti giusti (o due da unire)","name":"Nome della sede","assign":"Chi riceve la prenotazione quando il cliente non sceglie con chi. Chi è segnato «Fuori da Il primo disponibile» non la riceve mai",
+        model=Location;fields=["name","address","phone","capacity","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age","assign","min_gap","tables","tables_online","visit_split","visit_wait"]
+        labels={"visit_split":"Più servizi nella stessa visita","visit_wait":"Attesa massima tra due servizi (minuti)","tables":"Tavoli","tables_online":"Online accetta solo se c'è un tavolo adatto libero","name":"Nome della sede","active":"Attiva","assign":"«Il primo disponibile» va a","min_gap":"Online, niente buchi più corti di (minuti)","capacity":"Coperti di tutto il locale","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
+        help_texts={"visit_split":"Quando il cliente prenota per esempio colore, taglio e piega insieme: sempre con lo stesso operatore, con chi è libero, o con un altro solo se uno da solo non riesce","visit_wait":"Quanto il cliente può aspettare tra la fine di un servizio e l'inizio del successivo. 0 = subito dopo","tables":"Ristoranti: sale e tavoli si preparano in Sale e tavoli. Il cliente sceglie al massimo la sala, mai il tavolo","tables_online":"Acceso: online un orario compare solo se c'è un tavolo libero con i posti giusti (o due da unire)","name":"Nome della sede","assign":"Chi riceve la prenotazione quando il cliente non sceglie con chi. Chi è segnato «Fuori da Il primo disponibile» non la riceve mai",
             "min_gap":"0 = tutti gli orari liberi. Con 30, online non compaiono gli orari che lascerebbero meno di 30 minuti tra due appuntamenti dello stesso operatore; al banco si vedono tutti","capacity":"Per i ristoranti: il tetto che tutti i servizi della sede dividono, per esempio pranzo alla carta e menu di gruppo nella stessa sala. 0 vuol dire nessun limite","cin":"Strutture ricettive e case vacanze: compare nella pagina di prenotazione e nelle email","ross_code":"Per il file ISTAT dei movimenti, te lo dà l'ufficio regionale del turismo","tax_rate":"Vuoto se il comune non la chiede. Roma, B&B: 6","tax_nights":"0 = tutte. Roma: 10","tax_age":"0 = nessuna esenzione per età. Roma: 10"}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
-        self.fields["min_gap"].required=False
+        self.fields["min_gap"].required=False;self.fields["visit_split"].required=False;self.fields["visit_wait"].required=False
         if getattr(self.tenant,"business_type","")!="ristorante":
             for name in ("tables","tables_online"):self.fields.pop(name)
         else:self.fields["tables"].required=False  # a form without it (older pages) keeps the tables off
     def clean_tables(self):return self.cleaned_data.get("tables") or "off"
+    def clean_visit_split(self):return self.cleaned_data.get("visit_split") or "need"
+    def clean_visit_wait(self):
+        v=self.cleaned_data.get("visit_wait") or 0
+        if v>240:raise ValidationError("Valore tra 0 e 240.")
+        return v
     def clean_min_gap(self):
         v=self.cleaned_data["min_gap"] or 0
         if v>240:raise ValidationError("Valore tra 0 e 240.")

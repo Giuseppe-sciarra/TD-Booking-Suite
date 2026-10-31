@@ -36,7 +36,7 @@ def unprotect(apps,schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0035_api_webhook"),
+        ("core", "0038_google_calendar"),
     ]
 
     operations = [
