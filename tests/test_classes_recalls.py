@@ -151,4 +151,5 @@ def test_consent_signed_at_the_desk_is_sealed_in_the_card(sample):
     with scope(t):
         c=Contact.objects.get(pk=b.contact_id)
         assert [x["title"] for x in c.data["signed"]]==["Consenso informato al tatuaggio"] and "tatuaggio" not in c.pii
-    assert "Consensi firmati" in owner.get(f"/t/{t.slug}/contacts/{b.contact_id}/").content.decode()
+    page=owner.get(f"/t/{t.slug}/contacts/{b.contact_id}/").content.decode()
+    assert "Consensi firmati" in page and "firmato il "+timezone.localdate().strftime("%d/%m/%Y") in page

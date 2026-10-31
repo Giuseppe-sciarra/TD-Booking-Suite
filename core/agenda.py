@@ -339,7 +339,7 @@ def sheet(request,slug):
 
 def blockable(request):
     """2.14.0: the operators, rooms and courts whose time this staff member may block: the ones he books for."""
-    rows=Resource.objects.filter(active=True,location__active=True).order_by("name")
+    rows=Resource.objects.filter(active=True,location__active=True).order_by("secondary","name")  # cabins after the people: the form starts on an operator
     m=getattr(request,"member",None)
     if m and m.resources:return rows.filter(pk__in=m.resources)
     if m and (m.locations or m.role=="operator"):return rows.filter(location_id__in=m.locations or [])
