@@ -511,3 +511,12 @@ msgstr "version"
 
 msgid "Codice sorgente"
 msgstr "Source code"
+
+msgid "Dove preferisci sederti?"
+msgstr "Where would you like to sit?"
+
+msgid "Sala non valida: ricarica la pagina."
+msgstr "Room not valid: reload the page."
+
+msgid "Nessun tavolo libero per quest'ora: scegline un'altra."
+msgstr "No table free at this time: choose another one."

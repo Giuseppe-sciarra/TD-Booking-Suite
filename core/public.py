@@ -11,7 +11,7 @@ from django.utils import timezone,translation
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
+from .models import Area,Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
 from .identity import throttle,json_body,page_origin
 from .booking import available,create_booking,move_booking,change_status,BookingError,ForceWarning,choice,bounds,has_units,free_units,MOVABLE,ACCEPTED,details,candidates,linked
 from .calendar import local_datetime
@@ -54,6 +54,7 @@ def widget_data(request,booking=None,wait=None):
     for s in rows:
         services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"request_above":s.request_above,"fields":s.fields,"price":cost(s.price),
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration,"price":cost(o.price)} for o in Option.objects.filter(service=s,active=True)],
+            "areas":[{"id":str(a.pk),"name":a.name} for a in Area.objects.filter(location=s.location).order_by("name")] if s.kind in ("capacity","shift") else [],
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     from .presets import service_word
@@ -173,7 +174,7 @@ def free_slots(request,params,exclude=None,desk=False,force=False):
                 "description":u.description,"photo":u.photo_link(request.tenant.slug),"capacity":u.capacity,"occurrence":""} for u in units]
         start,end,*_=bounds(request.tenant,service,data,exclude=exclude,desk=desk)
         return [{"start":start.astimezone(ZoneInfo(request.tenant.timezone)).isoformat(),"end":end.isoformat(),"resource":"","resource_name":"","occurrence":""}]
-    return available(request.tenant,service.pk,day,params.get("option"),params.get("resource"),params.get("party",1),exclude=exclude,allowed=staff_resources(request),desk=desk,force=force)
+    return available(request.tenant,service.pk,day,params.get("option"),params.get("resource"),params.get("party",1),exclude=exclude,allowed=staff_resources(request),desk=desk,force=force,area=params.get("area"))
 @csrf_exempt
 @require_POST
 @json_denied

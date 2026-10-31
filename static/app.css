@@ -1493,3 +1493,18 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .feed-box{padding:14px 0;border-top:1px solid var(--line)}.feed-box h3{margin:0 0 6px}.feed-box input[readonly]{font-size:13px}
 .guests-form fieldset+fieldset{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
 @media(max-width:850px){.grid.stay-grid{grid-template-columns:1fr}}
+/* 2.14.0: Sale e tavoli: the floor plan, tables placed by --x/--y (set from JS), their states */
+.floor-when{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px}.floor-when input{width:auto}
+.floor-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+@media (max-width:900px){.floor-grid{grid-template-columns:1fr}}
+.floor{position:relative;aspect-ratio:4/3;min-height:320px;border:1px dashed var(--line);border-radius:12px;background:var(--bg);overflow:hidden}.floor[data-editable]{touch-action:none}
+.floor-empty{padding:20px}
+.ft{position:absolute;left:var(--x,5%);top:var(--y,5%);min-width:76px;display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 10px;border-radius:12px;border:2px solid var(--ok);background:var(--ok-soft);color:var(--ink);font-size:12px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.ft strong{font-size:15px}.ft span{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.ft.booked{border-color:var(--warn);background:var(--warn-soft)}.ft.seated{border-color:var(--brand);background:var(--soft)}
+.ft.chosen,.floor.picking .ft.free:hover{box-shadow:0 0 0 3px var(--brand);transform:scale(1.04)}
+[data-editable] .ft{cursor:grab}.ft.dragging{cursor:grabbing;z-index:2;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.ft-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 4px 0 10px;border:2px solid var(--ok);background:var(--ok-soft)}
+.ft-dot.booked{border-color:var(--warn);background:var(--warn-soft)}.ft-dot.seated{border-color:var(--brand);background:var(--soft)}
+.floor-pick{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:6px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left;cursor:grab;touch-action:none;transform:translate(var(--dx,0),var(--dy,0))}
+.floor-pick.picked{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}.floor-pick.dragging{z-index:3;position:relative;cursor:grabbing}

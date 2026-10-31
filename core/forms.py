@@ -67,6 +67,7 @@ KIND_HELP={"turnover":{"capacity":"Spento, di solito al ristorante: il cliente s
   "day":"Conta solo se non usi camere o mezzi con il loro nome: in quel caso conta la disponibilità di ciascuno"},
  "max_party":{"capacity":"Per esempio 12: per gruppi più grandi il cliente ti chiama, e al banco li prenoti tu","shift":"Per esempio 12: per gruppi più grandi il cliente ti chiama, e al banco li prenoti tu","event":"Quanti posti può prendere una persona sola","day":"Ospiti massimi in una prenotazione"}}
 
+MODES=[("service","Un turno per servizio"),("fixed","Turni fissi"),("rotation","Rotazione con durata")]
 def only_one(field,queryset):
     """With a single choice (one location, one service) the field is filled in and not shown."""
     items=list(queryset[:2])
@@ -99,13 +100,17 @@ class ScopedForm(forms.ModelForm):
         return d
 class LocationForm(ScopedForm):
     class Meta:
-        model=Location;fields=["name","address","phone","capacity","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age","assign","min_gap"]
-        labels={"name":"Nome della sede","active":"Attiva","assign":"«Il primo disponibile» va a","min_gap":"Online, niente buchi più corti di (minuti)","capacity":"Coperti di tutto il locale","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
-        help_texts={"name":"Per esempio Centro o Via degli Angeli","assign":"Chi riceve la prenotazione quando il cliente non sceglie con chi. Chi è segnato «Fuori da Il primo disponibile» non la riceve mai",
+        model=Location;fields=["name","address","phone","capacity","active","cin","cir","ross_code","tax_rate","tax_nights","tax_age","assign","min_gap","tables","tables_online"]
+        labels={"tables":"Tavoli","tables_online":"Online accetta solo se c'è un tavolo adatto libero","name":"Nome della sede","active":"Attiva","assign":"«Il primo disponibile» va a","min_gap":"Online, niente buchi più corti di (minuti)","capacity":"Coperti di tutto il locale","cin":"CIN","cir":"CIR o codice regionale","ross_code":"Codice struttura Ross1000","tax_rate":"Imposta di soggiorno, € a persona a notte","tax_nights":"Notti tassate al massimo","tax_age":"Esenti sotto i … anni"}
+        help_texts={"tables":"Ristoranti: sale e tavoli si preparano in Sale e tavoli. Il cliente sceglie al massimo la sala, mai il tavolo","tables_online":"Acceso: online un orario compare solo se c'è un tavolo libero con i posti giusti (o due da unire)","name":"Nome della sede","assign":"Chi riceve la prenotazione quando il cliente non sceglie con chi. Chi è segnato «Fuori da Il primo disponibile» non la riceve mai",
             "min_gap":"0 = tutti gli orari liberi. Con 30, online non compaiono gli orari che lascerebbero meno di 30 minuti tra due appuntamenti dello stesso operatore; al banco si vedono tutti","capacity":"Per i ristoranti: il tetto che tutti i servizi della sede dividono, per esempio pranzo alla carta e menu di gruppo nella stessa sala. 0 vuol dire nessun limite","cin":"Strutture ricettive e case vacanze: compare nella pagina di prenotazione e nelle email","ross_code":"Per il file ISTAT dei movimenti, te lo dà l'ufficio regionale del turismo","tax_rate":"Vuoto se il comune non la chiede. Roma, B&B: 6","tax_nights":"0 = tutte. Roma: 10","tax_age":"0 = nessuna esenzione per età. Roma: 10"}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
         self.fields["min_gap"].required=False
+        if getattr(self.tenant,"business_type","")!="ristorante":
+            for name in ("tables","tables_online"):self.fields.pop(name)
+        else:self.fields["tables"].required=False  # a form without it (older pages) keeps the tables off
+    def clean_tables(self):return self.cleaned_data.get("tables") or "off"
     def clean_min_gap(self):
         v=self.cleaned_data["min_gap"] or 0
         if v>240:raise ValidationError("Valore tra 0 e 240.")
@@ -323,6 +328,11 @@ class ServiceForm(ScopedForm):
             self.fields.pop("kind")
             for name,kinds in FIELD_KINDS.items():
                 if kind not in kinds:self.fields.pop(name)
+            # 2.14.0: a restaurant chooses how its covers turn, and changes it when it wants
+            if getattr(self.tenant,"business_type","")=="ristorante" and kind in ("capacity","shift"):
+                self.fields["mode"]=forms.ChoiceField(choices=MODES,label="Come girano i tavoli",help_text="Un turno per servizio: i coperti valgono per tutto il pranzo o tutta la cena. Turni fissi: per esempio 19:30 e 21:30, i turni si scrivono in Turni del ristorante. Rotazione: il tavolo si libera dopo la durata e si riprenota")
+                self.initial.setdefault("mode","fixed" if kind=="shift" else "rotation" if self.instance.turnover else "service")
+                self.fields.pop("turnover",None)
         # 2.14.0: allergies make a request only where the booking form asks about them
         if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
         for name in ("request_above","online_capacity","pace_covers","pace_bookings","pause_start","pause_minutes"):
@@ -380,6 +390,8 @@ class ServiceForm(ScopedForm):
         if d.get("resources") and any(r.location_id!=getattr(location,"pk",None) for r in d["resources"]):self.add_error("resources","Le risorse devono appartenere alla sede del servizio.")
         return d
     def save(self,commit=True):
+        mode=self.cleaned_data.get("mode")
+        if mode:self.instance.kind,self.instance.turnover={"service":("capacity",False),"fixed":("shift",False),"rotation":("capacity",True)}[mode]
         service=super().save(commit)
         if commit and "resources" in self.fields:
             # 2.11.0: an operator ticked again keeps his own duration and price for this service

@@ -191,13 +191,16 @@ def candidates(tenant,service,day,option=None,resource=None,desk=False,force=Fal
             if tick.astimezone(tz).date()==day and lead<=tick<=horizon and tick-before>=a and end+after<=b and tick<=b-last:
                 yield tick,end,None
             tick+=timedelta(minutes=service.interval)
-def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None,desk=False,force=False,prefer=None):
+def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None,desk=False,force=False,prefer=None,area=None):
     """Free slots of a day. allowed: resource ids a scoped staff member may book ("Il primo disponibile" stays among them).
     desk and force: see candidates; the desk also books groups bigger than the online limit (max_party), within the places.
     2.14.0, restaurants: the covers of the whole place; online the places sold online and the rhythm of the arrivals
-    (at the desk too with pace_desk). prefer: see ranked."""
+    (at the desk too with pace_desk). prefer: see ranked. area: the room the client asked for, with its own covers;
+    online only the times with a table free, where the location says so (tables.py)."""
+    from .tables import pick_area,area_over,needs_table,fit
     service=choice(Service,service_id,active=True,location__active=True)
     option,resource,_=details(service,option_id,resource_id)
+    area=pick_area(service,area);table=needs_table(service,desk)
     party=integer(party,"Quantità",1,1000 if desk else service.max_party)
     pace=not desk or service.pace_desk
     tz=ZoneInfo(tenant.timezone)
@@ -217,7 +220,7 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
         near=list(Booking.objects.filter(resource=res,status__in=HOLDING,busy_start__lt=b,busy_end__gt=a).exclude(pk=exclude).values_list("busy_start","busy_end")) if gap else []
         for start,end,event in candidates(tenant,service,day,option,res,desk,force,party):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
-            if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk,gap=posa(service,start,end,res)) and not (pace and paced(service,start,party,exclude)) and support(service,bs,be,exclude,pool) is not False and not (gap and holes(near,bs,be,gap))):
+            if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk,gap=posa(service,start,end,res)) and not (pace and paced(service,start,party,exclude)) and support(service,bs,be,exclude,pool) is not False and not (gap and holes(near,bs,be,gap)) and not area_over(area,bs,be,party,exclude) and not (table and not fit(service.location,party,bs,be,area,exclude))):
                 result.append({"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(res.pk) if res else "","resource_name":res.name if res else "","occurrence":str(event.pk) if event else ""})
     result=sorted(result,key=lambda x:(x["start"],rank[x["resource"]]))
     if service.kind=="resource" and not resource:
@@ -347,9 +350,10 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
         if block:issues.append(f"nell'orario bloccato di {resource.name} ({block.get_reason_display().lower()})" if block.resource_id else "in un turno chiuso")
         if not capacity_available(service,bs,be,party,resource,occurrence,exclude,blocks=False,rooms=False,gap=posa(service,start,end,resource)):
             issues.append(f"sovrapposta a un altro appuntamento di {resource.name}" if resource else f"oltre i posti disponibili ({occurrence.capacity if occurrence else service.capacity})")
-        if not resource:issues+=[x for x in (shared(service,bs,be,party,exclude),service.pace_desk and paced(service,start,party,exclude)) if x]
+        from .tables import pick_area,area_over
+        if not resource:issues+=[x for x in (shared(service,bs,be,party,exclude),service.pace_desk and paced(service,start,party,exclude),area_over(pick_area(service,data.get("area")),bs,be,party,exclude)) if x]
     else:
-        slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk,prefer=prefer)
+        slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk,prefer=prefer,area=data.get("area"))
         match=next((s for s in slots if datetime.fromisoformat(s["start"]).astimezone(UTC)==start and (not data.get("occurrence") or s["occurrence"]==str(data["occurrence"]))),None)
         if not match:raise BookingError(gettext("Orario non disponibile. Aggiorna le disponibilità."))
         resource=choice(Resource,match["resource"]) if match["resource"] else None
@@ -409,6 +413,8 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=staff and (walkin or data.get("force") is True),prefer=last_operator(tenant,service,pii,data,staff))
         gap,second=kit(service,start,end,bs,be,resource,issues)
         overrun(issues,data)
+        from .tables import seat,pick_area
+        area,tables=seat(service,party,bs,be,pick_area(service,data.get("area")),data.get("tables") if staff else None,online=not staff)
         known_by_phone=None
         if staff:
             # 2.7.0: the client picked from the card, or found by email or phone, or a new card
@@ -456,6 +462,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if not staff and get_language()!="it":booking.snapshot["lang"]=get_language()
         if issues:booking.snapshot["forced"]=issues
         (booking.gap_start,booking.gap_end),booking.secondary=gap,second
+        booking.area,booking.tables=area,tables
         if second:booking.snapshot["secondary"]=second.name
         # 2.14.0: "Il primo disponibile": the client may move it to whoever is free then (public.py)
         if resource and not data.get("resource"):booking.snapshot["any_resource"]=True
@@ -509,6 +516,10 @@ def move_booking(tenant,booking_id,data,actor,desk=True):
         stamp(booking)
         if moved:
             for name in REARM:booking.snapshot.pop(name,None)  # 2.13.0: the new day gets its own reminder
+            # 2.14.0: its tables stay if still free at the new time, otherwise the best fit or none (tables.py)
+            from .tables import taken,seat
+            if booking.service.kind not in ("capacity","shift"):booking.tables=[]
+            elif set(booking.tables)&taken(booking.location,booking.busy_start,booking.busy_end,booking.pk) or not booking.tables:booking.area,booking.tables=seat(service,booking.party,booking.busy_start,booking.busy_end,booking.area,exclude=booking.pk)
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
         if not moved:

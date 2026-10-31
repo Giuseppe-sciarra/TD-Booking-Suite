@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda
+from core import api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
@@ -84,6 +84,12 @@ urlpatterns=[
  path("t/<slug:slug>/agenda/stampa/",agenda.sheet,name="agenda_sheet"),
  path("t/<slug:slug>/agenda/blocca/<uuid:block_id>/",agenda.block_view,name="time_block"),
  path("t/<slug:slug>/turni/",agenda.turn_switch,name="turn_switch"),
+ path("t/<slug:slug>/tavoli/",tables.floor,name="tables"),
+ path("t/<slug:slug>/tavoli/posto/",tables.place,name="table_place"),
+ path("t/<slug:slug>/tavoli/assegna/",tables.assign,name="table_assign"),
+ path("t/<slug:slug>/tavoli/siedi/",tables.seat_walkin,name="table_walkin"),
+ path("t/<slug:slug>/tavoli/<str:what>/nuovo/",tables.edit,name="table_new"),
+ path("t/<slug:slug>/tavoli/<str:what>/<uuid:item_id>/",tables.edit,name="table_edit"),
  path("t/<slug:slug>/catalog/<str:kind>/",portal.catalog,name="catalog"),
  path("t/<slug:slug>/catalog/<str:kind>/new/",portal.catalog_edit,name="catalog_new"),
  path("t/<slug:slug>/catalog/<str:kind>/<uuid:item_id>/",portal.catalog_edit,name="catalog_edit"),
