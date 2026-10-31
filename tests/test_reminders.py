@@ -145,13 +145,13 @@ def test_the_client_moves_his_booking(sample):
     page=c.get(base).content.decode()
     assert 'href="sposta/"' in page and "Via Roma 1" in page and "calendar.google.com" in page and 'href="calendario.ics"' in page
     assert '"locked": true' in c.get(base+"sposta/").content.decode()
-    slots=c.get(base+"sposta/orari/",{"date":day.isoformat(),"resource":str(giulia.pk),"service":str(s.pk)}).json()["slots"]
-    assert slots and {x["resource"] for x in slots}=={str(marco.pk)}  # same service and operator, whatever is asked
+    slots=c.get(base+"sposta/orari/",{"date":day.isoformat(),"service":str(s.pk)}).json()["slots"]
+    assert slots and {x["resource"] for x in slots}=={str(marco.pk)}  # same service and operator, unless he asks another
     soon=(timezone.now()+timedelta(minutes=20)).astimezone(ROME).replace(second=0,microsecond=0)
     r=c.post(base+"sposta/",{"start":soon.isoformat(),"service":str(s.pk)},content_type="application/json",HTTP_X_CSRFTOKEN=c.cookies["csrftoken"].value)
     assert r.status_code==400  # the public page's lead time
     new=datetime.combine(day,time(15),ROME)
-    r=c.post(base+"sposta/",{"start":new.isoformat(),"resource":str(giulia.pk)},content_type="application/json",HTTP_X_CSRFTOKEN=c.cookies["csrftoken"].value)
+    r=c.post(base+"sposta/",{"start":new.isoformat()},content_type="application/json",HTTP_X_CSRFTOKEN=c.cookies["csrftoken"].value)
     assert r.json()["redirect"]==base+"?spostata=1"
     moved=get(t,b.pk);assert moved.start==new and moved.resource_id==marco.pk and moved.service_id==svc.pk
     assert "la prenotazione è spostata" in c.get(r.json()["redirect"]).content.decode()

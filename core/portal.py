@@ -494,6 +494,9 @@ def booking_detail(request,slug,booking_id):
         ctx.update(linked=[t for t in entries if t.booking_id==booking.pk],earlier=[t for t in entries if t.booking_id!=booking.pk and t.date<prefill["date"]][:3],prefill=prefill,record_open=booking.start<=timezone.now() and booking.status in ACCEPTED,**record_options(spec))
     from .tables import names
     ctx["table_names"]=names(booking)
+    # 2.14.0: the texts about it and what their provider said; moved or deleted in Google (gcal.changed)
+    ctx["texts"]=Delivery.objects.filter(booking=booking).order_by("created")
+    g=booking.snapshot.get("google","");ctx["google_moved"]=datetime.fromisoformat(g[6:]).astimezone(tz) if g.startswith("moved:") and len(g)>6 else None
     return render(request,"booking_detail.html",ctx)
 def test_due(booking):
     """2.14.0: the service wants a test done within so many days: what the desk must know, never a refusal."""
@@ -690,6 +693,13 @@ def contact_detail(request,slug,contact_id):
         audit(request.tenant,request.user,"contact.notices",contact.pk,on=contact.notices)
         messages.success(request,"Il cliente riceve le email delle sue prenotazioni." if contact.notices else "Il cliente non riceve più le email delle sue prenotazioni.")
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#privacy")
+    if request.method=="POST" and request.POST.get("action")=="channel":
+        # 2.14.0: how he wants the reminders (texts.remind)
+        require(request,"booking.write")
+        if request.POST.get("channel","") in dict(Contact._meta.get_field("channel").choices):
+            contact.channel=request.POST.get("channel","");contact.save(update_fields=["channel"])
+            audit(request.tenant,request.user,"contact.channel",contact.pk,channel=contact.channel);messages.success(request,"Canale dei promemoria salvato.")
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#avvisi")
     if request.method=="POST" and request.POST.get("action")=="sign":
         # 2.14.0: a consent signed on the tablet at the desk, sealed in the card
         require(request,"booking.write","pii.read")
@@ -760,6 +770,7 @@ def contact_detail(request,slug,contact_id):
             b=visible_bookings(request,Booking.objects.filter(contact=contact)).filter(pk=uid(request.GET["da"])).first()
             if b:prefill=from_booking(b,tz)
         ctx.update(tpage=Paginator(entries,30).get_page(request.GET.get("tp")),entries_count=len(entries),prefill=prefill,today=now.astimezone(tz).date(),**record_options(spec))
+    ctx["channels"]=Contact._meta.get_field("channel").choices
     return render(request,"contact_detail.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;
@@ -1022,6 +1033,10 @@ def google_view(request,slug,item_id=None):
     if request.POST.get("action")=="disconnect":
         gcal.disconnect(r);audit(request.tenant,request.user,"google.disconnected",r.pk)
         messages.success(request,"Google Calendar scollegato.");return redirect("catalog_edit",slug,"resources",r.pk)
+    if request.POST.get("action")=="calendars":  # 2.14.0: which calendar is read and which gets the bookings
+        try:gcal.choose(r,request.POST.get("read",""),request.POST.get("write",""));audit(request.tenant,request.user,"google.calendars",r.pk);messages.success(request,"Calendari scelti: entro 5 minuti si allinea.")
+        except ValueError as ex:messages.error(request,str(ex))
+        return redirect(reverse("catalog_edit",args=[slug,"resources",r.pk])+"#google")
     if not gcal.config(request.tenant):raise PermissionDenied
     return redirect(gcal.start(request,r))
 REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","options":"Variante","turns":"Turno","occurrences":"Data"}

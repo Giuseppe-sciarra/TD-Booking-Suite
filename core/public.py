@@ -52,7 +52,8 @@ def widget_data(request,booking=None,wait=None):
     cost=lambda p:euro(p) if internal and p is not None else ""
     # 2.14.0: the cabins and machines are never chosen; with client_picks off the client does not choose with whom (garage lifts)
     for s in rows:
-        services.append({"id":str(s.pk),"name":s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":s.description,"location":s.location.name,"max_party":s.max_party,"request_above":s.request_above,"fields":s.fields,"price":cost(s.price),
+        en=translation.get_language()=="en"  # 2.14.0: the English words of the service, when written
+        services.append({"id":str(s.pk),"name":en and s.name_en or s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":en and s.description_en or s.description,"location":s.location.name,"max_party":s.max_party,"request_above":s.request_above,"fields":s.fields,"price":cost(s.price),
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration,"price":cost(o.price)} for o in Option.objects.filter(service=s,active=True)],
             "areas":[{"id":str(a.pk),"name":a.name} for a in Area.objects.filter(location=s.location).order_by("name")] if s.kind in ("capacity","shift") else [],
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
@@ -109,7 +110,10 @@ def booking_page(request,slug):
             "end_date":e.last.isoformat() if e.service.kind=="day" else "","party":e.party,"contact":{k:d.get(k,"") for k in ("first_name","last_name","email","phone")}}
         widget["slots"]+=("&" if "?" in widget["slots"] else "?")+"attesa="+request.GET["attesa"]
     from .client_mails import current,codes_line
-    return render(request,"booking.html",{"widget":widget,"public":True,"intro":_(INTRO[first_step(widget)]),"reminder":current(request.tenant)["reminder"]["on"],
+    from .texts import config
+    t=request.tenant;en=translation.get_language()=="en";conf=config(t)
+    return render(request,"booking.html",{"widget":widget,"public":True,"privacy_text":en and t.privacy_text_en or t.privacy_text,"consent_text":en and t.consent_text_en or t.consent_text,
+        "text_channels":[k for k,on in (("sms",conf.get("provider")),("whatsapp",conf.get("wa_token"))) if on],"intro":_(INTRO[first_step(widget)]),"reminder":current(request.tenant)["reminder"]["on"],
         "waitlist":True,"offer":bool(offer),"codes":[x for x in (codes_line(l) for l in Location.objects.filter(active=True).order_by("name")) if x]})
 def manual_booking(request,slug):
     require_role(request,write=True)
@@ -363,10 +367,11 @@ def manage_token(token):
     if not page["can_move"]:raise BookingError(page["late"] or _("Questa prenotazione non si sposta online. Contatta l'attività."))
     return obj.booking
 def same(b,params):
-    """What the client keeps when he moves: service, variant, operator (or whoever is free, if he chose so), people;
-    he chooses only the day, the time and, for a stay, the dates."""
+    """What the client keeps when he moves: service, variant, people; he chooses the day, the time and, for a stay, the
+    dates, and (2.14.0) another operator of the same service, or whoever is free; otherwise the one he had."""
     v=visiting(b)  # 2.14.0: a visit moves whole
-    return {"service":str(b.service_id),"option":str(b.option_id or ""),"resource":"" if b.snapshot.get("any_resource") else str(b.resource_id or ""),
+    keep="" if b.snapshot.get("any_resource") else str(b.resource_id or "")
+    return {"service":str(b.service_id),"option":str(b.option_id or ""),"resource":str(params["resource"] or "") if "resource" in params and not v and b.service.client_picks else keep,
         "party":b.party,**{k:params.get(k) or "" for k in ("date","start","end_date","occurrence")},**({**v,"extra":",".join(x["id"] for x in v["extra"]),"visit":True} if v else {})}
 def move_public(request,slug,token):
     """2.14.0: Sposta from the client's link: the public page's rules, the checks of move_booking, until the cutoff."""
@@ -383,9 +388,12 @@ def move_public(request,slug,token):
     own_lang(request,b)
     widget=widget_data(request)
     v=visiting(b)
-    widget["services"]=[{**x,"options":[],"resources":[]} for x in widget["services"] if x["id"]==v.get("service",str(b.service_id))]
-    widget.update(submit=request.path,slots=request.path+"orari/",editing={"service":v.get("service",str(b.service_id)),"option":"","resource":"","party":b.party,**({"extra":v["extra"]} if v else {})},locked=True)
-    return render(request,"booking.html",{"widget":widget,"moving":True,"public":True,"booking":b,"manage":f"/action/{slug}/{token}/","intro":_("Stesso servizio: scegli il nuovo giorno e l'orario")})
+    # 2.14.0: the operators of the same service, when the client could choose them when booking
+    widget["services"]=[{**x,"options":[],"resources":[] if v else x["resources"]} for x in widget["services"] if x["id"]==v.get("service",str(b.service_id))]
+    mine="" if b.snapshot.get("any_resource") else str(b.resource_id or "")
+    widget.update(submit=request.path,slots=request.path+"orari/",editing={"service":v.get("service",str(b.service_id)),"option":"","resource":mine,"party":b.party,**({"extra":v["extra"]} if v else {})},locked=True,
+        pick_resource=bool(widget["services"] and widget["services"][0]["resources"]))
+    return render(request,"booking.html",{"widget":widget,"moving":True,"public":True,"booking":b,"manage":f"/action/{slug}/{token}/","intro":_("Stesso servizio: scegli il nuovo giorno, l'orario e, se vuoi, un altro operatore") if widget["pick_resource"] else _("Stesso servizio: scegli il nuovo giorno e l'orario")})
 @json_denied
 def move_public_slots(request,slug,token):
     throttle(request,"availability:"+str(request.tenant.pk),120,60)

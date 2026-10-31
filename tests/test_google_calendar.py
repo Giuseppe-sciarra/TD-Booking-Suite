@@ -55,7 +55,7 @@ class Google:
         if m=="DELETE":
             if self.events.get(eid,{}).get("status")!="confirmed":self.fail(url,410,{"error":{"code":410,"message":"Resource has been deleted"}})
             self.events[eid]["status"]="cancelled";return Answer(None)
-    def made(self,method):return [c for c in self.calls if c[0]==method and "calendar/v3" in c[1]]
+    def made(self,method):return [c for c in self.calls if c[0]==method and "calendar/v3/calendars" in c[1]]
 
 @pytest.fixture
 def google(monkeypatch):

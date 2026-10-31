@@ -546,12 +546,16 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         # 2.13.0: the box "send me the emails about this booking"; missing (older forms, the plugin) means yes
         notices=data.get("notices") is not False
         if new_contact:contact.notices=notices
+        # 2.14.0: the channel chosen on the form for the reminders, with a phone; on a new card, and on this booking
+        ch=data.get("channel") if data.get("channel") in ("email","sms","whatsapp") and data.get("phone") else ""
+        if new_contact and ch:contact.channel=ch
         if contact:contact.save()
         status="in_progress" if walkin else "pending" if not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
             status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,visit=visit and visit[0],snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in (visit[2] if visit else service).fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
+        if ch:booking.snapshot["channel"]=ch
         # 2.14.0: the language of the client's page, for the emails that follow (client_mails.send)
         if not staff and get_language()!="it":booking.snapshot["lang"]=get_language()
         if issues:booking.snapshot["forced"]=issues
@@ -571,10 +575,12 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if not walkin and not series and not visit and booking.origin!="import":send(tenant,booking,"requested" if status=="pending" else "confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
-            booking.snapshot["consent_request"]={"text":tenant.consent_text,"requested":timezone.now().isoformat(),"source":"booking"}
+            # 2.14.0: the words the client read, in the language of his page
+            shown=tenant.consent_text_en if get_language()=="en" and tenant.consent_text_en else tenant.consent_text
+            booking.snapshot["consent_request"]={"text":shown,"requested":timezone.now().isoformat(),"source":"booking"}
             booking.save(update_fields=["snapshot"])
             from .privacy import record
-            record(tenant,contact,"requested","booking",actor,tenant.consent_text,booking.pk)
+            record(tenant,contact,"requested","booking",actor,shown,booking.pk)
             queue(tenant,{"to":pii["email"],"subject":gettext("Conferma iscrizione")+" · "+tenant.name,"body":gettext("Conferma la richiesta di iscrizione alle comunicazioni di {attivita}:").format(attivita=tenant.name)+f"\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\n"+gettext("Se non hai richiesto l'iscrizione, ignora il messaggio.")},contact)
         from .notify import notify_staff
         if not series and not visit and booking.origin!="import":notify_staff(tenant,booking,"requested" if status=="pending" else "created")

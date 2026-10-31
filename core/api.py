@@ -1,7 +1,8 @@
 """2.14.0: the read-only API of a business (bookings, services, free times) with its own key, and the webhooks on a
 booking created, moved or cancelled, signed with HMAC and sent by mail_worker with retries. The agency sets both up.
-A webhook carries no client data: the receiver reads the booking from the API, with the key."""
-import hashlib,hmac,json,secrets,time,urllib.error,urllib.request
+A webhook carries no client data: the receiver reads the booking from the API, with the key. 2.14.0: the agency can
+let the owner set both himself (api_enabled), as for the emails' words."""
+import hashlib,hmac,http.client,json,secrets,socket,time,urllib.error,urllib.request
 from datetime import date,datetime,timedelta
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
@@ -36,9 +37,19 @@ def check_url(url):
 
 class Unfollowed(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*a,**kw):return None  # a redirect could lead to a local address: it fails instead
-OPENER=urllib.request.build_opener(Unfollowed)
+class Pinned(http.client.HTTPSConnection):
+    """Connects to an address checked as public in this very moment, not to a second lookup of the name that could
+    answer a local one (as PinnedSMTP); TLS still checks the name."""
+    def connect(self):
+        from .mail import public_addresses
+        family,kind,proto,addr=public_addresses(self.host,self.port)[0]
+        sock=socket.socket(family,kind,proto);sock.settimeout(self.timeout)
+        try:sock.connect(addr);self.sock=self._context.wrap_socket(sock,server_hostname=self.host)
+        except Exception:sock.close();raise
+class PinnedHandler(urllib.request.HTTPSHandler):
+    def https_open(self,req):return self.do_open(Pinned,req,context=self._context)
+OPENER=urllib.request.build_opener(Unfollowed,PinnedHandler)
 def send_webhook(tenant,payload):
-    """shortcut: the address is checked, then resolved again to connect; pin the address as PinnedSMTP if it matters."""
     if not tenant.webhook:raise WebhookError("webhook_missing",False)
     conf=decrypt(tenant,tenant.webhook,"webhook")
     try:check_url(conf["url"])
@@ -50,6 +61,7 @@ def send_webhook(tenant,payload):
     try:
         with OPENER.open(request,timeout=10):pass
     except urllib.error.HTTPError as ex:raise WebhookError(f"webhook_{ex.code}",ex.code in (408,429) or ex.code>=500)
+    except ValueError:raise WebhookError("webhook_address",True)  # now resolving to a local address
     except (urllib.error.URLError,OSError):raise WebhookError("webhook_unreachable",True)
 
 # ---------- the API
@@ -101,9 +113,12 @@ def availability(request):
 
 # ---------- the agency's page
 def settings_view(request,slug):
-    from .platform import staff
+    from .permissions import can
     from .identity import fresh
-    staff(request);fresh(request);tenant=request.tenant;key="";error=""
+    tenant=request.tenant;key="";error=""
+    # the agency's; the owner's too when the agency allows it (Impostazioni dell'attività)
+    if not (request.user.is_staff or tenant.api_enabled and can(request,"users.manage")):raise PermissionDenied
+    fresh(request)
     conf=decrypt(tenant,tenant.webhook,"webhook") if tenant.webhook else {}
     if request.method=="POST":
         action=request.POST.get("action")

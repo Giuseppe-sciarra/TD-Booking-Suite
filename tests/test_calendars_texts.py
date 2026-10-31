@@ -170,7 +170,7 @@ def test_whatsapp_falls_back_to_sms_and_waits_when_busy(sample,monkeypatch):
     conf=dict(provider="skebby",user="uk",secret="at",sender="Salone",wa_phone="1234567",wa_token="E"*40,wa_template="promemoria",wa_lang="it")
     configure(t,**conf);assert texts.channel(texts.config(t))=="whatsapp"
     sent=Sent({"graph.facebook.com":400});monkeypatch.setattr(texts,"urlopen",sent)
-    assert texts.deliver(t,"whatsapp",p)=="sms"
+    assert texts.deliver(t,"whatsapp",p)==("sms","")
     wa=json.loads(sent.calls[0][2]);sms=json.loads(sent.calls[1][2])
     assert wa["to"]=="393331234567" and wa["template"]["name"]=="promemoria" and [x["text"] for x in wa["template"]["components"][0]["parameters"]][1]=="Taglio"
     assert sent.calls[1][0]=="https://api.skebby.it/API/v1.0/REST/sms" and sms["recipient"]==["+393331234567"] and sent.calls[1][1]["Access_token"]=="at"
@@ -178,7 +178,7 @@ def test_whatsapp_falls_back_to_sms_and_waits_when_busy(sample,monkeypatch):
     with pytest.raises(texts.TextError) as ex:texts.deliver(t,"whatsapp",p)
     assert ex.value.temporary and len(sent.calls)==1  # busy: retried later, no SMS meanwhile
     configure(t,provider="aruba",user="uk",secret="at",sender="Salone");sent=Sent();monkeypatch.setattr(texts,"urlopen",sent)
-    assert texts.deliver(t,"sms",p)=="sms" and sent.calls[0][0]=="https://smspanel.aruba.it/API/v1.0/REST/sms" and json.loads(sent.calls[0][2])["message_type"]=="N"
+    assert texts.deliver(t,"sms",p)[0]=="sms" and sent.calls[0][0]=="https://smspanel.aruba.it/API/v1.0/REST/sms" and json.loads(sent.calls[0][2])["message_type"]=="N"
     with pytest.raises(ValueError):texts.clean({"provider":"twilio","user":"AC12","secret":"x","sender":"Salone"},{})
     assert texts.clean({"provider":"","wa_phone":""},{})=={}
 
