@@ -24,7 +24,9 @@ MOVES={"pending":{"confirmed","cancelled"},"confirmed":{"arrived","in_progress",
     "completed":{"confirmed"},"no_show":{"confirmed"},"cancelled":{"confirmed"}}
 UNDO_MINUTES=5
 REASONS=[("client","Disdetta del cliente"),("business","Imprevisto dell'attività"),("weather","Maltempo"),("duplicate","Prenotazione doppia"),("other","Altro")]
-REASON_LABELS={**dict(REASONS),"rejected":"Richiesta rifiutata"}
+REASON_LABELS={**dict(REASONS),"rejected":"Richiesta rifiutata","unconfirmed":"Non confermata dal cliente"}
+# 2.14.0: what a booking that changes day or time gets again: reminders, message before the arrival, the client's answer
+REARM=("reminded","reminded2","arrival","asked","client_confirmed","declined")
 def integer(value,label,minimum=1,maximum=10000):
     if isinstance(value,bool) or not re.fullmatch(r"\d+",str(value)):raise BookingError(label+" non valido.")
     val=int(value)
@@ -330,6 +332,8 @@ def create_booking(tenant,data,actor=None,origin="public",source=""):
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
         if issues:booking.snapshot["forced"]=issues
+        # 2.14.0: "Il primo disponibile": the client may move it to whoever is free then (public.py)
+        if resource and not data.get("resource"):booking.snapshot["any_resource"]=True
         from .prices import stamp
         stamp(booking)  # 2.11.0: price, client discount and what he pays, as at this moment
         booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save()
@@ -349,13 +353,14 @@ def create_booking(tenant,data,actor=None,origin="public",source=""):
         notify_staff(tenant,booking,"requested" if status=="pending" else "created")
         audit(tenant,actor,"booking.created",booking.pk,origin=booking.origin,**({"forced":issues} if issues else {}))
         return booking,True
-def move_booking(tenant,booking_id,data,actor):
+def move_booking(tenant,booking_id,data,actor,desk=True):
+    """desk=False (2.14.0): the client from his link, with the rules of the public page and no Forza."""
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         booking=choice(Booking,booking_id,status__in=MOVABLE)
         service=choice(Service,data.get("service",booking.service_id),active=True,location__active=True)
         # 2.14.0: moving is the desk's, with the desk's rules and Forza
-        *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=True,force=data.get("force") is True)
+        *values,issues=bounds(tenant,service,data,exclude=booking.pk,desk=desk,force=desk and data.get("force") is True)
         overrun(issues,data)
         booking.start,booking.end,booking.busy_start,booking.busy_end,booking.party,booking.option,booking.resource,booking.occurrence=values
         booking.snapshot.pop("forced",None)
@@ -364,9 +369,11 @@ def move_booking(tenant,booking_id,data,actor):
         booking.snapshot.update(service=service.name,location=service.location.name,resource=booking.resource.name if booking.resource else "",option=booking.option.name if booking.option else "")
         from .prices import stamp
         stamp(booking)
-        booking.snapshot.pop("reminded",None)  # 2.13.0: the new day gets its own reminder
+        for key in REARM:booking.snapshot.pop(key,None)  # 2.13.0: the new day gets its own reminder
         booking.save()
         ActionToken.objects.filter(booking=booking,kind="cancel",used=False).update(expires=booking.end+timedelta(days=30))
+        # Confermo / Non vengo of the old day must not answer for the new one
+        ActionToken.objects.filter(booking=booking,kind__in=("confirm","decline"),used=False).update(expires=timezone.now())
         from .client_mails import send
         send(tenant,booking,"moved")
         from .notify import notify_staff

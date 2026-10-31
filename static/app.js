@@ -75,7 +75,7 @@
    card.querySelectorAll("[data-insert]").forEach(b=>b.addEventListener("click",()=>{
     const a=last.selectionStart??last.value.length,z=last.selectionEnd??a;
     last.setRangeText(b.dataset.insert,a,z,"end");last.focus();draw();}));
-   card.querySelector("[data-mail-reset]").addEventListener("click",()=>{subject.value=subject.dataset.default;body.value=body.dataset.default;draw();});
+   card.querySelector("[data-mail-reset]")?.addEventListener("click",()=>{subject.value=subject.dataset.default;body.value=body.dataset.default;draw();});
    draw();});
  });
  // 2.13.0: Logo e aspetto: the chosen logo, colour and line are seen at once in the menu and on the booking page

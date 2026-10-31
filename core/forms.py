@@ -13,6 +13,7 @@ LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nom
  "service":"Servizio","resource":"Risorsa","purpose":"A cosa si applica","weekday":"Giorno","start":"Inizio","end":"Fine","valid_from":"Valido dal","valid_until":"Valido fino al",
  "last_arrival":"Ultimo arrivo (minuti prima della chiusura)",
  "request_all":"Su richiesta: confermate voi ogni prenotazione online","request_above":"Su richiesta oltre quante persone","request_allergies":"Su richiesta se il cliente segnala intolleranze o allergie",
+ "instructions":"Istruzioni prima dell'arrivo",
  "date":"Data","closed":"Chiuso tutto il giorno","label":"Motivo","subject":"Oggetto","body":"Messaggio","scheduled":"Invio programmato","price":"Prezzo (€)"}
 # 2.6.0: one plain line under every field, with an example
 HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 19:00, 19:30",
@@ -30,13 +31,14 @@ HELP={"interval":"Con 15 la pagina propone 19:00, 19:15, 19:30. Con 30 propone 1
  "checkin":"Da che ora arriva il cliente","checkout":"Entro che ora libera la camera o riconsegna",
  "last_arrival":"Per esempio 60: con il pranzo dalle 12 alle 15 l'ultimo arrivo è alle 14, con la cena fino alle 23:30 alle 22:30. 0 vuol dire fino alla chiusura",
  "address":"Compare nelle email di conferma","phone":"Compare nelle email di conferma",
+ "instructions":"Facoltative: come ritirare le chiavi, dove trovarsi, cosa portare. Le riceve il cliente con il messaggio Prima dell'arrivo, se lo accendete in Notifiche",
  "price":"Facoltativo, per esempio 25 o 25,50. Compare in agenda, nelle prenotazioni e nella scheda del cliente, con il suo sconto se ne ha uno"}
 SERVICE_KINDS=[("capacity","Posti per fascia oraria: ristorante, sala, lezione di gruppo"),("shift","Turni fissi, per esempio pranzo e cena, con i coperti di ciascuno"),
  ("resource","Appuntamento con una persona o una risorsa: parrucchiere, studio, campo"),("day","A notti o giorni: camere, appartamenti, noleggio"),("event","Evento o corso in date precise")]
 # which fields each kind of booking uses; the others are not shown at all
 FIELD_KINDS={"duration":{"resource","capacity"},"interval":{"resource","capacity"},"capacity":{"capacity","shift","day"},"max_party":{"capacity","shift","event","day"},
  "buffer_before":{"resource"},"buffer_after":{"resource","capacity"},"turnover":{"capacity"},"last_arrival":{"capacity"},"checkin":{"day"},"checkout":{"day"},"min_days":{"day"},"max_days":{"day"},
- "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"}}
+ "resource_label":{"resource","day"},"resources":{"resource","day"},"price":{"resource"},"instructions":{"day","event"}}
 KIND_LABELS={"duration":{"capacity":"Quanto resta occupato il posto (minuti)","resource":"Durata dell'appuntamento (minuti)"},
  "capacity":{"capacity":"Posti (coperti)","shift":"Posti totali del locale","day":"Unità disponibili"},
  "max_party":{"capacity":"Persone massime per prenotazione","shift":"Persone massime per prenotazione","event":"Posti massimi per prenotazione","day":"Ospiti massimi per prenotazione"}}
@@ -216,11 +218,11 @@ class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Service
-        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","resource_label","fields","active"]
+        fields=["name","location","kind","description","price","capacity","max_party","turnover","last_arrival","duration","interval","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","instructions","resource_label","fields","active"]
         labels={"name":"Nome del servizio","active":"Attivo: prenotabile online"}
         help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
-        widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2})}
+        widgets={"fields":forms.HiddenInput(),"description":forms.Textarea(attrs={"rows":2}),"instructions":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,agency=False,**kw):
         super().__init__(*a,**kw)
         self.agency=agency
@@ -382,7 +384,7 @@ class TenantForm(forms.ModelForm):
     class Meta:
         model=Tenant
         fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","export_enabled","client_mails_enabled","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","consent_text","retention_days","receive_schedule"]
-        labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Marketing: l'attività invia campagne email ai clienti iscritti","export_enabled":"Marketing: l'attività scarica il CSV dei clienti iscritti (Brevo, Mailchimp, fogli)","client_mails_enabled":"Email ai clienti: l'attività sceglie quali inviare, aggiunge il promemoria e ne scrive il testo (in Notifiche)","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
+        labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Marketing: l'attività invia campagne email ai clienti iscritti","export_enabled":"Marketing: l'attività scarica il CSV dei clienti iscritti (Brevo, Mailchimp, fogli)","client_mails_enabled":"Email ai clienti: l'attività sceglie quali inviare e ne scrive oggetto e testo (in Notifiche). Promemoria e altri messaggi li accende comunque lei","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
         widgets={"trial_until":forms.DateInput(attrs={"type":"date"}),"brand_color":forms.TextInput(attrs={"type":"color"}),"privacy_text":forms.Textarea(attrs={"rows":4}),"consent_text":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         kw.setdefault("label_suffix","")

@@ -147,12 +147,17 @@
    form.hidden=true;$("booking-success").hidden=false;$("booking-reference").textContent="Riferimento: "+result.reference;
    // 2.14.0: a request the business confirms later
    if(result.pending){$("booking-done").textContent="Richiesta inviata";$("booking-pending").hidden=false;$("cancel-link").textContent="Gestisci / annulla la richiesta";}
+   // 2.14.0: the confirmed booking into the client's calendar
+   if(result.calendar){$("cal-google").href=result.calendar.google;$("cal-outlook").href=result.calendar.outlook;$("cal-ics").href=result.calendar.ics;$("calendar-links").hidden=false;}
    $("cancel-link").href=result.cancel;$("booking-success").scrollIntoView({block:"center"});$("cancel-link").focus();
   }catch(e){$("booking-error").textContent=e.message;$("booking-error").hidden=false;}
   finally{busy=false;submit.disabled=!selected;}
  });
  if(config.editing){
-  service.value=config.editing.service;changeService();option.value=config.editing.option;resource.value=config.editing.resource;party.value=config.editing.party;loadSlots();
+  service.value=config.editing.service;changeService();option.value=config.editing.option;resource.value=config.editing.resource;party.value=config.editing.party;
+  // 2.14.0: the client moving from his link keeps service, operator and people: he chooses only when
+  if(config.locked)["resource-wrap","party-wrap"].forEach(id=>{$(id).hidden=true;});
+  loadSlots();
  }else if(config.services.some(s=>s.id===new URLSearchParams(location.search).get("service"))){service.value=new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
  // inside the WordPress frame the page is as tall as its content, so the frame can also shrink
  if(window.parent!==window){document.documentElement.classList.add("framed");new ResizeObserver(()=>{window.parent.postMessage({tdbsHeight:document.body.scrollHeight},"*");}).observe(document.body);}

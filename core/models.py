@@ -104,6 +104,11 @@ class Tenant(models.Model):
     retention_error=models.CharField(max_length=200,blank=True)
     # 2.14.0: Forza at the desk also for reception and operators, when the owner says so (permissions.effective)
     force_all=models.BooleanField(default=False)
+    # 2.14.0: the notices also to the operator of each booking (Persone tied to him, with an email), and the list of
+    # tomorrow at this hour of the business (empty = none) with the day it last went (notify.evening)
+    notify_operators=models.BooleanField(default=False)
+    summary_hour=models.PositiveSmallIntegerField(null=True,blank=True)
+    summary_sent=models.DateField(null=True,blank=True)
     smtp=models.TextField(blank=True)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
@@ -210,6 +215,8 @@ class Service(Scoped):
     request_all=models.BooleanField(default=False)
     request_above=models.PositiveIntegerField(default=0)  # more people than this; 0 = never
     request_allergies=models.BooleanField(default=False)
+    # 2.14.0: what the client needs before arriving (keys, meeting point), sent by the message Prima dell'arrivo
+    instructions=models.TextField(blank=True,max_length=2000)
     preset=models.CharField(max_length=40,blank=True)
     resource_label=models.CharField(max_length=60,blank=True)  # "Operatore", "Stanza", "Campo"...
     fields=models.JSONField(default=list,blank=True)

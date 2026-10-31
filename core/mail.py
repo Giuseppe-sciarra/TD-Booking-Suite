@@ -59,6 +59,11 @@ def send_message(config,payload,message_id):
         message["List-Unsubscribe"]="<"+payload["unsubscribe"]+">"
         message["List-Unsubscribe-Post"]="List-Unsubscribe=One-Click"
     message.set_content(payload["body"])
+    # 2.14.0: the client's emails: the text stays the plain part, the HTML with the logo inside the message, the calendar file
+    if payload.get("html"):
+        message.add_alternative(payload["html"],subtype="html")
+        if payload.get("logo"):message.get_payload()[1].add_related(payload["logo"],"image","png",cid="<logo>")
+    if payload.get("ics"):message.add_attachment(payload["ics"].encode(),"text","calendar",filename="prenotazione.ics",params={"method":"PUBLISH"})
     if config.get("method","smtp")!="smtp":
         from .mailapi import send
         return send(config,message)
@@ -161,6 +166,8 @@ def worker_once():
                         delivery.last_code="smtp_missing";delivery.next_attempt=timezone.now()+timedelta(minutes=10);delivery.save();continue
                     delivery.status="sending";delivery.claimed_at=timezone.now();delivery.attempts+=1;delivery.save()
                     payload=decrypt(tenant,delivery.payload,"delivery:"+str(delivery.pk))
+                    # the logo goes with the message, not in every queued email
+                    if "cid:logo" in payload.get("html","") and tenant.logo:payload["logo"]=bytes(tenant.logo)
             if channel=="telegram":
                 from .notify import send_telegram,TelegramError
                 status="accepted";code="";retry=False

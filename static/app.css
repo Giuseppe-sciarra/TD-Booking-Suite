@@ -1334,3 +1334,9 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .share-qr{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:16px}.share-qr img{width:120px;height:120px;border-radius:var(--r-sm);background:#fff}
 .embed-code{margin:8px 0 0;padding:12px;border-radius:var(--r-sm);background:var(--paper);border:1px solid var(--line);overflow:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-all}.embed-code code{padding:0;background:none}
 @media(max-width:700px){.share-list li{grid-template-columns:1fr auto}.share-list li strong{grid-column:1/-1}}
+/* 2.14.0: the calendar links of a booking, Sposta and Annulla on the client's link, the client who said Confermo, the evening and call lists */
+.calendar-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 14px;margin:14px 0;font-size:14px}.calendar-links span{color:var(--muted)}
+.manage-what{margin:18px 0;text-align:left}.manage-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:18px}.manage-actions form{margin:0}
+.client-ok{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:4px;border-radius:50%;background:var(--ok-soft);color:var(--ok);font-size:12px;font-weight:700;vertical-align:1px}.client-ok.full{width:auto;height:auto;padding:4px 10px;border-radius:999px;gap:6px;font-size:13px}
+.declined-chip{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:12px;font-weight:600}
+.mail-group{margin:18px 0 0;font-size:18px}.mail-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}.mail-links .button{pointer-events:none}

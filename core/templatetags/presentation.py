@@ -108,6 +108,13 @@ def origin_icon(booking,full=""):
     return format_html('<span class="origin" title="{}"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">{}</svg><span class="{}">{}</span></span>',name,mark_safe(ICONS[ORIGIN_ICONS[booking.origin]]),"" if full else "sr-only",name)
 
 @register.filter
+def client_ok(booking,full=""):
+    """2.14.0: the client answered Confermo to the reminder: a green tick, with the words on the booking's page."""
+    from django.utils.html import format_html
+    if not booking.snapshot.get("client_confirmed"):return ""
+    return format_html('<span class="client-ok{}" title="Confermata dal cliente"><span aria-hidden="true">✓</span><span class="{}">Confermata dal cliente</span></span>'," full" if full else "","" if full else "sr-only")
+
+@register.filter
 def reason_label(code):
     """2.14.0: why a booking was cancelled, in words."""
     from core.booking import REASON_LABELS

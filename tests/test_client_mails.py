@@ -34,8 +34,10 @@ def test_the_business_writes_its_emails(sample):
     owner,u=client_as(t)
     url=f"/t/{t.slug}/notifications/"
     page=owner.get(url).content.decode()
-    assert "chiedi all" in page and "data-mails" not in page
-    assert owner.post(url,{"action":"client_mails"}).status_code==403
+    # 2.14.0: without the agency's switch the owner times the reminders, the words stay the standard ones
+    assert "chiedi all" in page and 'name="confirmed_subject"' not in page and 'name="reminder_hours"' in page
+    assert owner.post(url,{"action":"client_mails","reminder_on":"on","reminder_hours":"48","confirmed_subject":"Mio"}).status_code==302
+    t.refresh_from_db();assert t.client_mails["reminder"]=={"on":True,"hours":48,"autocancel":0} and "on" not in t.client_mails["confirmed"]
     t.client_mails_enabled=True;t.save()
     page=owner.get(url).content.decode()
     assert "data-mails" in page and "Promemoria" in page and 'id="mail-sample"' in page

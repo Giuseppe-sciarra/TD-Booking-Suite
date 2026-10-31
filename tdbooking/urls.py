@@ -82,4 +82,7 @@ urlpatterns=[
  path("api/wordpress/connect/",wpconnect.connect_view,name="wp_connect"),
  path("action/<slug:slug>/<str:token>/",public.action_view,name="action"),
  path("action/<slug:slug>/<str:token>/one-click/",public.unsubscribe_oneclick,name="oneclick"),
+ path("action/<slug:slug>/<str:token>/sposta/",public.move_public,name="move_public"),
+ path("action/<slug:slug>/<str:token>/sposta/orari/",public.move_public_slots,name="move_public_slots"),
+ path("action/<slug:slug>/<str:token>/calendario.ics",public.booking_ics,name="booking_ics"),
 ]

@@ -341,8 +341,11 @@ def dashboard(request,slug):
     # 2.14.0: the requests to answer, and what already happened that nobody closed (30 days), each with its buttons
     asks=mine(Booking.objects.filter(status="pending",end__gt=now-timedelta(days=30))).select_related("service","tenant").order_by("start")
     closing=mine(Booking.objects.filter(status__in=("confirmed","arrived","in_progress"),end__lte=now,end__gt=now-timedelta(days=30))).select_related("service","tenant").order_by("-start")
-    todo={"asks":list(asks[:20]),"asks_n":asks.count(),"closing":list(closing[:20]),"closing_n":closing.count()}
-    for row in todo["asks"]+todo["closing"]:row.shown=shown(request,row.data)
+    # 2.14.0: who had the reminder with Confermo in the next 48 hours and did not answer, or wrote Non vengo too late: a call
+    calls=mine(Booking.objects.filter(status="confirmed",start__gt=now,start__lte=now+timedelta(hours=48),snapshot__has_key="asked").exclude(snapshot__has_key="client_confirmed")).select_related("service","tenant").order_by("start")
+    todo={"asks":list(asks[:20]),"asks_n":asks.count(),"closing":list(closing[:20]),"closing_n":closing.count(),"calls":list(calls[:20]),"calls_n":calls.count()}
+    for row in todo["asks"]+todo["closing"]+todo["calls"]:row.shown=shown(request,row.data)
+    for row in todo["calls"]:row.whatsapp=whatsapp(request.tenant,row.shown.get("phone",""),row)
     # the last quick action, to take back for a few minutes
     undo=visible_bookings(request,Booking.objects.filter(pk=uid(request.session.pop("undo",None)))).first() if request.session.get("undo") else None
     if undo and can_undo(undo):undo.shown=shown(request,undo.data)

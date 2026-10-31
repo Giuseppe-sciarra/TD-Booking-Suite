@@ -237,19 +237,20 @@ def notifications_view(request,slug):
                 with transaction.atomic():
                     t=Tenant.objects.select_for_update().get(pk=tenant.pk)
                     t.notify_email=email;t.telegram=encrypt(t,{"token":token,"chat":chat},"telegram") if token else ""
-                    t.save(update_fields=["notify_email","telegram"])
-                    audit(t,request.user,"notifications.saved",telegram=bool(token),email=bool(email))
+                    t.notify_operators=request.POST.get("notify_operators")=="on"  # 2.14.0
+                    t.save(update_fields=["notify_email","telegram","notify_operators"])
+                    audit(t,request.user,"notifications.saved",telegram=bool(token),email=bool(email),operators=t.notify_operators)
                 messages.success(request,"Notifiche salvate.")
             elif action=="client_mails":
-                # 2.13.0: which emails reach the clients and with which words, once the agency allows it
-                from .client_mails import clean
-                if not tenant.client_mails_enabled:raise PermissionDenied
-                try:mails=clean(request.POST)
-                except BookingError as ex:raise ValueError(str(ex))
+                # 2.13.0: which emails reach the clients and with which words, once the agency allows it;
+                # 2.14.0: reminders and the other messages, and when they go, also without it
+                from . import client_mails as cm
                 with transaction.atomic():
                     t=Tenant.objects.select_for_update().get(pk=tenant.pk)
-                    t.client_mails=mails;t.save(update_fields=["client_mails"])
-                    audit(t,request.user,"client_mails.saved",on=[k for k,v in mails.items() if v["on"]])
+                    try:t.client_mails=cm.clean(request.POST,t.client_mails_enabled,t.client_mails)
+                    except BookingError as ex:raise ValueError(str(ex))
+                    t.save(update_fields=["client_mails"])
+                    audit(t,request.user,"client_mails.saved",on=[k for k,v in cm.current(t).items() if v["on"]])
                 messages.success(request,"Email ai clienti salvate.")
                 return redirect(reverse("notifications",args=[slug])+"#clienti")
             elif action=="whatsapp":
@@ -261,6 +262,14 @@ def notifications_view(request,slug):
                 audit(tenant,request.user,"whatsapp.saved",tenant.pk)
                 messages.success(request,"Messaggio WhatsApp salvato.")
                 return redirect(reverse("notifications",args=[slug])+"#whatsapp")
+            elif action=="summary":
+                # 2.14.0: tomorrow's bookings every evening at this hour; empty = never
+                hour=request.POST.get("summary_hour","")
+                if hour not in [""]+[str(h) for h in SUMMARY_HOURS]:raise ValueError("Scegli a che ora mandare il riepilogo.")
+                Tenant.objects.filter(pk=tenant.pk).update(summary_hour=int(hour) if hour else None)
+                audit(tenant,request.user,"summary.saved",tenant.pk,hour=hour)
+                messages.success(request,"Riepilogo serale salvato.")
+                return redirect(reverse("notifications",args=[slug])+"#riepilogo")
             elif action=="test":
                 if not (tenant.notify_email or tenant.telegram):raise ValueError("Configura prima un indirizzo email o Telegram.")
                 text="Prova notifiche · "+tenant.name+"\nSe leggi questo messaggio, le notifiche funzionano."
@@ -271,7 +280,11 @@ def notifications_view(request,slug):
             return redirect("notifications",slug)
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
     from . import client_mails as cm
+    from .notify import operators
     now=cm.current(tenant)
-    mails=[{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k]} for k,label,help in cm.KINDS]
+    mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD} for k,label,help in cm.KINDS}
+    groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
-        "mails":mails,"mail_fields":cm.FIELDS,"hours":cm.HOURS,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP})
+        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,
+        "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None})
+SUMMARY_HOURS=range(16,23)

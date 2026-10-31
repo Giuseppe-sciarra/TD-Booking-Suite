@@ -13,8 +13,11 @@ class Command(BaseCommand):
                 from core.privacy import run_retention  # 2.14.0: every business once a day, without a cron
                 if done:=run_retention():self.stdout.write(f"Conservazione dei dati applicata a {done} attività.")
             if time.time()-last_remind>300:
-                from core.client_mails import remind  # 2.13.0: the reminders to the clients, every 5 minutes
-                if remind():self.stdout.write("Promemoria accodati ai clienti.")
+                # 2.13.0: the reminders to the clients, every 5 minutes; 2.14.0: the other timed messages and the evening list
+                from core.client_mails import remind
+                from core.notify import evening
+                if remind():self.stdout.write("Messaggi accodati ai clienti.")
+                if evening():self.stdout.write("Riepiloghi serali accodati.")
                 last_remind=time.time()
             result=worker_once()
             from core.trial import notify_pending
