@@ -103,6 +103,16 @@ def test_retention_unlinks_old_bookings(sample):
         assert Contact.objects.filter(email_index__startswith="erased:").count()==1
         assert apply_retention(t,apply=False,now=later)["bookings"]==0
 
+def test_retention_records_only_what_it_changed(sample):
+    # 2.14.0: the worker applies it every day to every business: the register gets a line only when something went
+    t,o,s=sample
+    with scope(t):
+        b,_=create_booking(t,payload(s))
+        apply_retention(t,apply=True)
+        assert not Audit.objects.filter(action="retention.applied").exists()
+        apply_retention(t,apply=True,now=timezone.now()+timedelta(days=t.retention_days+30))
+        assert Audit.objects.filter(action="retention.applied").count()==1
+
 def test_worker_runs_retention_once_a_day_and_the_agency_sees_it(sample,monkeypatch):
     # 2.14.0: no cron to remember: mail_worker runs the same command as by hand, every business once a day
     from django.core.management import call_command

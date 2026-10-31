@@ -151,6 +151,9 @@ def worker_once():
             eligible=Q(campaign__isnull=True)
             if tenant.marketing_enabled and operational(tenant):
                 eligible|=Q(campaign__status="queued")
+            from .texts import spent
+            # 2.14.0: texts waiting for their daily budget stay out of the batch, or 50 of them hold back every email
+            if tenant.texts and spent(tenant)>=tenant.texts_daily_limit:eligible&=~Q(channel__in=("sms","whatsapp"))
             candidates=list(Delivery.objects.filter(eligible,status="pending",next_attempt__lte=timezone.now())
                 .annotate(priority=Case(When(campaign__isnull=True,then=0),default=1,output_field=IntegerField()))
                 .order_by("priority","next_attempt","pk").values_list("pk",flat=True)[:50])

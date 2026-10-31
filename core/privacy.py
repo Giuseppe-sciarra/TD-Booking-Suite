@@ -110,7 +110,7 @@ def apply_retention(tenant,apply=False,now=None):
             d.payload="";d.status="skipped" if d.status in ("pending","sending") else d.status
             d.save(update_fields=["payload","status"])
         ActionToken.objects.filter(expires__lt=now).delete()
-        audit(tenant,None,"retention.applied",**report)
+        if any(report.values()):audit(tenant,None,"retention.applied",**report)  # 2.14.0: daily from the worker, a line only when it changed something
     return report
 
 def run_retention(now=None):

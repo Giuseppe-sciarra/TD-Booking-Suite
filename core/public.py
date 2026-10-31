@@ -13,7 +13,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from .models import Service,Option,Resource,ServiceResource,Location,Booking,ActionToken,Contact,ConsentEvent,Tenant,audit
 from .identity import throttle,json_body,page_origin
-from .booking import available,create_booking,move_booking,change_status,BookingError,ForceWarning,choice,bounds,has_units,free_units,MOVABLE,ACCEPTED
+from .booking import available,create_booking,move_booking,change_status,BookingError,ForceWarning,choice,bounds,has_units,free_units,MOVABLE,ACCEPTED,details,candidates,linked
 from .calendar import local_datetime
 from .crypto import token_hash,encrypt
 from .middleware import require_role
@@ -142,9 +142,18 @@ def slots_api(request,slug,booking_id=None):
         from .waitlist import opened,OWN
         offer=None if desk else opened(request.tenant,request.GET.get("attesa"))
         token=OWN.set(offer[0].pk if offer else None)
-        try:return JsonResponse({"slots":free_slots(request,request.GET,exclude,desk,force)})
+        try:slots=free_slots(request,request.GET,exclude,desk,force)
         finally:OWN.reset(token)
+        # 2.14.0: no time at all that day (closed, a holiday, the hours gone): nothing to wait for, no "Avvisami"
+        return JsonResponse({"slots":slots,**({} if slots or desk else {"closed":closed(request.tenant,request.GET)})})
     except (ValueError,ValidationError,OverflowError) as ex:return JsonResponse({"error":str(ex) or _("Richiesta non valida.")},status=400)
+def closed(tenant,params):
+    """No time on the page that day, booked or free: the opening hours, closures and dates of the event say none."""
+    service=choice(Service,params.get("service"),active=True,location__active=True)
+    if service.kind=="day":return False  # a stay the calendar does not allow is an error already, without the box
+    option,resource=details(service,params.get("option") or None,params.get("resource") or None)[:2]
+    day=date.fromisoformat(params.get("date",""))
+    return not any(next(candidates(tenant,service,day,option,r),None) for r in ([resource] if resource or service.kind!="resource" else linked(service)))
 def free_slots(request,params,exclude=None,desk=False,force=False):
     """The free times of a day, or the units free for a stay, as the booking form asks for them (params: its query)."""
     day=date.fromisoformat(params.get("date",""))

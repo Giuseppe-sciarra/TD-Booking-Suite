@@ -43,7 +43,8 @@ def choice(model,value,**filters):
     return obj
 def details(service,option_id=None,resource_id=None):
     option=choice(Option,option_id,service=service,active=True) if option_id else None
-    resource=choice(Resource,resource_id,active=True,location=service.location) if resource_id else None
+    # 2.14.0: a cabin or machine is never the one booked, only taken with him (support)
+    resource=choice(Resource,resource_id,active=True,secondary=False,location=service.location) if resource_id else None
     if resource and not ServiceResource.objects.filter(service=service,resource=resource).exists():raise BookingError("La risorsa non appartiene al servizio.")
     if service.kind not in ("resource","day") and resource:raise BookingError("Risorsa non prevista.")
     return option,resource,length(service,option,resource)
@@ -570,8 +571,9 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False,
             if status=="cancelled":
                 from .notify import notify_staff
                 notify_staff(tenant,booking,"cancelled")
-                from .api import emit
-                emit(tenant,booking,"cancelled")
+        if status=="cancelled":
+            from .api import emit
+            emit(tenant,booking,"cancelled")  # also the dates of a series cancelled together, and an undo: each one was "created"
         audit(tenant,actor,"booking.undo" if undo else "booking."+status,booking.pk,**{"from":old},**({"reason":booking.snapshot["cancel_reason"]} if status=="cancelled" else {}))
         return booking
 def series_base(booking):
