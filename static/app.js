@@ -444,3 +444,10 @@
  window.addEventListener("hashchange",openTarget);openTarget();
  document.addEventListener("click",e=>{const a=e.target.closest('a[href^="#"]');if(a&&a.getAttribute("href")===location.hash)openTarget();});
 })();
+// 2.14.0: a consent signed on the tablet at the desk: the finger or the pen draws, the drawing goes as a PNG
+document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.querySelector(c.dataset.sign),x=c.getContext("2d");let on=false;x.lineWidth=3;x.lineCap="round";x.lineJoin="round";x.strokeStyle="#111";
+ const at=e=>{const r=c.getBoundingClientRect();return [(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height];};
+ c.addEventListener("pointerdown",e=>{on=true;c.setPointerCapture(e.pointerId);x.beginPath();x.moveTo(...at(e));e.preventDefault();});
+ c.addEventListener("pointermove",e=>{if(!on)return;x.lineTo(...at(e));x.stroke();});
+ const end=()=>{if(on)out.value=c.toDataURL("image/png");on=false;};c.addEventListener("pointerup",end);c.addEventListener("pointercancel",end);
+ c.closest("form").querySelector("[data-sign-clear]")?.addEventListener("click",()=>{x.clearRect(0,0,c.width,c.height);out.value="";});});

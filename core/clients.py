@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from django.db.models import Count,Max,Q
 from django.utils import timezone
-from .booking import BookingError,normalize_phone,ACCEPTED,MOVABLE
+from .booking import BookingError,normalize_phone,ACCEPTED,MOVABLE,OPEN
 from .crypto import encrypt,index,tenant_key,open_seal
 from .models import Contact,Booking,Treatment,audit
 from .prices import spent
@@ -151,6 +151,10 @@ def merge(tenant,main,other,keep,actor):
         tags=list(dict.fromkeys(a.get("tags",[])+b.get("tags",[])))[:20]
         if tags:d["tags"]=tags
         if not d.get("import_code") and b.get("import_code"):d["import_code"]=b["import_code"]
+        # 2.14.0: the signed consents of both, the last test and the category if main has none
+        if b.get("signed"):d["signed"]=(a.get("signed",[])+b["signed"])[-50:]
+        for k in ("test_date","category"):
+            if not d.get(k) and b.get(k):d[k]=b[k]
         moved=d.get("email","")!=a.get("email","")
         if moved:
             mine=bool(d.get("email"))  # the kept email is the other card's: its consent comes with it, otherwise none
@@ -179,7 +183,7 @@ def merge(tenant,main,other,keep,actor):
         audit(tenant,actor,"contact.merged",main.pk,other=str(other.pk),kept={f:keep.get(f) or "main" for f,_ in MERGE_FIELDS},consent="other" if moved and d.get("email") else "none" if moved else "main")
         return main
 
-def clean_profile(post,today):
+def clean_profile(post,today,categories=()):
     """2.14.0: tags (free words, comma separated, at most 20 of 40 characters), the birthday (optional, not in the
     future), VIP and "not bookable online", as the staff typed them."""
     tags={}
@@ -194,11 +198,79 @@ def clean_profile(post,today):
         except ValueError:raise BookingError("Data di nascita non valida.")
         if not date(1900,1,1)<=b<=today:raise BookingError("Data di nascita non valida.")
         birthday=b.isoformat()
-    return {"tags":tags,"birthday":birthday,"vip":post.get("vip")=="on","online_blocked":post.get("online_blocked")=="on"}
+    # 2.14.0: the day of the last test (patch test) and the category of the client (Socio, Ospite), both sealed in the card
+    test_date=""
+    if post.get("test_date"):
+        try:t=date.fromisoformat(str(post["test_date"]))
+        except ValueError:raise BookingError("Data del test non valida.")
+        if not date(2000,1,1)<=t<=today:raise BookingError("Data del test non valida.")
+        test_date=t.isoformat()
+    category=str(post.get("category",""))
+    if category and category not in [c["name"] for c in categories]:raise BookingError("Categoria non valida.")
+    return {"tags":tags,"birthday":birthday,"test_date":test_date,"category":category,"vip":post.get("vip")=="on","online_blocked":post.get("online_blocked")=="on"}
+
+def parse_categories(text):
+    """2.14.0: the categories of client, one a line: "Socio, 14, 3" (name, days ahead, bookings to come at once)."""
+    cats=[]
+    for line in str(text).splitlines():
+        if not line.strip():continue
+        parts=[x.strip() for x in line.split(",")]
+        try:
+            name,ahead,most=parts[0][:40],int(parts[1]) if len(parts)>1 and parts[1] else 0,int(parts[2]) if len(parts)>2 and parts[2] else 0
+            if not name or len(parts)>3 or not 0<=ahead<=730 or not 0<=most<=100 or any(ord(c)<32 for c in name):raise ValueError
+        except ValueError:raise BookingError(f"Categoria non valida: «{line.strip()[:40]}». Scrivi nome, giorni, prenotazioni, per esempio Socio, 14, 3.")
+        if name.casefold() not in [c["name"].casefold() for c in cats]:cats.append({"name":name,"ahead":ahead,"max":most})
+    if len(cats)>20:raise BookingError("Al massimo 20 categorie.")
+    return cats
+
+def category_refusal(tenant,contact,start,now):
+    """2.14.0: the limit of the client's category on the online page, in words; None when it may book."""
+    name=contact.data.get("category") if contact and contact.pk else None
+    cat=next((c for c in tenant.client_categories if c["name"]==name),None) if name else None
+    if not cat:return None
+    if cat["ahead"] and start>now+timedelta(days=cat["ahead"]):return f"Puoi prenotare al massimo {cat['ahead']} giorni avanti."
+    if cat["max"] and Booking.objects.filter(contact=contact,status__in=OPEN,end__gt=now).count()>=cat["max"]:
+        return f"Hai già {cat['max']} prenotazion{'e' if cat['max']==1 else 'i'} in programma: per prenotarne un'altra contatta l'attività."
+    return None
+
+def recalls(now,ahead=7):
+    """2.14.0: the clients to call back (Richiami): the last visit of each service with a recall, its day reached or
+    within a week, nothing booked after now and not marked as called. The latest visit carries the marks
+    (snapshot: recall_done from the desk, recall_sent from the worker).
+    shortcut: one grouped query and a booking read per due row; a business with thousands of due recalls would want them paged."""
+    from .models import Service
+    days=dict(Service.objects.filter(recall_days__gt=0).values_list("pk","recall_days"))
+    if not days:return []
+    future=set(Booking.objects.filter(status__in=OPEN,start__gt=now,contact__isnull=False).values_list("contact_id",flat=True))
+    rows=[]
+    for r in (Booking.objects.filter(service_id__in=days,status__in=ACCEPTED,end__lte=now,contact__isnull=False).exclude(contact__email_index__startswith="erased:")
+            .values("contact_id","service_id").annotate(last=Max("end"))):
+        due=r["last"]+timedelta(days=days[r["service_id"]])
+        if r["contact_id"] in future or due>now+timedelta(days=ahead):continue
+        b=Booking.objects.filter(contact_id=r["contact_id"],service_id=r["service_id"],end=r["last"]).select_related("contact","service").first()
+        if b and "recall_done" not in b.snapshot:rows.append({"booking":b,"contact":b.contact,"service":b.service,"last":r["last"],"due":due})
+    return sorted(rows,key=lambda r:r["due"])
+
+SIGNATURE=re.compile(r"data:image/png;base64,([A-Za-z0-9+/]{100,300000}={0,2})")
+CONSENT_TITLES=["Informativa privacy","Consenso informato al trattamento","Regole di cancellazione"]
+def sign_consent(tenant,contact,post,actor):
+    """2.14.0: a consent signed on the tablet at the desk: its title, the text the client read, the signature as drawn,
+    when and who was at the desk, sealed in the card. Never changed afterwards: a new text is signed again."""
+    import base64,binascii
+    title=" ".join(str(post.get("title","")).split())[:120];text=str(post.get("text","")).replace("\r\n","\n").strip()
+    if not title or not text or len(text)>8000:raise BookingError("Scrivi il titolo e il testo da firmare, al massimo 8000 caratteri.")
+    m=SIGNATURE.fullmatch(str(post.get("signature","")))
+    try:ok=bool(m) and base64.b64decode(m[1],validate=True).startswith(b"\x89PNG")
+    except binascii.Error:ok=False
+    if not ok:raise BookingError("Manca la firma: il cliente firma nel riquadro.")
+    data=dict(contact.data);signed=data.setdefault("signed",[])
+    if len(signed)>=50:raise BookingError("Troppi consensi firmati in questa scheda.")
+    signed.append({"title":title,"text":text,"sign":m[0],"at":timezone.now().isoformat(),"by":str(actor.pk)})
+    seal_card(tenant,contact,data);contact.save(update_fields=["pii",*INDEXES])
 
 def save_profile(tenant,contact,p):
     data=dict(contact.data)
-    for k in ("tags","birthday"):
+    for k in ("tags","birthday","test_date","category"):
         if p[k]:data[k]=p[k]
         else:data.pop(k,None)
     contact.vip,contact.online_blocked=p["vip"],p["online_blocked"]

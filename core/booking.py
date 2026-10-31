@@ -288,10 +288,11 @@ def queue(tenant,payload,contact=None,campaign=None):
     delivery=Delivery(tenant=tenant,contact=contact,campaign=campaign,next_attempt=timezone.now())
     delivery.payload=encrypt(tenant,payload,"delivery:"+str(delivery.pk));delivery.save()
     return delivery
-def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
+def create_booking(tenant,data,actor=None,origin="public",source="",wait="",series=None):
     """origin and source (2.14.0): the channel of an online booking, from the signed ticket of its page (public.py);
     the staff's bookings are the desk's, or of a client without appointment (walkin: now, already in progress).
-    wait: the waiting-list entry whose link opened the page: the place kept for it is its own (waitlist.claim)."""
+    wait: the waiting-list entry whose link opened the page: the place kept for it is its own (waitlist.claim).
+    series (2.14.0): a date repeated from the desk: tied to the others, without its own email and notice."""
     # All inventory writers take the same stable tenant row lock.
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
@@ -334,6 +335,9 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
             # 2.14.0: Non prenotabile online, also with another email on the phone of a card the business marked
             from .clients import phone_index
             if (contact and contact.online_blocked) or Contact.objects.filter(phone_index=phone_index(tenant,pii["phone"]),online_blocked=True).exists():raise refused(tenant,service)
+            from .clients import category_refusal
+            why=category_refusal(tenant,contact,start,timezone.now())  # 2.14.0: Socio, Ospite: days ahead, bookings at once
+            if why:raise BookingError(why)
             new_contact=contact is None
             if new_contact:
                 from .clients import seal_card
@@ -351,7 +355,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
         if contact:contact.save()
         status="in_progress" if walkin else "pending" if not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
-            status=status,origin=("walkin" if walkin else "desk") if staff else origin,source="" if staff else source,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
+            status=status,origin=("walkin" if walkin else "desk") if staff else origin,source="" if staff else source,series=series,snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in service.fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
         if issues:booking.snapshot["forced"]=issues
@@ -364,7 +368,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
         pii["cancel_token"]=token;booking.pii=encrypt(tenant,pii,"booking:"+str(booking.pk));booking.save(update_fields=["pii"])
         from django.conf import settings
         from .client_mails import send
-        if not walkin:send(tenant,booking,"requested" if status=="pending" else "confirmed")
+        if not walkin and not series:send(tenant,booking,"requested" if status=="pending" else "confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
             booking.snapshot["consent_request"]={"text":tenant.consent_text,"requested":timezone.now().isoformat(),"source":"booking"}
@@ -373,7 +377,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait=""):
             record(tenant,contact,"requested","booking",actor,tenant.consent_text,booking.pk)
             queue(tenant,{"to":pii["email"],"subject":"Conferma iscrizione · "+tenant.name,"body":f"Conferma la richiesta di iscrizione alle comunicazioni di {tenant.name}:\n{settings.PUBLIC_ORIGIN}/action/{tenant.slug}/{token}/\nSe non hai richiesto l'iscrizione, ignora il messaggio."},contact)
         from .notify import notify_staff
-        notify_staff(tenant,booking,"requested" if status=="pending" else "created")
+        if not series:notify_staff(tenant,booking,"requested" if status=="pending" else "created")
         booked(tenant,booking,wait)
         audit(tenant,actor,"booking.created",booking.pk,origin=booking.origin,**({"forced":issues} if issues else {}))
         return booking,True
@@ -420,9 +424,10 @@ def can_undo(booking,now=None):
     """2.14.0: the last change of status can be taken back for a few minutes, where it was made."""
     last=booking.snapshot.get("undo")
     return bool(last) and last["to"]==booking.status and (now or timezone.now())<=datetime.fromisoformat(last["at"])+timedelta(minutes=UNDO_MINUTES)
-def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False):
+def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False,quiet=False):
     """2.14.0: a request accepted or refused, arrived, in progress, done, absent, cancelled with its reason (the free
-    note sealed with the booking's data), back to confirmed; undo takes back the last change."""
+    note sealed with the booking's data), back to confirmed; undo takes back the last change. quiet: the other dates of
+    a series cancelled together, without an email and a notice each."""
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         booking=Booking.objects.select_for_update().get(pk=booking.pk)
@@ -452,7 +457,7 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False)
         if old in HOLDING and status not in HOLDING:
             from .waitlist import freed
             freed(tenant,booking.start,booking.end)  # 2.14.0: the place given up, to the waiting list
-        if not undo:
+        if not undo and not quiet:
             from .client_mails import send
             mail={"cancelled":"rejected" if reason=="rejected" else "cancelled","confirmed":"accepted" if old=="pending" else ""}.get(status)
             if mail:send(tenant,booking,mail)
@@ -461,3 +466,34 @@ def change_status(tenant,booking,status,actor=None,reason="",note="",undo=False)
                 notify_staff(tenant,booking,"cancelled")
         audit(tenant,actor,"booking.undo" if undo else "booking."+status,booking.pk,**{"from":old},**({"reason":booking.snapshot["cancel_reason"]} if status=="cancelled" else {}))
         return booking
+def series_base(booking):
+    """What the other dates of a series copy from the booking: the service, with whom, the client and his answers."""
+    d=booking.data
+    return {"service":str(booking.service_id),"resource":str(booking.resource_id or ""),"option":str(booking.option_id or ""),"party":booking.party,
+        "contact":str(booking.contact_id),**{k:d.get(k,"") for k in ("first_name","last_name","email","phone","notes")},"answers":d.get("answers",{}),"allergies":d.get("allergies",[])}
+def series_plan(tenant,booking,every,until):
+    """2.14.0: Ripeti from the desk: the same time every N weeks until a day (a year at most), each date checked as the
+    desk would book it: [(start, None or why not)]. Nothing is saved."""
+    if booking.service.kind not in ("resource","capacity") or not booking.contact_id:raise BookingError("Si ripetono gli appuntamenti e le fasce orarie di un cliente con la scheda.")
+    tz=ZoneInfo(tenant.timezone);first=booking.start.astimezone(tz)
+    if every not in (1,2,3,4) or not until or not first.date()<until<=first.date()+timedelta(days=366):raise BookingError("Scegli ogni quante settimane e fino a quando, al massimo un anno.")
+    out=[];d=first.date()+timedelta(weeks=every);base=series_base(booking)
+    while d<=until:
+        start=local_datetime(d,first.time(),tz);why=None
+        if start is None:why="ora che non esiste per il cambio dell'ora"
+        else:
+            try:bounds(tenant,booking.service,{**base,"start":start.isoformat()},desk=True)
+            except BookingError as ex:why=str(ex).split(".")[0].lower()
+        out.append((start or datetime.combine(d,first.time(),tz),why));d+=timedelta(weeks=every)
+    return out
+def series_create(tenant,booking,every,until,actor):
+    """The free dates of the plan, tied to the booking (series); the ones taken meanwhile are skipped. How many made."""
+    import uuid
+    sid=booking.series or uuid.uuid4();made=0
+    if not booking.series:Booking.objects.filter(pk=booking.pk).update(series=sid);booking.series=sid
+    for start,why in series_plan(tenant,booking,every,until):
+        if why:continue
+        try:create_booking(tenant,{**series_base(booking),"start":start.isoformat(),"request_key":secrets.token_urlsafe(24)},actor,series=sid);made+=1
+        except BookingError:pass
+    audit(tenant,actor,"booking.series",booking.pk,made=made,every=every)
+    return made
