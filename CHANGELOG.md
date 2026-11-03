@@ -1,6 +1,6 @@
-# TD Booking Suite 2.17.0 — registro modifiche
+# TD Booking Suite 2.17.1 — registro modifiche
 
-**3 novembre 2026 · versione 2.17.0**
+**3 novembre 2026 · versione 2.17.1**
 
 ## 2.17.1 — agenda riservata sul sito
 
