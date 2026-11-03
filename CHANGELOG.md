@@ -2,6 +2,11 @@
 
 **3 novembre 2026 · versione 2.16.1**
 
+## 2.16.2 — promemoria impostati dall'amministratore
+
+- **Promemoria impostati dall'agenzia**: in *Notifiche* accensione e orario di promemoria, secondo promemoria, messaggio prima dell'arrivo e email dopo la visita, e l'annullamento di chi non conferma, li cambia solo l'agenzia (che ora apre la pagina anche dalla *Gestione tecnica*); il titolare li vede com'erano impostati, con la scritta «li imposta l'agenzia». Le impostazioni già salvate restano valide; i testi seguono la regola di sempre (*Email ai clienti* nelle impostazioni dell'attività)
+- **Il giorno prima a un'ora fissa**: per promemoria e secondo promemoria, oltre a «N ore prima», *Il giorno prima, a un'ora fissa* (per esempio alle 18:00, all'ora dell'attività): parte una volta sola, mai a chi prenota dopo quell'ora
+
 ## 2.16.1 — dati fiscali dei clienti
 
 - **Dati fiscali** nella scheda del cliente (*Clienti › scheda*, per chi crea prenotazioni e vede i recapiti; agli altri ruoli compaiono nascosti come gli altri recapiti): privato, azienda o professionista, codice fiscale e partita IVA controllati (carattere e cifra di controllo; per l'estero partita IVA e CAP liberi), ragione sociale, indirizzo con CAP, comune, provincia e nazione, codice destinatario SDI e PEC, cifrati con il resto della scheda. La **Cassa** mette il codice fiscale del cliente scelto, l'**importazione** riconosce le colonne Codice fiscale, Partita IVA, Ragione sociale, PEC, SDI o Codice destinatario, CAP e Provincia, l'**unione di due schede** li fa scegliere campo per campo, lo scarico privacy li comprende e la cancellazione li toglie.

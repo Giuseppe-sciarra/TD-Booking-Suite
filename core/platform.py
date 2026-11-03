@@ -274,7 +274,8 @@ def support_view(request,slug):
 def notifications_view(request,slug):
     """Owner settings for business notifications: email address and Telegram bot."""
     from .notify import TOKEN,CHAT,summary
-    if not can(request,"users.manage"):raise PermissionDenied
+    # 2.16.2: the agency opens it too, it alone sets when the reminders go
+    if not (can(request,"users.manage") or request.user.is_staff):raise PermissionDenied
     tenant=request.tenant;error=""
     current=decrypt(tenant,tenant.telegram,"telegram") if tenant.telegram else {}
     if request.method=="POST":
@@ -298,11 +299,11 @@ def notifications_view(request,slug):
                 messages.success(request,"Notifiche salvate.")
             elif action=="client_mails":
                 # 2.13.0: which emails reach the clients and with which words, once the agency allows it;
-                # 2.14.0: reminders and the other messages, and when they go, also without it
+                # 2.14.0: reminders and the other messages, and when they go, also without it; 2.16.2: these by the agency only
                 from . import client_mails as cm
                 with transaction.atomic():
                     t=Tenant.objects.select_for_update().get(pk=tenant.pk)
-                    try:t.client_mails=cm.clean(request.POST,t.client_mails_enabled,t.client_mails)
+                    try:t.client_mails=cm.clean(request.POST,t.client_mails_enabled,t.client_mails,request.user.is_staff)
                     except BookingError as ex:raise ValueError(str(ex))
                     t.save(update_fields=["client_mails"])
                     audit(t,request.user,"client_mails.saved",on=[k for k,v in cm.current(t).items() if v["on"]])
@@ -338,7 +339,7 @@ def notifications_view(request,slug):
     from .notify import operators
     from .texts import TEXT as SMS_TEXT
     now=cm.current(tenant)
-    mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD} for k,label,help in cm.KINDS}
+    mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD,"locked":k in cm.ADMIN and not request.user.is_staff} for k,label,help in cm.KINDS}
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
         "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),

@@ -8,7 +8,7 @@ from core.models import *
 from core.tenancy import scope
 from core.crypto import decrypt
 from core.booking import create_booking,move_booking,change_status
-from core.client_mails import remind,fill
+from core.client_mails import remind,fill,current
 from tests.test_core import sample,payload,client_as
 from tests.test_clients import staff_payload
 
@@ -34,10 +34,16 @@ def test_the_business_writes_its_emails(sample):
     owner,u=client_as(t)
     url=f"/t/{t.slug}/notifications/"
     page=owner.get(url).content.decode()
-    # 2.14.0: without the agency's switch the owner times the reminders, the words stay the standard ones
-    assert "chiedi all" in page and 'name="confirmed_subject"' not in page and 'name="reminder_hours"' in page
-    assert owner.post(url,{"action":"client_mails","reminder_on":"on","reminder_hours":"48","confirmed_subject":"Mio"}).status_code==302
-    t.refresh_from_db();assert t.client_mails["reminder"]=={"on":True,"hours":48,"autocancel":0} and "on" not in t.client_mails["confirmed"]
+    # 2.16.2: the owner sees the reminders' timing, only the agency changes it; the words stay the standard ones
+    assert "chiedi all" in page and 'name="confirmed_subject"' not in page and 'name="reminder_hours" disabled' in page
+    assert owner.post(url,{"action":"client_mails","reminder_hours":"48","reminder_autocancel":"2","confirmed_subject":"Mio"}).status_code==302
+    t.refresh_from_db();assert t.client_mails["reminder"]=={} and "on" not in t.client_mails["confirmed"] and current(t)["reminder"]["on"]
+    agency,_=client_as(t,staff=True)
+    assert "del giorno prima, per esempio 18:00" in agency.post(url,{"action":"client_mails","reminder_on":"on","reminder_hours":"at","reminder_at":"25:00"},follow=True).content.decode()
+    assert agency.post(url,{"action":"client_mails","reminder_on":"on","reminder_hours":"at","reminder_at":"18:00","reminder_autocancel":"12"}).status_code==302
+    t.refresh_from_db();assert t.client_mails["reminder"]=={"on":True,"at":"18:00","autocancel":12}
+    assert agency.post(url,{"action":"client_mails","reminder_on":"on","reminder_hours":"48"}).status_code==302
+    t.refresh_from_db();assert t.client_mails["reminder"]=={"on":True,"at":"","hours":48,"autocancel":0}
     t.client_mails_enabled=True;t.save()
     page=owner.get(url).content.decode()
     assert "data-mails" in page and "Promemoria" in page and 'id="mail-sample"' in page
@@ -46,8 +52,8 @@ def test_the_business_writes_its_emails(sample):
           "reminder_on":"on","reminder_hours":"24","reminder_subject":"","reminder_body":""}
     r=owner.post(url,{"action":"client_mails",**data});assert r.status_code==302
     t.refresh_from_db()
-    assert t.client_mails["moved"]["on"] is False and t.client_mails["reminder"]["hours"]==24 and t.client_mails["moved"]["subject"].startswith("Prenotazione aggiornata")
-    assert "scegli quando" in owner.post(url,{"action":"client_mails",**data,"reminder_hours":"5"},follow=True).content.decode().lower()
+    assert t.client_mails["moved"]["on"] is False and t.client_mails["reminder"]["hours"]==48 and t.client_mails["moved"]["subject"].startswith("Prenotazione aggiornata")
+    assert "scegli quando" in agency.post(url,{"action":"client_mails",**data,"reminder_hours":"5"},follow=True).content.decode().lower()
     with scope(t):
         b,_=create_booking(t,payload(s))
         move_booking(t,b.pk,{"service":str(s.pk),"start":payload(s,hour=12)["start"],"party":1},None)

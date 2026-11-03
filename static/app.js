@@ -78,6 +78,9 @@
     card.classList.toggle("is-on",on.checked);on.nextElementSibling.textContent=on.checked?"Parte":"Spenta";};
    [subject,body].forEach(f=>{f.addEventListener("input",draw);f.addEventListener("focus",()=>{last=f;});});
    on.addEventListener("change",draw);
+   // 2.16.2: "Il giorno prima, a un'ora fissa" shows its time
+   const when=card.querySelector("[data-at-choice]"),at=card.querySelector("[data-at]");
+   if(when&&at)when.addEventListener("change",()=>{at.hidden=when.value!=="at";});
    card.querySelectorAll("[data-insert]").forEach(b=>b.addEventListener("click",()=>{
     const a=last.selectionStart??last.value.length,z=last.selectionEnd??a;
     last.setRangeText(b.dataset.insert,a,z,"end");last.focus();draw();}));

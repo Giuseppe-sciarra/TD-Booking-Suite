@@ -1,7 +1,7 @@
 """2.13.0: the emails to the client about his booking: confirmation, change, cancellation and the reminder before it.
 The standard texts go to everyone; the agency can let the business choose which ones go and write the words (Notifiche).
 2.14.0: the reminders (on by default for the new businesses, a second one, Confermo / Non vengo), the message before the
-arrival and the one after the visit are switched on and timed by the business itself; every email has an HTML part with
+arrival and the one after the visit are switched on and timed by the business itself (2.16.2: by the agency only, ADMIN); every email has an HTML part with
 logo and colour, the confirmation and the change the calendar file. The client who leaves an email chooses whether he
 wants them: his card (Contact.notices) and the box of the booking form, kept on the booking, since an online request
 never rewrites a card."""
@@ -37,8 +37,8 @@ DEFAULTS={
  "accepted":{"on":True,"subject":"Prenotazione confermata · {attivita}","body":"La tua richiesta è confermata.\n{servizio}\n{quando}\nGestisci o annulla: {link}"},
  "rejected":{"on":True,"subject":"Richiesta non confermata · {attivita}","body":"Ci dispiace, non possiamo confermare la tua richiesta: {servizio}, {quando}.\nContatta l'attività per trovare un'altra soluzione."},
  # 2.14.0: on by default (migration 0027 keeps the businesses that exist as they were); autocancel: hours, 0 = never
- "reminder":{"on":True,"hours":24,"autocancel":0,"subject":"Promemoria · {attivita}","body":"Ciao {nome},\nti ricordiamo la prenotazione: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
- "reminder2":{"on":False,"hours":2,"subject":"A tra poco · {attivita}","body":"Ciao {nome},\nti aspettiamo tra poco: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
+ "reminder":{"on":True,"hours":24,"at":"","autocancel":0,"subject":"Promemoria · {attivita}","body":"Ciao {nome},\nti ricordiamo la prenotazione: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
+ "reminder2":{"on":False,"hours":2,"at":"","subject":"A tra poco · {attivita}","body":"Ciao {nome},\nti aspettiamo tra poco: {servizio}, {quando}.\nSe non puoi venire, gestisci o annulla: {link}"},
  "arrival":{"on":False,"hours":48,"subject":"Prima del tuo arrivo · {attivita}","body":"Ciao {nome},\nti aspettiamo: {servizio}, {quando}.\n{istruzioni}\nPer gestire la prenotazione: {link}"},
  "review":{"on":False,"hours":3,"url":"","subject":"Com'è andata? · {attivita}","body":"Ciao {nome},\ngrazie di aver scelto {attivita}. Se ti va, lasciaci una recensione: per noi conta molto."},
  # 2.14.0: the line on who takes the place (everyone told, or kept for him until...) is added after the text (offer)
@@ -50,13 +50,17 @@ HOURS=[2,3,6,12,24,48,72]
 # when each timed message goes: hours before the start, hours after the end for the review
 TIMING={"reminder":HOURS,"reminder2":[1,2,3,4,5,6],"arrival":HOURS+[168],"review":[1,2,3,6,12,24,48]}
 AUTOCANCEL=[0,2,3,6,12]
+# 2.16.2: on/off and timing of these, and the autocancel, are set by the agency (staff) only; "at" (HH:MM) = the day
+# before at that local time instead of the hours, for the reminders
+ADMIN=("reminder","reminder2","arrival","review")
+AT_TIME=re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 FIELDS=[("nome","nome del cliente"),("servizio","servizio"),("quando","giorno e ora"),("data","data"),("ora","ora"),("sede","sede"),
         ("operatore","operatore o camera"),("attivita","nome dell'attività"),("link","link per gestire o annullare"),("istruzioni","istruzioni del servizio")]
 WEEKDAYS=["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"]
 
 def current(tenant):
     """What goes and with which words. The words, and whether the standard emails go, are the business's own only while
-    the agency lets it choose; the reminders, the other messages and their timing always (2.14.0)."""
+    the agency lets it choose; the reminders, the other messages and their timing always (2.14.0), as saved (clean)."""
     own=tenant.client_mails or {}
     mine=lambda k,x:tenant.client_mails_enabled or x not in ("subject","body","subject_en","body_en") and not (x=="on" and k in STANDARD)
     return {k:{**v,**{x:y for x,y in (own.get(k) or {}).items() if mine(k,x)}} for k,v in DEFAULTS.items()}
@@ -187,9 +191,10 @@ def offer(tenant,entry,slots,link,until=None):
     return queue(tenant,{"to":d["email"],"subject":" ".join(fill(gettext(conf["subject"]),v).split()),"body":body,
         "html":render_to_string("email.html",{"tenant":tenant,"body":body,"links":[(gettext("Prenota"),link)],"color":contrast_color(tenant.brand_color)})},entry.contact)
 
-def clean(post,enabled=True,saved=None):
+def clean(post,enabled=True,saved=None,admin=False):
     """The emails as the business set them. Words, and whether the standard emails go, only while the agency lets it
-    write them (otherwise those saved stay as they were); an empty subject or text goes back to the standard one."""
+    write them (otherwise those saved stay as they were); an empty subject or text goes back to the standard one.
+    2.16.2: on/off and timing of ADMIN and the autocancel only from the agency (admin), otherwise kept as saved."""
     from .booking import BookingError
     out={}
     for key,label,_ in KINDS:
@@ -205,35 +210,42 @@ def clean(post,enabled=True,saved=None):
             subject_en=" ".join(str(post.get(key+"_subject_en","")).split());body_en=str(post.get(key+"_body_en","")).replace("\r\n","\n").strip()
             if len(subject_en)>150 or len(body_en)>4000 or any(ord(c)<32 and c!="\n" for c in subject_en+body_en):raise BookingError(f"{label}: il testo in inglese è troppo lungo o contiene caratteri non validi.")
             mine.update(subject_en=subject_en,body_en=body_en)
-        if enabled or key not in STANDARD:mine["on"]=post.get(key+"_on")=="on"
-        if key in TIMING:
-            try:mine["hours"]=int(post.get(key+"_hours",mine.get("hours",d["hours"])))
-            except ValueError:mine["hours"]=0
-            if mine["hours"] not in TIMING[key]:raise BookingError(f"{label}: scegli quando parte.")
+        if (enabled or key not in STANDARD) and (admin or key not in ADMIN):mine["on"]=post.get(key+"_on")=="on"
+        if key in TIMING and admin:
+            if "at" in d and post.get(key+"_hours")=="at":
+                mine["at"]=str(post.get(key+"_at","")).strip()
+                if not AT_TIME.fullmatch(mine["at"]):raise BookingError(f"{label}: scrivi l'ora del giorno prima, per esempio 18:00.")
+            else:
+                try:mine["hours"]=int(post.get(key+"_hours",mine.get("hours",d["hours"])))
+                except ValueError:mine["hours"]=0
+                if mine["hours"] not in TIMING[key]:raise BookingError(f"{label}: scegli quando parte.")
+                if "at" in d:mine["at"]=""
         out[key]=mine
     from .texts import clean_texts
     try:out["texts"]=clean_texts(post)  # 2.14.0: the SMS and WhatsApp words, in the same page
     except ValueError as ex:raise BookingError(str(ex))
     out["confirmed"]["price"]=post.get("confirmed_price")=="on"
-    try:cancel=int(post.get("reminder_autocancel",0))
-    except ValueError:cancel=-1
-    if cancel not in AUTOCANCEL:raise BookingError("Scegli quando annullare le prenotazioni non confermate.")
-    if cancel and cancel>=out["reminder"]["hours"]:raise BookingError("L'annullamento automatico deve venire dopo il promemoria: scegli meno ore.")
-    out["reminder"]["autocancel"]=cancel
+    if admin:
+        try:cancel=int(post.get("reminder_autocancel",0))
+        except ValueError:cancel=-1
+        if cancel not in AUTOCANCEL:raise BookingError("Scegli quando annullare le prenotazioni non confermate.")
+        # with "the day before at" the hours vary: unconfirmed() cancels only who was asked before the last hours began
+        if cancel and not out["reminder"].get("at") and cancel>=out["reminder"]["hours"]:raise BookingError("L'annullamento automatico deve venire dopo il promemoria: scegli meno ore.")
+        out["reminder"]["autocancel"]=cancel
     url=str(post.get("review_url","")).strip()
     if url:
         from django.core.exceptions import ValidationError
         from django.core.validators import URLValidator
         try:URLValidator(schemes=["https"])(url)
         except ValidationError:raise BookingError("Dopo la visita: il link della recensione deve iniziare con https://")
-    elif out["review"]["on"]:raise BookingError("Dopo la visita: scrivi il link per la recensione, per esempio quello di Google.")
+    elif out["review"].get("on",DEFAULTS["review"]["on"]):raise BookingError("Dopo la visita: scrivi il link per la recensione, per esempio quello di Google.")
     out["review"]["url"]=url
     return out
 
 BEFORE={"reminder":"reminded","reminder2":"reminded2","arrival":"arrival"}  # the messages before the start, the mark of each
 def remind(now=None):
     """The messages due, each once (a moved booking gets them again, booking.py): the reminders to the confirmed
-    bookings starting within the hours chosen and booked before that window opened (who books for this afternoon needs
+    bookings starting within the hours chosen (or from the day before at the hour chosen, 2.16.2) and booked before that window opened (who books for this afternoon needs
     no reminder), the instructions before the arrival to the stays and events whose service has them; then the
     bookings left unconfirmed, where the business wants it, and the email after the visit.
     shortcut: the bookings are read one business at a time; select_for_update(skip_locked) keeps two workers from
@@ -245,19 +257,22 @@ def remind(now=None):
     now=now or timezone.now();sent=0
     for tenant in Tenant.objects.iterator():
         if not operational(tenant):continue
-        conf=current(tenant)
+        conf=current(tenant);tz=ZoneInfo(tenant.timezone)
         with scope(tenant),transaction.atomic():
             for kind,mark in BEFORE.items():
                 if not conf[kind]["on"]:continue
-                window=timedelta(hours=conf[kind]["hours"])
+                at=conf[kind].get("at")  # 2.16.2: the day before at this local time; two days cover every start
+                window=timedelta(hours=48 if at else conf[kind]["hours"])
                 rows=(Booking.objects.select_for_update(skip_locked=True,of=("self",)).filter(status="confirmed",start__gt=now,start__lte=now+window)
                     .exclude(snapshot__has_key=mark).select_related("tenant","service","contact","location"))
                 # the instructions are needed also by who books at the last minute
                 if kind=="arrival":rows=rows.filter(service__kind__in=("day","event")).exclude(service__instructions="")
                 for b in rows:
+                    due=datetime.combine(b.start.astimezone(tz).date()-timedelta(days=1),time.fromisoformat(at),tz) if at else b.start-window
+                    if due>now:continue  # not yet: nothing marked
                     # 2.14.0: the reminders also by SMS or WhatsApp, when the agency set one (texts.py); a visit has one, its first service's
                     later=b.visit and Booking.objects.filter(visit=b.visit,start__lt=b.start).exclude(status="cancelled").exists()
-                    if not later and (kind=="arrival" or b.created<=b.start-window) and (bool(send(tenant,b,kind))|bool(texts.remind(tenant,b,kind))):
+                    if not later and (kind=="arrival" or b.created<=due) and (bool(send(tenant,b,kind))|bool(texts.remind(tenant,b,kind))):
                         sent+=1
                         if kind!="arrival":b.snapshot["asked"]=now.isoformat()  # Confermo / Non vengo went out: Da chiamare
                     b.snapshot[mark]=now.isoformat();b.save(update_fields=["snapshot"])

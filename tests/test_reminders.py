@@ -45,6 +45,17 @@ def test_reminder_on_for_new_businesses_kept_for_the_others(sample):
     assert on=={"stale":False,"chosen":True,"never":False,"plain":False}  # what each one sent before 2.14.0
     assert Tenant.objects.get(slug="chosen").client_mails["reminder"]["hours"]==48
 
+def test_reminder_the_day_before_at_a_fixed_hour(sample):
+    t,o,s=sample
+    t.client_mails={"reminder":{"on":True,"hours":24,"at":"18:00"}};t.save()
+    with scope(t):b,_=create_booking(t,payload(s))
+    eve=datetime.combine(b.start.astimezone(ROME).date()-timedelta(days=1),time(18),ROME)
+    assert remind(eve-timedelta(minutes=1))==0 and remind(eve)==1 and remind(eve+timedelta(hours=1))==0
+    with scope(t):
+        late,_=create_booking(t,payload(s,hour=12,email="anna@example.invalid"))
+        Booking.objects.filter(pk=late.pk).update(created=eve+timedelta(hours=2))  # booked after 18:00: never in the past
+    assert remind(eve+timedelta(hours=3))==0 and get(t,late.pk).snapshot.get("reminded")
+
 def test_second_reminder_once_and_both_again_when_moved(sample):
     t,o,s=sample  # the agency's switch is off: the owner still times the reminders
     t.client_mails={"reminder2":{"on":True,"hours":2}};t.save()
@@ -116,8 +127,8 @@ def test_unconfirmed_stay_unless_the_business_cancels_them(sample):
     gone=get(t,b.pk);assert gone.status=="cancelled" and gone.snapshot["cancel_reason"]=="unconfirmed"
     assert get(t,yes.pk).status=="confirmed" and get(t,late.pk).status=="confirmed"
     assert mails(t,"mario@example.invalid")[-1]["body"].startswith("Non abbiamo ricevuto la tua conferma.")
-    owner,u=client_as(t)
-    r=owner.post(f"/t/{t.slug}/notifications/",{"action":"client_mails","reminder_on":"on","reminder_hours":"6","reminder_autocancel":"6"},follow=True)
+    agency,u=client_as(t,staff=True)  # 2.16.2: the agency's choice
+    r=agency.post(f"/t/{t.slug}/notifications/",{"action":"client_mails","reminder_on":"on","reminder_hours":"6","reminder_autocancel":"6"},follow=True)
     assert "dopo il promemoria" in r.content.decode()
 
 def test_the_list_of_who_to_call(sample):
