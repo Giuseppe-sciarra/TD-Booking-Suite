@@ -3,6 +3,7 @@ from django.views.generic import RedirectView
 from core import cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
+ path("brand/<slug:slug>/app.css",branding.app_css,name="brand_app_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
  path("brand/<slug:slug>/foto/<uuid:resource_id>.jpg",branding.resource_photo,name="resource_photo"),
  path("",portal.home,name="home"),

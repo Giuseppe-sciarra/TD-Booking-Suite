@@ -181,7 +181,9 @@ def favicon(request):
     return redirect(settings.STATIC_URL+"favicon.svg")
 @require_GET
 def css(request):
-    color=SiteSettings.current().brand_color
+    r=HttpResponse(accent_css(SiteSettings.current().brand_color),content_type="text/css");r["Cache-Control"]="public, max-age=86400";return r
+def accent_css(color):
+    """The accent of the portal pages; 2.17.2: also a business's own colour inside its pages (branding.app_css)."""
     light=contrast_color(color);dark=contrast_color(color,True)
     # 2.8.1: the pale tints (menu highlight, soft backgrounds) follow the accent too, not only buttons and links
     from .branding import mix
@@ -189,7 +191,7 @@ def css(request):
     body=(f":root,:root[data-theme=light]{{--brand:{light};--violet:{color};--pastel:{pastel};--soft:{soft}}}"
           f":root[data-theme=dark]{{--brand:{dark};--violet:{color};--pastel:{pastel};--soft:{soft_dark}}}"
           f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{--brand:{dark};--violet:{color};--pastel:{pastel};--soft:{soft_dark}}}}}")
-    r=HttpResponse(body,content_type="text/css");r["Cache-Control"]="public, max-age=86400";return r
+    return body
 
 # The WordPress connector: its page for the agency in the Cloud edition; the zip alone in every edition (2.17.0).
 def plugin_allowed(request):

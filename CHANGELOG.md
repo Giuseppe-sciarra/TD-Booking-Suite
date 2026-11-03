@@ -1,6 +1,10 @@
-# TD Booking Suite 2.17.1 — registro modifiche
+# TD Booking Suite 2.17.2 — registro modifiche
 
-**3 novembre 2026 · versione 2.17.1**
+**3 novembre 2026 · versione 2.17.2**
+
+## 2.17.2 — il colore dell'attività anche dentro il programma
+
+- **Colore di Logo e aspetto**: cambiava solo la pagina prenotazioni e le email, mentre menu, pulsanti e evidenziazioni del programma restavano del colore del portale. Ora dentro le pagine dell'attività (e quindi in tutta l'edizione Windows) vale il colore scelto lì, come mostra l'anteprima; se è lo stesso del portale non cambia niente. Ogni colore nuovo ha un indirizzo nuovo, quindi si vede subito senza svuotare la cache
 
 ## 2.17.1 — agenda riservata sul sito
 

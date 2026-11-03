@@ -56,6 +56,11 @@ def css(request,slug):
     light=contrast_color(t.brand_color);dark=contrast_color(t.brand_color,True)
     body=f":root,:root[data-theme=light]{{--brand:{light};--brand-ink:#fff}}:root[data-theme=dark]{{--brand:{dark};--brand-ink:#241a30}}@media(prefers-color-scheme:dark){{:root[data-theme=auto]{{--brand:{dark};--brand-ink:#241a30}}}}"
     return HttpResponse(body,content_type="text/css")
+def app_css(request,slug):
+    """2.17.2: the colour chosen in Logo e aspetto also inside the business's own pages, not only on its booking page."""
+    from .site import accent_css
+    r=HttpResponse(accent_css(get_object_or_404(Tenant,slug=slug).brand_color),content_type="text/css")
+    r["Cache-Control"]="public, max-age=86400";return r  # the link carries the colour, so a new colour is a new address
 def logo(request,slug):
     t=get_object_or_404(Tenant,slug=slug)
     if not t.logo:return HttpResponse(status=404)
