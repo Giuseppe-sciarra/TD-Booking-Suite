@@ -23,8 +23,8 @@ l'orario dal sito, il cliente riceve "Richiesta ricevuta" e la conferma vera arr
 database cifrate con una chiave ricavata dalla chiave condivisa e si cancellano appena il PC le ha prese. Se il PC non si fa
 sentire da più dei giorni indicati, il modulo dice di contattare l'attività. Richiede i permalink attivi (/wp-json/).
 
-Agenda riservata (2.17.1). Nel programma, nella stessa card, l'agenzia crea gli accessi: nome, password e cosa si vede
-(tutta l'attività o alcuni operatori). In una pagina del sito metti [tdbs_agenda]: con la password si apre l'agenda del giorno
-o della settimana, una colonna per operatore, con il dettaglio di ogni prenotazione e le richieste del sito non ancora prese
-dal PC. Il sito riceve e dà solo dati cifrati (PBKDF2-HMAC-SHA256 + AES-256-GCM, chiave ricavata dalla password): si decifrano
-solo nel browser, la password non viene mai inviata. Sola lettura.
+Agenda riservata (2.17.1). In Modalità PC imposta la password dell'agenda e metti [tdbs_agenda] in una pagina: con la
+password si apre l'agenda del giorno o della settimana, una colonna per operatore, con il dettaglio di ogni prenotazione e le
+richieste del sito non ancora prese dal PC. Il PC la manda cifrata con la chiave condivisa e il sito la decifra per mostrarla:
+chi amministra il sito può tecnicamente leggerla. Blocco dopo 5 password sbagliate, sessione HttpOnly di 8 ore, Esci, pagina
+fuori dalla cache e non indicizzata. Sola lettura.
