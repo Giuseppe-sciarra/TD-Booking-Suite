@@ -42,7 +42,8 @@ status() {
   fi
   local key; key=$(grep -E '^[[:space:]]*TDBS_AGG_CHIAVE=' "$DIR/.env" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"'"'"' \r'); key="${key:-/root/tdbs-backup.key}"
   [[ -f "$key" ]] || echo "⚠ Manca la chiave dei backup $key: senza, l'aggiornamento non tocca niente (INSTALLAZIONE.md, passo 9)"
-  [[ -d "$DIR/.git" ]] || echo "⚠ Installazione senza git: le versioni nuove di TD Booking Suite non arrivano da sole (INSTALLAZIONE.md, passo 13)"
+  if grep -qE '^[[:space:]]*TDBS_AGGIORNA_CODICE=["'"'"']?1' "$DIR/.env" 2>/dev/null; then echo "Codice: si aggiorna da solo alle versioni nuove pubblicate su GitHub"
+  else echo "⚠ Codice: le versioni nuove non si installano da sole (TDBS_AGGIORNA_CODICE=1 in .env, INSTALLAZIONE.md passo 13)"; fi
   echo
   if [[ -s "$LOG" ]]; then
     echo "Ultime righe del log ($LOG):"

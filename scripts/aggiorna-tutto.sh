@@ -6,12 +6,13 @@
 #   • Python 3.12 all'ultima immagine e i pacchetti Debian;
 #   • TUTTE le librerie Python all'ultima versione, major comprese, tranne i limiti scritti in
 #     requirements.in con il motivo (per esempio Django resta sulla 5.2 LTS);
-#   • PostgreSQL 17 all'ultima versione 17.x (mai il passaggio a una versione maggiore).
-# Il codice di TD Booking Suite non lo tocca e GitHub non lo guarda: la versione nuova si installa
-# a mano (INSTALLAZIONE.md, passo 11).
+#   • PostgreSQL 17 all'ultima versione 17.x (mai il passaggio a una versione maggiore);
+#   • con TDBS_AGGIORNA_CODICE=1 nel .env, il codice di TD Booking Suite all'ultima release pubblica di
+#     GitHub (mai una versione più vecchia, mai pre-release o bozze). .env, logs/, backups/ e i file
+#     generati qui restano dove sono; il codice di prima resta in .agg-codice-prima per il rollback.
 #
 # Come, nell'ordine:
-#   1. fotografa le versioni installate;
+#   1. fotografa le versioni installate e, se c'è una release nuova, scarica, controlla e mette il codice nuovo;
 #   2. guarda se ci sono immagine Python nuova, librerie nuove, pacchetti Debian, PostgreSQL nuovo;
 #   3. se serve ricostruisce l'immagine mentre il portale gira ancora con quella di prima;
 #   4. ferma portale e invio email, fa il backup cifrato del database (serve la chiave del passo 9
@@ -19,7 +20,7 @@
 #      (il portale resta giù da qualche secondo a un minuto);
 #   5. prova la versione nuova: pagina di accesso dall'host e `manage.py selftest` DENTRO il container
 #      (database, cifratura, password, loghi, Authenticator, passkey, pagine): se qualcosa non va
-#      → ROLLBACK a immagine, librerie e, se le migrazioni l'hanno cambiato, database di prima;
+#      → ROLLBACK a codice, immagine, librerie e, se le migrazioni l'hanno cambiato, database di prima;
 #   6. email di riepilogo in testo semplice all'agenzia, solo se qualcosa si è aggiornato o è
 #      fallito (cosa, librerie, cosa no e perché, comandi per tornare indietro), con l'invio email
 #      del portale (Impostazioni generali);
@@ -28,8 +29,10 @@
 #   bash scripts/aggiorna-tutto.sh              → aggiornamento vero
 #   bash scripts/aggiorna-tutto.sh --dry-run    → dice cosa farebbe, non tocca niente
 #   bash scripts/aggiorna-tutto.sh --solo-app   → niente PostgreSQL
+#   bash scripts/aggiorna-tutto.sh --solo-librerie → niente codice nuovo da GitHub
 #
 # Variabili (nel .env oppure davanti al comando):
+#   TDBS_AGGIORNA_CODICE=0    1 = installa anche le versioni nuove del codice (le installazioni nuove hanno 1)
 #   TDBS_AGG_EMAIL=           a chi mandare il riepilogo (vuoto = email delle richieste di prova o di assistenza)
 #   TDBS_AGG_TIENI_ROLLBACK=3 quante immagini di rollback tenere
 #   TDBS_AGG_CHIAVE=/root/tdbs-backup.key   la chiave dei backup
@@ -48,10 +51,12 @@ export TZ=Europe/Rome   # orari del log e delle immagini di rollback in ora ital
 
 DRY_RUN=0
 SOLO_APP=0
+SOLO_LIBRERIE=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run)  DRY_RUN=1 ;;
     --solo-app) SOLO_APP=1 ;;
+    --solo-librerie) SOLO_LIBRERIE=1 ;;
     *) echo "Argomento sconosciuto: $arg"; exit 2 ;;
   esac
 done
@@ -92,7 +97,7 @@ if [[ -f logs/aggiorna-tutto.log ]] && (( $(stat -c %s logs/aggiorna-tutto.log) 
 fi
 DUMP=""
 # il backup in chiaro serve solo durante l'aggiornamento; la copia dello script si toglie alla fine
-trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"' EXIT
+trap '[[ -n "$DUMP" ]] && rm -f "$DUMP"; rm -rf .agg-codice .agg-codice.py .agg-release.json' EXIT
 
 # L'email la spedisce il portale (manage.py update_report): oggetto dall'esito, mittente e
 # destinatario dalle Impostazioni generali (o TDBS_AGG_EMAIL).
@@ -211,6 +216,56 @@ DB_ATT=""; [[ -n "$DB_CID" ]] && DB_ATT=$(docker inspect -f '{{.Config.Image}}' 
 db_immagine() { sed -n 's/^ *image: *\([^ ]*postgres:[^ ]*\).*/\1/p' | head -1; }   # l'immagine del servizio db in un compose.yaml
 DB_ATT="${DB_ATT:-$(override_val image)}"; DB_ATT="${DB_ATT:-$(db_immagine < compose.yaml)}"
 
+# ── 1. Codice: c'è una release nuova su GitHub? ─────────────────────────────
+#    Dopo aver letto cosa gira adesso (Dockerfile e compose.yaml sono del codice di prima), prima del resto:
+#    immagine, librerie e PostgreSQL si controllano poi su quelli della versione nuova.
+#    Lo script che gira è quello di prima (bash ha già il file aperto) e usa la sua copia di codice_nuovo.py.
+RELEASE_API="https://api.github.com/repos/Giuseppe-sciarra/td-booking-suite/releases/latest"
+VER_ATT="$(tr -d ' \r\n' < VERSION 2>/dev/null)"; VER_NUOVA=""; NOTE=""; CODICE_NUOVO=0
+rm -rf .agg-codice .agg-release.json; cp scripts/codice_nuovo.py .agg-codice.py
+annulla_codice() {   # il codice com'era, se questa notte l'aveva cambiato
+  [[ $CODICE_NUOVO == 1 ]] || return 0
+  CODICE_NUOVO=0
+  if python3 .agg-codice.py annulla . .agg-codice-prima >> logs/codice.log 2>&1; then
+    log "codice: torna la $VER_ATT"
+    non_aggiornato "codice: resta la $VER_ATT, la $VER_NUOVA non è stata installata (novità: $NOTE)" info
+  else
+    log "⚠⚠ non sono riuscito a rimettere il codice di prima (logs/codice.log): controllare a mano"
+    non_aggiornato "codice: non è tornata la $VER_ATT, va rimessa a mano: cd $DIR && python3 .agg-codice-prima/scripts/codice_nuovo.py annulla . .agg-codice-prima (logs/codice.log)" errore \
+      "$(tail -n 4 logs/codice.log)"
+  fi
+}
+scarica() { [[ -n "$1" ]] && curl -fsSL --max-time 600 -o .agg-codice/codice.zip "$1" 2>> logs/codice.log; }
+: > logs/codice.log
+if [[ $SOLO_LIBRERIE == 1 || "$(conf TDBS_AGGIORNA_CODICE 0)" != 1 ]]; then
+  log "codice: non controllato ($( [[ $SOLO_LIBRERIE == 1 ]] && echo '--solo-librerie' || echo 'TDBS_AGGIORNA_CODICE non è 1'))"
+elif ! curl -fsS --max-time 30 -H 'Accept: application/vnd.github+json' -o .agg-release.json "$RELEASE_API" 2>> logs/codice.log; then
+  log "⚠ GitHub non risponde (logs/codice.log): resta il codice di adesso"
+  non_aggiornato "codice: GitHub non ha detto qual è l'ultima versione, resta la $VER_ATT" errore "$(tail -n 4 logs/codice.log)"
+else
+  mapfile -t R < <(python3 .agg-codice.py controlla .agg-release.json "$VER_ATT" 2>> logs/codice.log)
+  VER_NUOVA="${R[0]:-}"; NOTE="${R[3]:-}"
+  if [[ -z "$VER_NUOVA" ]]; then
+    log "codice: $VER_ATT, nessuna versione più nuova"
+  elif [[ $DRY_RUN == 1 || ! -f "$CHIAVE" ]]; then
+    log "codice: c'è la $VER_NUOVA ($NOTE)$( [[ $DRY_RUN == 1 ]] && echo ', dry-run: non la scarico' || echo ', ma senza la chiave dei backup non la installo')"
+  elif ! mkdir .agg-codice || ! { scarica "${R[1]:-}" || scarica "${R[2]:-}"; } ||
+       ! SORG=$(python3 .agg-codice.py prepara .agg-codice/codice.zip .agg-codice/zip "$VER_NUOVA" 2>> logs/codice.log); then
+    log "⚠ la $VER_NUOVA non si è scaricata o lo zip non va bene (logs/codice.log): resta il codice di adesso"
+    non_aggiornato "codice: la $VER_NUOVA non si è scaricata o lo zip non va bene, resta la $VER_ATT ($NOTE)" errore "$(tail -n 4 logs/codice.log)"
+  else
+    CODICE_NUOVO=1   # da qui annulla_codice rimette quello di prima, anche se lo scambio si ferma a metà
+    if python3 .agg-codice.py scambia "$SORG" . .agg-codice-prima >> logs/codice.log 2>&1; then
+      log "codice: $VER_ATT → $VER_NUOVA messo al suo posto (quello di prima è in .agg-codice-prima)"
+    else
+      log "❌ non sono riuscito a mettere il codice nuovo (logs/codice.log)"
+      annulla_codice
+      non_aggiornato "codice: la $VER_NUOVA non si è potuta mettere al posto della $VER_ATT (logs/codice.log)" errore
+    fi
+  fi
+  rm -rf .agg-codice
+fi
+
 # ── 2. Immagine Python (3.12 + Debian): c'è una versione nuova? ────────────
 BASE_RIL="$(sed -n 's/^ARG PYTHON_IMAGE=//p' Dockerfile)"
 BASE_TAG="${BASE_RIL%@*}"
@@ -317,6 +372,7 @@ FIRMA_ORA=$(firma)
 FIRMA_BUILD=$(cat .agg-ultima-build 2>/dev/null || true)
 DA_RICOSTRUIRE=0
 MOTIVI=()
+[[ $CODICE_NUOVO == 1 ]]  && { DA_RICOSTRUIRE=1; MOTIVI+=("codice $VER_ATT → $VER_NUOVA"); }
 [[ $BASE_CAMBIATA == 1 ]] && { DA_RICOSTRUIRE=1; MOTIVI+=("Python/Debian di base nuovi"); }
 [[ $LIB_CAMBIATE == 1 ]]  && { DA_RICOSTRUIRE=1; MOTIVI+=("librerie Python"); }
 [[ "$DEB_N" -gt 0 ]]      && { DA_RICOSTRUIRE=1; MOTIVI+=("$DEB_N pacchetti Debian"); }
@@ -419,6 +475,7 @@ else
   MIGRA=0
 
   annulla_file() {   # codice, librerie e override come prima dell'aggiornamento
+    annulla_codice
     if [[ -f .agg-lock-prima ]]; then mv .agg-lock-prima requirements.auto.lock; else rm -f requirements.auto.lock; fi
     scrivi_override "$BASE_ATT" "$DB_EFF" "$LOCK_ATT"
     [[ -n "$CUR_ID" ]] && docker tag "$CUR_ID" "$APP_IMG"
@@ -510,6 +567,7 @@ for k in b:
       while IFS= read -r riga; do [[ -n "$riga" ]] && aggiornato "$riga"; done <<< "$CAMBI"
       [[ $DB_CAMBIATA == 1 && "$CAMBI" != *PostgreSQL:* ]] && aggiornato "PostgreSQL: immagine nuova di $DB_TAG, stessa versione"
       [[ $APP_OK == 1 ]] && librerie "$MODIFICHE"
+      [[ $CODICE_NUOVO == 1 ]] && { aggiornato "novità della $VER_NUOVA: $NOTE"; RIPR+=" && python3 .agg-codice-prima/scripts/codice_nuovo.py annulla . .agg-codice-prima"; }
       [[ $APP_OK == 1 && -n "$CUR_ID" ]] && RIPR+=" && docker tag $ROLLBACK_TAG $APP_IMG"
       indietro "$RIPR && docker compose up -d --no-build db web worker"
       # dopo le migrazioni il codice di prima vuole anche il database di prima (si perde quello scritto dopo l'aggiornamento)

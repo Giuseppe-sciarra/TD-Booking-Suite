@@ -26,7 +26,7 @@ origin="http://localhost:8000" if a.development else a.origin.rstrip("/")
 if not a.development and (not origin.startswith("https://") or ".example." in origin):raise SystemExit("Indica --origin https://il-tuo-dominio.it")
 key=lambda:base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
 dbpass=secrets.token_hex(24);rootpass=secrets.token_hex(24)
-env={"TDBS_EDITION":a.edition,"PUBLIC_ORIGIN":origin,"DJANGO_SECRET_KEY":secrets.token_urlsafe(64),"TDBS_KEYS":json.dumps({"v1":key(),"index":key()},separators=(",",":")),"TDBS_ACTIVE_KEY":"v1","TDBS_DEV":"1" if a.development else "0","TRUST_PROXY":"0" if a.development else "1","POSTGRES_PASSWORD":rootpass,"APP_DB_PASSWORD":dbpass}
+env={"TDBS_EDITION":a.edition,"PUBLIC_ORIGIN":origin,"DJANGO_SECRET_KEY":secrets.token_urlsafe(64),"TDBS_KEYS":json.dumps({"v1":key(),"index":key()},separators=(",",":")),"TDBS_ACTIVE_KEY":"v1","TDBS_DEV":"1" if a.development else "0","TRUST_PROXY":"0" if a.development else "1","POSTGRES_PASSWORD":rootpass,"APP_DB_PASSWORD":dbpass,"TDBS_AGGIORNA_CODICE":"1"}
 if not a.development:env["DATABASE_URL"]="postgresql://tdbooking_app:"+dbpass+"@db:5432/tdbooking"
 with os.fdopen(os.open(dest,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),"w",encoding="utf-8") as handle:
     handle.write("\n".join(k+"="+v for k,v in env.items())+"\n")
