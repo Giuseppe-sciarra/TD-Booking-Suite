@@ -1,6 +1,6 @@
-# TD Booking Suite 2.16.1 — registro modifiche
+# TD Booking Suite 2.16.2 — registro modifiche
 
-**3 novembre 2026 · versione 2.16.1**
+**3 novembre 2026 · versione 2.16.2**
 
 ## 2.16.2 — promemoria impostati dall'amministratore
 
