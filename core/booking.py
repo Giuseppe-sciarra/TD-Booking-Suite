@@ -191,6 +191,34 @@ def free_units(tenant,service,bs,be,party,resource=None,exclude=None):
     return [u for u in units if u.housekeeping!="out" and (u.capacity==0 or u.capacity>=party)
         and capacity_available(service,bs,be,1,resource=u,exclude=exclude)
         and not blocked_stay(tenant,bs,be,service,u)]
+PERIODS=(("day","al giorno"),("week","a settimana"),("month","al mese"))
+def limited(tenant,owner,day,minutes,exclude=None,cache=None):
+    """2.14.0: the limits of a service or an operator (owner.limits): what one more booking of `minutes` that day goes
+    beyond, in words; "" within. Counted on the bookings holding a place, in the business's day, ISO week and month."""
+    lim=owner.limits or {}
+    if not any(lim.values()):return ""
+    key=(owner.pk,day);tz=ZoneInfo(tenant.timezone)
+    if cache is None or key not in cache:
+        week=day-timedelta(days=day.weekday());month=day.replace(day=1);nxt=(month+timedelta(days=32)).replace(day=1)
+        rows=Booking.objects.filter(**{"resource" if isinstance(owner,Resource) else "service":owner},status__in=HOLDING,
+            start__gte=local_datetime(min(week,month),time(0),tz),start__lt=local_datetime(max(week+timedelta(days=7),nxt),time(0),tz)).exclude(pk__in=exclude if isinstance(exclude,list) else [exclude]).values_list("start","end")
+        used={p:[0,0] for p,_ in PERIODS}
+        for a,b in rows:
+            d=a.astimezone(tz).date()
+            for p,inside in (("day",d==day),("week",week<=d<week+timedelta(days=7)),("month",month<=d<nxt)):
+                if inside:used[p][0]+=1;used[p][1]+=int((b-a).total_seconds()//60)
+        if cache is None:return over_limit(lim,used,minutes,owner)
+        cache[key]=used
+    return over_limit(lim,cache[key],minutes,owner)
+def over_limit(lim,used,minutes,owner):
+    for p,words in PERIODS:
+        n,m=lim.get(p+"_n") or 0,lim.get(p+"_m") or 0
+        if n and used[p][0]+1>n:return f"oltre le {n} prenotazioni {words} di {owner.name}"
+        if m and used[p][1]+minutes>m:return f"oltre i {m} minuti prenotati {words} di {owner.name}"
+    return ""
+def away(r,day):
+    """2.14.0: an operator fuori ufficio that day."""
+    return bool(r and r.away_from and r.away_until and r.away_from<=day<=r.away_until)
 def candidates(tenant,service,day,option=None,resource=None,desk=False,force=False,party=1):
     """desk (2.14.0): lead time, horizon and last arrival are the public page's, the desk books from now on;
     force: Forza lists every date of an event of that day, also started, full or outside the hours."""
@@ -237,6 +265,11 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
         resources=list(linked(service))
         if allowed is not None:resources=[r for r in resources if str(r.pk) in allowed]
         resources=ranked(service,resources,day,prefer)
+        # 2.14.0: the stand-in of who is fuori ufficio takes "Il primo disponibile" first
+        subs={r.away_by_id for r in resources if away(r,day)}
+        resources=sorted(resources,key=lambda r:r.pk not in subs)
+    if not force:resources=[r for r in resources if not away(r,day)]
+    limits={}
     rank={str(r.pk) if r else "":i for i,r in enumerate(resources)}
     pool=list(linked(service,True)) if service.kind=="resource" else []
     gap=service.location.min_gap if service.kind=="resource" and not desk else 0
@@ -248,6 +281,7 @@ def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,excl
         for start,end,event in candidates(tenant,service,day,option,res,desk,force,party):
             bs=start-timedelta(minutes=service.buffer_before);be=end+timedelta(minutes=service.buffer_after)
             if force or (capacity_available(service,bs,be,party,res,event,exclude,online=not desk,gap=posa(service,start,end,res)) and not (pace and paced(service,start,party,exclude)) and support(service,bs,be,exclude,pool) is not False and not (gap and holes(near,bs,be,gap)) and not area_over(area,bs,be,party,exclude) and not (table and not fit(service.location,party,bs,be,area,exclude))):
+                if not desk and not force and any(limited(tenant,x,day,int((end-start).total_seconds()//60),exclude,limits) for x in (service,res) if x):continue
                 result.append({"start":start.astimezone(tz).isoformat(),"end":end.astimezone(tz).isoformat(),"resource":str(res.pk) if res else "","resource_name":res.name if res else "","occurrence":str(event.pk) if event else ""})
     result=sorted(result,key=lambda x:(x["start"],rank[x["resource"]]))
     if service.kind=="resource" and not resource:
@@ -370,6 +404,7 @@ def personal(data,service,staff=False,walkin=False):
     result["phone"]=normalize_phone(result["phone"])
     if not result["phone"]:raise BookingError(gettext("Numero di telefono non valido, per esempio 333 123 4567."))
     return {**result,**extras(data,service)}
+def shown_value(answer):return ("sì" if answer else "no") if type(answer) is bool else str(answer if answer is not None else "")
 def extras(data,service):
     """Notes and the service's own questions, the same for online and staff bookings."""
     result={}
@@ -385,6 +420,8 @@ def extras(data,service):
     if not isinstance(answers,dict):raise BookingError("Campi aggiuntivi non validi.")
     result["answers"]={}
     for field in service.fields:
+        # 2.14.0: a question shown only for an answer to an earlier one: otherwise not asked, not kept
+        if (cond:=field.get("show_if")) and shown_value(result["answers"].get(cond["key"]))!=cond["value"]:continue
         val=answers.get(field["key"],"")
         if field["type"]=="checkbox":
             if val=="" or val is None:val=False
@@ -467,6 +504,8 @@ def bounds(tenant,service,data,exclude=None,desk=False,force=False,prefer=None):
         if not capacity_available(service,bs,be,party,resource,occurrence,exclude,blocks=False,rooms=False,gap=posa(service,start,end,resource)):
             issues.append(f"sovrapposta a un altro appuntamento di {resource.name}" if resource else f"oltre i posti disponibili ({occurrence.capacity if occurrence else service.capacity})")
         from .tables import pick_area,area_over
+        if away(resource,day):issues.append(f"{resource.name} è fuori ufficio")
+        issues+=[x for x in (limited(tenant,o,day,int((end-start).total_seconds()//60),exclude) for o in (service,resource) if o) if x]
         if not resource:issues+=[x for x in (shared(service,bs,be,party,exclude),service.pace_desk and paced(service,start,party,exclude),area_over(pick_area(service,data.get("area")),bs,be,party,exclude)) if x]
     else:
         slots=available(tenant,service.pk,day,data.get("option"),data.get("resource"),party,exclude,desk=desk,prefer=prefer,area=data.get("area"))

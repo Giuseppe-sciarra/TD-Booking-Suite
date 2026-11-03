@@ -43,7 +43,7 @@ def valid_origin(value):
 def config(tenant):
     with scope(tenant):
         locations=list(Location.objects.filter(active=True).order_by("name"))
-        services=list(Service.objects.filter(active=True,location__active=True).select_related("location").order_by("location__name","name"))
+        services=list(Service.objects.filter(active=True,location__active=True,secret="").select_related("location").order_by("location__name","name"))
     p=PRESETS.get(tenant.business_type)
     return {"tenant":tenant.slug,"name":tenant.name,"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         "business_type":tenant.business_type,"business_label":p["label"] if p else "",

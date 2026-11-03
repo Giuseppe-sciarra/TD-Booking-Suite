@@ -121,6 +121,18 @@ def texts_view(request,slug):
                         TimeBlock.objects.filter(reason="google").delete()
                     audit(t,request.user,"google.saved",on=bool(conf))
                 messages.success(request,"Google Calendar salvato.")
+            elif request.POST.get("action")=="microsoft":
+                from . import mscal
+                conf=mscal.clean(request.POST,mscal.config(tenant))
+                with transaction.atomic():
+                    t=Tenant.objects.select_for_update().get(pk=tenant.pk)
+                    t.microsoft=encrypt(t,conf,"microsoft") if conf else "";t.save(update_fields=["microsoft"])
+                    if not conf:
+                        Resource.objects.exclude(microsoft="").update(microsoft="",microsoft_at=None,microsoft_error="Outlook spento dall'agenzia.")
+                        from .models import TimeBlock
+                        TimeBlock.objects.filter(reason="outlook").delete()
+                    audit(t,request.user,"microsoft.saved",on=bool(conf))
+                messages.success(request,"Outlook / Microsoft 365 salvato.")
             elif request.POST.get("action")=="test":
                 from .booking import normalize_phone
                 to=normalize_phone(request.POST.get("test_to",""))
@@ -141,9 +153,9 @@ def texts_view(request,slug):
                 messages.success(request,"SMS e WhatsApp salvati.")
             return redirect("texts",slug)
         except ValueError as ex:error=str(ex)
-    from . import gcal
+    from . import gcal,mscal
     return render(request,"texts.html",{"tenant":tenant,"conf":saved,"channel":texts.channel(saved),"providers":texts.PROVIDERS,"error":error,
-        "google":gcal.config(tenant),"google_uri":settings.PUBLIC_ORIGIN+"/oauth/google-calendar/"})
+        "google":gcal.config(tenant),"google_uri":settings.PUBLIC_ORIGIN+"/oauth/google-calendar/","microsoft":mscal.config(tenant),"microsoft_uri":settings.PUBLIC_ORIGIN+"/oauth/outlook-calendar/"})
 def team_admin(request):
     """2.13.0: who has access to a business and with which role is the agency's, like its type and locations:
     the owner does not even see the page."""

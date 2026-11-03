@@ -129,6 +129,10 @@ class Tenant(models.Model):
     texts_daily_limit=models.PositiveIntegerField(default=100)
     # 2.14.0: the agency's Google OAuth client (ID and secret, encrypted) for Google Calendar on the operators (gcal.py)
     google=models.TextField(blank=True)
+    # 2.14.0: the agency's Microsoft (Entra) app, ID and secret encrypted, for Outlook / Microsoft 365 on the operators (mscal.py)
+    microsoft=models.TextField(blank=True)
+    # 2.14.0: the thank-you page after an online booking (a service's own wins)
+    thanks_url=models.URLField(max_length=500,blank=True)
     # 2.14.0: Alloggiati Web through the Polizia's web service (stays.ws_send): {"user","password","wskey","auto","error"},
     # encrypted; set by the agency, or by the owner when the agency allows it
     alloggiati=models.TextField(blank=True)
@@ -273,6 +277,15 @@ class Resource(Scoped):
     google=models.TextField(blank=True)
     google_at=models.DateTimeField(null=True,blank=True)
     google_error=models.CharField(max_length=200,blank=True)
+    microsoft=models.TextField(blank=True)  # 2.14.0: the same with Outlook / Microsoft 365 (mscal.py)
+    microsoft_at=models.DateTimeField(null=True,blank=True)
+    microsoft_error=models.CharField(max_length=200,blank=True)
+    # 2.14.0: fuori ufficio from day to day (both included): not bookable, and his stand-in takes "Il primo disponibile"
+    # and is offered online instead of him. limits: bookings and booked minutes at most online (booking.limited)
+    away_from=models.DateField(null=True,blank=True)
+    away_until=models.DateField(null=True,blank=True)
+    away_by=models.ForeignKey("self",null=True,blank=True,on_delete=models.SET_NULL,related_name="+")
+    limits=models.JSONField(default=dict,blank=True)
     # 2.14.0: a room or a holiday home (stays.py): its cleaning, and the calendars of the portals read as closures
     # (addresses sealed: they hold the portal's secret), when last read and what went wrong
     housekeeping=models.CharField(max_length=5,default="clean",choices=[("clean","Pulita"),("dirty","Da pulire"),("out","Fuori servizio")])
@@ -353,6 +366,12 @@ class Service(Scoped):
     price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
     # 2.14.0: stays: rules for a period, [{"from","until","min","no_arrival":[weekdays],"no_departure":[...]}] (stays.restricted)
     stay_rules=models.JSONField(default=list,blank=True)
+    # 2.14.0: limits online per day, week and month: {"day_n","day_m","week_n",...} bookings and minutes (booking.limited);
+    # secret: not on the public page, booked only from its link /book/<slug>/?riservato=<secret>; empty = public.
+    # thanks_url: the thank-you page after the online booking, instead of the business's
+    limits=models.JSONField(default=dict,blank=True)
+    secret=models.CharField(max_length=40,blank=True,db_index=True)
+    thanks_url=models.URLField(max_length=500,blank=True)
     def __str__(self):return self.name
 class ServiceResource(Scoped):
     service=models.ForeignKey(Service,on_delete=models.CASCADE,related_name="resource_links")
@@ -414,7 +433,7 @@ class ShiftRule(Scoped):
     valid_until=models.DateField(null=True,blank=True)
     active=models.BooleanField(default=True)
     def __str__(self):return self.name
-BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso"),("busy","Occupato"),("google","Occupato su Google")]
+BLOCK_REASONS=[("break","Pausa"),("training","Formazione"),("meeting","Riunione"),("other","Altro"),("closed","Turno chiuso"),("busy","Occupato"),("google","Occupato su Google"),("outlook","Occupato su Outlook")]
 class TimeBlock(Scoped):
     """2.14.0: time taken off the agenda without a booking: an operator's pause, training or meeting (Blocca orario),
     or a restaurant turn closed for one day (service). It takes the time as a booking does and is counted nowhere."""

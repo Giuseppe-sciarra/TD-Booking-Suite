@@ -76,6 +76,15 @@ def only_one(field,queryset):
         return items[0]
     return None
 
+LIMIT_WORDS=(("day","al giorno"),("week","a settimana"),("month","al mese"))
+def add_limits(form,who):
+    """2.14.0: bookings and booked minutes at most per day, week, month (booking.limited); empty = no limit."""
+    for p,words in LIMIT_WORDS:
+        for k,what in (("n","Prenotazioni"),("m","Minuti prenotati")):
+            name=f"lim_{p}_{k}";form.fields[name]=forms.IntegerField(required=False,min_value=0,max_value=100000,label=f"{what} al massimo {words}",
+                help_text=f"Online, per {who}. Vuoto o 0: nessun limite. Al banco si supera con Forza" if (p,k)==("day","n") else "")
+            form.initial[name]=(form.instance.limits or {}).get(f"{p}_{k}") or None
+def read_limits(d):return {k[4:]:d[k] for k in d if k.startswith("lim_") and d[k]}
 class ScopedForm(forms.ModelForm):
     confirm_conflicts=forms.BooleanField(required=False,label="Confermo la gestione delle prenotazioni in conflitto")
     single_location=True
@@ -139,14 +148,15 @@ class ResourceForm(ScopedForm):
     feed_new=forms.BooleanField(required=False,label="Cambia il link del calendario",help_text="Il link di prima smette di funzionare: serve se è finito in mani sbagliate")
     busy_url=forms.CharField(required=False,max_length=2000,label="Calendario esterno da segnare come occupato",help_text="L'indirizzo segreto .ics del suo calendario Google, Outlook o iCloud: ogni 15 minuti i suoi impegni diventano orari occupati, senza titoli. Vuoto: nessuno")
     class Meta:
-        model=Resource;fields=["name","location","capacity","description","photo_url","active","feed_names","secondary","group","auto_excluded","priority"]
+        model=Resource;fields=["name","location","capacity","description","photo_url","active","feed_names","secondary","group","auto_excluded","priority","away_from","away_until","away_by"]
         labels={"capacity":"Persone massime per questa risorsa (0 = nessun limite)","photo_url":"Oppure l'indirizzo HTTPS di una foto","active":"Attiva","feed_names":"Nel calendario anche il nome del cliente",
-            "secondary":"Si usa insieme all'operatore: cabina, lettino, macchinario, auto","group":"Gruppo","auto_excluded":"Fuori da «Il primo disponibile»","priority":"Ordine in «Il primo disponibile» (1 = per primo)"}
+            "secondary":"Si usa insieme all'operatore: cabina, lettino, macchinario, auto","group":"Gruppo","auto_excluded":"Fuori da «Il primo disponibile»","priority":"Ordine in «Il primo disponibile» (1 = per primo)","away_from":"Fuori ufficio dal","away_until":"Fuori ufficio fino al","away_by":"Lo sostituisce"}
         help_texts={"name":"Per esempio Marco, Cabina 1, Camera Blu, Campo A","capacity":"Serve per camere e mezzi: quante persone ci stanno",
             "secondary":"Il cliente non la sceglie e non ha una colonna in agenda: i servizi che la spuntano si prenotano solo se è libera lei (o un'altra spuntata) insieme all'operatore",
             "group":"Solo per cabine e macchinari, per esempio Cabina o Laser: un servizio che spunta voci di gruppi diversi ne vuole una libera per ogni gruppo. Vuoto: tutte nello stesso gruppo",
-            "auto_excluded":"Si prenota solo se il cliente o il banco la scelgono","priority":"Conta solo se la sede dà «Il primo disponibile» secondo l'ordine scelto"}
-        widgets={"description":forms.Textarea(attrs={"rows":3})}
+            "auto_excluded":"Si prenota solo se il cliente o il banco la scelgono","priority":"Conta solo se la sede dà «Il primo disponibile» secondo l'ordine scelto",
+            "away_from":"Vuoto: in servizio. Nei giorni fuori ufficio non si prenota con lui","away_by":"Facoltativo: in quei giorni prende «Il primo disponibile» e online lo proponiamo al suo posto"}
+        widgets={"description":forms.Textarea(attrs={"rows":3}),"away_from":forms.DateInput(attrs={"type":"date"},format="%Y-%m-%d"),"away_until":forms.DateInput(attrs={"type":"date"},format="%Y-%m-%d")}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw)
         from .presets import units,service_word
@@ -154,6 +164,8 @@ class ResourceForm(ScopedForm):
         self.order_fields(["name","location","capacity","description","photo_file","photo_remove","photo_url","active","secondary","group","auto_excluded","priority"])
         self.fields["priority"].required=False
         new=self.is_new=self.instance._state.adding
+        self.fields["away_by"].queryset=Resource.objects.filter(active=True,secondary=False).exclude(pk=self.instance.pk).order_by("name");self.fields["away_by"].empty_label="Nessuno"
+        add_limits(self,"questa persona")
         slug=getattr(self.tenant,"slug","")
         self.photo_preview=self.instance.photo_link(slug) if not new and self.instance.photo_at else ""
         from .feeds import link,busy_url
@@ -167,6 +179,9 @@ class ResourceForm(ScopedForm):
         from . import gcal  # 2.14.0: Google Calendar, both ways, once the agency set the OAuth client (its own box under the form)
         ready=bool(self.tenant and gcal.config(self.tenant))
         self.google=None if new or not (ready or r.google or r.google_error) else {"ready":ready,"on":bool(r.google),"error":r.google_error,"at":r.google_at,"account":(st:=gcal.state(r)).get("account",""),"calendars":st.get("calendars",[]),"read":st.get("read","primary"),"write":st.get("write","primary")}
+        from . import mscal  # 2.14.0: Outlook / Microsoft 365, the same way
+        ready=bool(self.tenant and mscal.config(self.tenant))
+        self.outlook=None if new or not (ready or r.microsoft or r.microsoft_error) else {"ready":ready,"on":bool(r.microsoft),"error":r.microsoft_error,"at":r.microsoft_at,"account":mscal.state(r).get("account","")}
         if not self.photo_preview:del self.fields["photo_remove"]
         bookable=Service.objects.filter(active=True,kind__in=("resource","day"),location__active=True).select_related("location").order_by("location__name","name")
         f=self.fields["services"];f.queryset=bookable
@@ -255,6 +270,8 @@ class ResourceForm(ScopedForm):
             if "pause" not in row or d.get(row["pause"]) is None:continue
             at=d.get(row["at"]) if d.get(row["at"]) is not None else s.pause_start;n=d[row["pause"]];whole=d.get(row["dur"]) or s.duration
             if n and not (0<at and at+n<whole):self.add_error(row["pause"],f"{s.name}: la posa sta dentro la durata, dopo un po' di lavoro e prima della finitura.")
+        if bool(d.get("away_from"))!=bool(d.get("away_until")) or (d.get("away_from") and d["away_until"]<d["away_from"]):self.add_error("away_until","Scrivi dal e fino al, con la fine non prima dell'inizio.")
+        if d.get("away_by") and d.get("location") and d["away_by"].location_id!=d["location"].pk:self.add_error("away_by","Scegli qualcuno della stessa sede.")
         if d.get("own_hours") and self.hours and not self.split_hours:
             days=[n for n in range(7) if d.get(f"day_{n}")]
             if not days:raise ValidationError("Spunta almeno un giorno di lavoro, o spegni Ha giorni e orari suoi.")
@@ -272,6 +289,7 @@ class ResourceForm(ScopedForm):
         # a new random version: the links given before stop working, also those of a feed switched off and on again
         if d.get("feed_on") and (not obj.feed or d.get("feed_new")):obj.feed=secrets.randbelow(2**31-1)+1
         if not d.get("feed_on"):obj.feed=0
+        obj.limits=read_limits(d)
         obj=super().save(commit)
         if d.get("busy_url")!=old:
             obj.busy=encrypt(self.tenant,d["busy_url"],"busy:"+str(obj.pk)) if d.get("busy_url") else "";obj.busy_at=None;obj.busy_error=""
@@ -307,11 +325,14 @@ def default_kind(tenant):
 class ServiceForm(ScopedForm):
     resources=forms.ModelMultipleChoiceField(queryset=Resource.objects.none(),required=False,label="Risorse abilitate",widget=forms.CheckboxSelectMultiple)
     party_durations=forms.CharField(required=False,max_length=200)  # 2.14.0: "2:90, 4:105", kept as [[2,90],[4,105]]
+    # 2.14.0: a private service, booked only from its link (Service.secret)
+    private_on=forms.BooleanField(required=False,label="Riservato: si prenota solo con il suo link",help_text="Non compare nella pagina prenotazioni: lo prenota solo chi riceve il link")
+    private_new=forms.BooleanField(required=False,label="Cambia il link riservato",help_text="Il link di prima smette di funzionare")
     class Meta:
         model=Service
-        fields=["name","name_en","location","kind","description","description_en","price","capacity","online_capacity","max_party","turnover","last_arrival","duration","party_durations","interval","pace_covers","pace_bookings","pace_desk","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","pause_start","pause_minutes","client_picks","instructions","remote_url","recall_days","test_days","resource_label","fields","active"]
-        labels={"name":"Nome del servizio","active":"Attivo: prenotabile online","pause_start":"Lavoro prima della posa (minuti)","pause_minutes":"Tempo di posa (minuti)","client_picks":"Il cliente sceglie con chi"}
-        help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia","pause_start":"Per esempio 30 per l'applicazione del colore. Dopo la posa viene la finitura, fino alla fine della durata",
+        fields=["name","name_en","location","kind","description","description_en","price","capacity","online_capacity","max_party","turnover","last_arrival","duration","party_durations","interval","pace_covers","pace_bookings","pace_desk","checkin","checkout","min_days","max_days","buffer_before","buffer_after","lead_minutes","horizon_days","cancel_cutoff_minutes","request_all","request_above","request_allergies","pause_start","pause_minutes","client_picks","instructions","remote_url","recall_days","test_days","resource_label","thanks_url","fields","active"]
+        labels={"name":"Nome del servizio","thanks_url":"Pagina di ringraziamento dopo la prenotazione","active":"Attivo: prenotabile online","pause_start":"Lavoro prima della posa (minuti)","pause_minutes":"Tempo di posa (minuti)","client_picks":"Il cliente sceglie con chi"}
+        help_texts={"name":"Per esempio Cena, Taglio donna, Camera doppia","thanks_url":"Facoltativa, per esempio https://www.ilvostrosito.it/grazie: dopo la prenotazione online il cliente va lì. Vuota: quella dell'attività, se c'è","pause_start":"Per esempio 30 per l'applicazione del colore. Dopo la posa viene la finitura, fino alla fine della durata",
             "pause_minutes":"0 = nessuna posa. Durante la posa il cliente resta, l'operatore è libero e si può prenotare con lui un servizio breve",
             "client_picks":"Spento: online il cliente sceglie solo l'orario e il programma assegna la persona o il posto libero, per esempio il ponte dell'officina"}
         localized_fields=["price"]  # 2.12.0: 25,50 as in Italy
@@ -354,6 +375,12 @@ class ServiceForm(ScopedForm):
         if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
         for name in ("request_above","online_capacity","pace_covers","pace_bookings","pause_start","pause_minutes"):
             if name in self.fields:self.fields[name].required=False  # 2.14.0: empty = 0, no limit
+        add_limits(self,"questo servizio")
+        self.initial["private_on"]=bool(self.instance.secret)
+        if self.instance.secret:
+            from django.conf import settings
+            self.fields["private_on"].help_text="Il link da mandare: "+f"{settings.PUBLIC_ORIGIN}/book/{getattr(self.tenant,'slug','')}/?riservato={self.instance.secret}"
+        else:del self.fields["private_new"]
         if "party_durations" in self.fields and not self.is_bound:self.initial["party_durations"]=", ".join(f"{n}:{m}" for n,m in self.instance.party_durations or [])
         for name in ("recall_days","test_days"):
             if name in self.fields:self.fields[name].required=False
@@ -370,6 +397,8 @@ class ServiceForm(ScopedForm):
             keys.add(item["key"])
             if item.get("type") not in ("text","number","checkbox","select") or not isinstance(item.get("label"),str) or not 1<=len(item["label"])<=80:raise ValidationError("Tipo o etichetta non validi.")
             if type(item.get("required",False)) is not bool:raise ValidationError("Obbligatorietà non valida.")
+            # 2.14.0: shown only when an earlier question has that answer (sì / no for a box)
+            if (cond:=item.get("show_if")) is not None and (not isinstance(cond,dict) or cond.get("key") not in keys-{item["key"]} or not isinstance(cond.get("value"),str) or not 1<=len(cond["value"])<=80):raise ValidationError("Condizione non valida: scegli una domanda che viene prima e la risposta.")
             if item["type"]=="select" and (not isinstance(item.get("choices"),list) or not 1<=len(item["choices"])<=30 or any(not isinstance(c,str) or not 1<=len(c)<=80 for c in item["choices"])):raise ValidationError("Inserisci le opzioni del campo.")
         return schema
     def clean_party_durations(self):
@@ -383,6 +412,10 @@ class ServiceForm(ScopedForm):
         return sorted(out)[:8]
     def clean_remote_url(self):
         value=self.cleaned_data.get("remote_url","")
+        if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
+        return value
+    def clean_thanks_url(self):
+        value=self.cleaned_data.get("thanks_url","")
         if value and not value.startswith("https://"):raise ValidationError("Usa un indirizzo HTTPS.")
         return value
     def clean(self):
@@ -409,6 +442,9 @@ class ServiceForm(ScopedForm):
     def save(self,commit=True):
         mode=self.cleaned_data.get("mode")
         if mode:self.instance.kind,self.instance.turnover={"service":("capacity",False),"fixed":("shift",False),"rotation":("capacity",True)}[mode]
+        d=self.cleaned_data;self.instance.limits=read_limits(d)
+        if not d.get("private_on"):self.instance.secret=""
+        elif not self.instance.secret or d.get("private_new"):self.instance.secret=secrets.token_urlsafe(18)
         service=super().save(commit)
         if commit and "resources" in self.fields:
             # 2.11.0: an operator ticked again keeps his own duration and price for this service
@@ -568,8 +604,9 @@ class BrandForm(forms.ModelForm):
     logo_remove=forms.BooleanField(required=False)
     class Meta:
         model=Tenant
-        fields=["brand_color","tagline","website"]
+        fields=["brand_color","tagline","website","thanks_url"]
     def clean_brand_color(self):return TenantForm.clean_brand_color(self)
+    def clean_thanks_url(self):return ServiceForm.clean_thanks_url(self)
     def clean_logo_file(self):
         f=self.cleaned_data.get("logo_file")
         if not f:return None
@@ -579,7 +616,7 @@ class BrandForm(forms.ModelForm):
         t=super().save(commit=False)
         if self.cleaned_data.get("logo_file"):t.logo,t.logo_ratio=self.cleaned_data["logo_file"]
         elif self.cleaned_data.get("logo_remove"):t.logo=None;t.logo_ratio=1
-        t.save(update_fields=["brand_color","tagline","website","logo","logo_ratio"]);return t
+        t.save(update_fields=["brand_color","tagline","website","thanks_url","logo","logo_ratio"]);return t
 class TenantForm(forms.ModelForm):
     logo_file=forms.FileField(required=False,label="Logo PNG trasparente, JPEG o WebP, massimo 1 MB, anche orizzontale")
     embed_origins_text=forms.CharField(required=False,label="Siti autorizzati a mostrare il widget (una origine HTTPS per riga)",widget=forms.Textarea(attrs={"rows":3}))
@@ -663,7 +700,7 @@ class TimeBlockForm(ScopedForm):
         f=self.fields["resource"];f.queryset=resources;f.required=True;f.empty_label=None
         from .presets import units
         f.label=units(getattr(self.tenant,"business_type",""))[0]
-        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0] not in ("closed","busy","google")]  # busy, google: only from an outside calendar (feeds.py, gcal.py)
+        self.fields["reason"].choices=[c for c in BLOCK_REASONS if c[0] not in ("closed","busy","google","outlook")]  # busy, google: only from an outside calendar (feeds.py, gcal.py)
         if self.instance.pii:self.initial["note"]=self.instance.note
         self.order_fields(["resource","day","start","end","reason","note","weekly","until"])
     def clean(self):

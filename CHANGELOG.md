@@ -112,6 +112,12 @@
 - **API e webhook anche al titolare**: l'agenzia lo permette da Impostazioni dell'attività; il webhook si collega solo all'indirizzo pubblico controllato in quel momento.
 - **Testi dell'attività in inglese**: nomi e descrizioni dei servizi, informativa, consenso e testi delle email hanno una versione inglese facoltativa, usata sulla pagina e nelle email in inglese; la prova del consenso conserva il testo che il cliente ha letto.
 - **Dal link Gestisci anche un altro operatore**: il cliente che sposta la prenotazione può scegliere un altro operatore dello stesso servizio, se il servizio lascia scegliere l'operatore.
+- **Limiti di prenotazioni per servizio e per operatore**: nella scheda del servizio e dell'operatore (Configura l'attività) prenotazioni e minuti prenotati al massimo al giorno, a settimana e al mese. Valgono per la pagina online; al banco si superano con Forza, che li dice prima di salvare.
+- **Servizi riservati, con un link segreto**: nella scheda del servizio *Riservato*: non compare nella pagina prenotazioni e si prenota solo dal link mostrato nella scheda; *Cambia il link riservato* fa smettere quello di prima.
+- **Pagina di ringraziamento**: dopo la prenotazione online il cliente va alla pagina scelta dal titolare, per tutta l'attività (Logo e aspetto) o per un servizio (scheda del servizio), anche dalla pagina incorporata nel sito.
+- **Domande che compaiono solo per una risposta**: nelle richieste aggiuntive del servizio, *Mostrala solo se* una domanda di prima ha una certa risposta (sì / no per una casella); nascosta, non è obbligatoria e non viene salvata.
+- **Outlook e Microsoft 365 degli operatori**, nei due sensi come Google Calendar: l'agenzia inserisce ID e segreto dell'app Microsoft Entra in *SMS e WhatsApp*, poi nella scheda dell'operatore *Collega Outlook*; ogni 5 minuti i suoi impegni diventano orari *Occupato su Outlook* e le sue prenotazioni vanno nel suo calendario.
+- **Fuori ufficio con sostituto**: nella scheda dell'operatore *Fuori ufficio dal / fino al* e *Lo sostituisce*: in quei giorni non si prenota con lui, il sostituto prende per primo «Il primo disponibile» e la pagina online lo propone al suo posto.
 
 ## 2.13.0 — email ai clienti con promemoria, logo dell'attività, dashboard che mostra chi viene, persone e marketing all'amministratore
 

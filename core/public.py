@@ -43,6 +43,11 @@ def widget_data(request,booking=None,wait=None):
     except ValueError:only=None
     if only and rows.filter(pk=only).exists():rows=rows.filter(pk=only)
     internal=request.path.startswith("/t/")
+    # 2.14.0: a private service only from its own link, and then alone on the page
+    secret=str(request.GET.get("riservato",""))[:40];private=[]
+    if not internal:
+        own=rows.exclude(secret="").filter(secret=secret) if secret else rows.none()
+        rows=own if own.exists() else rows.filter(secret="");private=[str(x.pk) for x in own]
     m=getattr(request,"member",None) if internal else None
     # staff with a scope book only inside it: their locations and their own resources
     if m and m.locations:rows=rows.filter(location_id__in=m.locations)
@@ -56,13 +61,13 @@ def widget_data(request,booking=None,wait=None):
         services.append({"id":str(s.pk),"name":en and s.name_en or s.name,"kind":s.kind,"turnover":s.turnover,"resource_label":s.resource_label,"description":en and s.description_en or s.description,"location":s.location.name,"max_party":s.max_party,"request_above":s.request_above,"fields":s.fields,"price":cost(s.price),
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration,"price":cost(o.price)} for o in Option.objects.filter(service=s,active=True)],
             "areas":[{"id":str(a.pk),"name":a.name} for a in Area.objects.filter(location=s.location).order_by("name")] if s.kind in ("capacity","shift") else [],
-            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
+            "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug),**away_info(r)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
     from .presets import service_word
     result={"service_label":_(service_word(tenant.business_type)),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
         # 2.14.0: where the page was opened, signed with the ticket, so the booking keeps its channel.
         # shortcut: the WordPress plugin is told apart by the theme= its frame always adds; a link with theme= counts as WordPress
-        "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src")),**({"wait":str(wait.pk)} if wait else {})},salt="public-booking"),"internal":internal,
+        "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src")),**({"wait":str(wait.pk)} if wait else {}),**({"private":private} if private else {})},salt="public-booking"),"internal":internal,
         "allergens":tenant.asked_allergens,"can_force":internal and can(request,"booking.force"),"wait":"" if internal else f"/book/{tenant.slug}/api/attesa/"}
     # 2.14.0: the page's language also for its answers and for the booking it makes
     if not internal and translation.get_language()!="it":result.update({k:result[k]+"?lang="+translation.get_language() for k in ("slots","submit","wait")})
@@ -71,6 +76,10 @@ def widget_data(request,booking=None,wait=None):
         result["editing"]={"service":str(booking.service_id),"option":str(booking.option_id or ""),"resource":str(booking.resource_id or ""),"party":booking.party,**visiting(booking)}
         result["slots"]=f"/t/{tenant.slug}/bookings/{booking.pk}/move-slots/"
     return result
+def away_info(r):
+    """2.14.0: fuori ufficio, for the page to offer the stand-in on those days."""
+    if not (r.away_until and r.away_until>=timezone.now().date()):return {}
+    return {"away":[r.away_from.isoformat(),r.away_until.isoformat(),str(r.away_by_id or ""),r.away_by.name if r.away_by_id else ""]}
 def visiting(b):
     """2.14.0: a booking of a visit moves with the visit: its first service, with whom, and the services after it."""
     from .booking import visit_rows
@@ -244,13 +253,16 @@ def submit(request,actor,ticket=None):
     try:
         data=json_body(request)
         if actor is None:throttle(request,"book-email:"+str(request.tenant.pk),5,3600,identity=token_hash(str(data.get("email","")).casefold()))
+        # 2.14.0: a private service only from a page opened with its link
+        if ticket is not None and isinstance(data,dict) and Service.objects.exclude(secret="").filter(pk__in=[str(x) for x in [data.get("service"),*(data.get("extra") or [])] if x]).exclude(pk__in=ticket.get("private",[])).exists():raise BookingError(_("Selezione non valida o non disponibile."))
         booking,created=create_booking(request.tenant,data,actor,**({"origin":ticket.get("origin","public"),"source":source_tag(ticket.get("src")),"wait":ticket.get("wait","")} if ticket else {"allowed":staff_resources(request)}))
         if actor:return JsonResponse({"redirect":f"/t/{request.tenant.slug}/bookings/{booking.pk}/"})
         own=f"/action/{request.tenant.slug}/{booking.data['cancel_token']}/"
         # 2.14.0: the confirmed booking into the client's calendar (a request waits for the business's yes)
         from .ics import links
         calendar=None if booking.status=="pending" else {**links(booking),"ics":own+"calendario.ics"}
-        return JsonResponse({"ok":True,"created":created,"pending":booking.status=="pending","reference":str(booking.pk)[:8],"cancel":own,"calendar":calendar},status=201 if created else 200)
+        thanks=booking.service.thanks_url or request.tenant.thanks_url  # 2.14.0: the business's thank-you page
+        return JsonResponse({"ok":True,"created":created,"pending":booking.status=="pending","reference":str(booking.pk)[:8],"cancel":own,"calendar":calendar,**({"thanks":thanks} if thanks else {})},status=201 if created else 200)
     except ForceWarning as ex:return warned(ex)
     except (ValueError,ValidationError,TypeError) as ex:return JsonResponse({"error":str(ex) or _("Controlla i dati.")},status=400)
 def get_visible(request,booking_id):

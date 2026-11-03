@@ -26,6 +26,8 @@ class Command(BaseCommand):
                 if busy():self.stdout.write("Calendari esterni letti.")
                 from core.gcal import refresh as google  # 2.14.0: Google Calendar of the operators, both ways, every 5 minutes
                 if google():self.stdout.write("Google Calendar allineati.")
+                from core.mscal import refresh as outlook  # 2.14.0: Outlook / Microsoft 365 of the operators, the same
+                if outlook():self.stdout.write("Calendari Outlook allineati.")
                 from core.texts import receipts  # 2.14.0: delivered or not, asked to Twilio and Skebby
                 if receipts():self.stdout.write("Esiti degli SMS letti.")
                 last_busy=time.time()

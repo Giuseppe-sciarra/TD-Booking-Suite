@@ -1069,6 +1069,29 @@ def google_view(request,slug,item_id=None):
         return redirect(reverse("catalog_edit",args=[slug,"resources",r.pk])+"#google")
     if not gcal.config(request.tenant):raise PermissionDenied
     return redirect(gcal.start(request,r))
+def outlook_return(request):
+    """2.14.0: Microsoft comes back to one address for the whole installation: on to the business that asked."""
+    slug=(request.session.get("mscal_oauth") or {}).get("slug")
+    if not slug:messages.error(request,"Collegamento a Outlook scaduto: riprova dalla scheda.");return redirect("/")
+    return redirect(reverse("outlook_back",args=[slug])+"?"+request.GET.urlencode())
+def outlook_view(request,slug,item_id=None):
+    """2.14.0: Collega / Scollega Outlook from an operator's card (POST), and Microsoft's answer coming back (GET)."""
+    from . import mscal
+    require(request,"catalog.write")
+    if not catalog_allowed(request,"resources"):raise PermissionDenied
+    if item_id is None:
+        r=mscal.finish(request)
+        if not r:messages.error(request,"Collegamento a Outlook non riuscito o scaduto: riprova dalla scheda.");return redirect("catalog",slug,"resources")
+        audit(request.tenant,request.user,"outlook.connected" if not r.microsoft_error else "outlook.failed",r.pk)
+        if not r.microsoft_error:messages.success(request,"Outlook collegato: entro 5 minuti si allinea.")
+        return redirect("catalog_edit",slug,"resources",r.pk)
+    if request.method!="POST":raise PermissionDenied
+    r=get_object_or_404(Resource.objects.select_related("tenant"),pk=item_id)
+    if request.POST.get("action")=="disconnect":
+        mscal.disconnect(r);audit(request.tenant,request.user,"outlook.disconnected",r.pk)
+        messages.success(request,"Outlook scollegato.");return redirect("catalog_edit",slug,"resources",r.pk)
+    if not mscal.config(request.tenant):raise PermissionDenied
+    return redirect(mscal.start(request,r))
 REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","options":"Variante","turns":"Turno","occurrences":"Data"}
 def calendar_remove(request,slug,kind,item_id):
     if request.method!="POST" or kind not in CATALOG:raise PermissionDenied

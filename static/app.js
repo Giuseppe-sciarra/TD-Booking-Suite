@@ -433,8 +433,15 @@
     type.addEventListener("change",()=>{f.type=type.value;choiceslabel.hidden=f.type!=="select";sync();});
     const required=document.createElement("label");required.className="check";
     const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.checked=f.required===true;checkbox.addEventListener("change",()=>{f.required=checkbox.checked;sync();});required.append(checkbox,"Risposta obbligatoria");
-    const remove=document.createElement("button");remove.type="button";remove.className="ghost small";remove.textContent="Rimuovi domanda";remove.addEventListener("click",()=>{fields.splice(i,1);render();sync();});
-    row.append(label,typelabel,choiceslabel,required,remove);holder.append(row);
+    // 2.14.0: shown only when an earlier question has a given answer (sì / no for a box)
+    const whenlabel=document.createElement("label");whenlabel.textContent="Mostrala solo se";
+    const when=document.createElement("select");when.add(new Option("Sempre",""));fields.slice(0,i).forEach((p,j)=>when.add(new Option(p.label||"Domanda "+(j+1),p.key)));when.value=f.show_if?.key||"";whenlabel.append(when);
+    const islabel=document.createElement("label");islabel.textContent="ha come risposta";
+    const is=document.createElement("input");is.maxLength=80;is.placeholder="Per esempio sì, oppure una delle scelte";is.value=f.show_if?.value||"";islabel.append(is);islabel.hidden=!when.value;
+    const cond=()=>{if(when.value&&is.value.trim())f.show_if={key:when.value,value:is.value.trim()};else delete f.show_if;islabel.hidden=!when.value;sync();};
+    when.addEventListener("change",cond);is.addEventListener("input",cond);
+    const remove=document.createElement("button");remove.type="button";remove.className="ghost small";remove.textContent="Rimuovi domanda";remove.addEventListener("click",()=>{fields.splice(i,1);fields.forEach(x=>{if(x.show_if?.key===f.key)delete x.show_if;});render();sync();});
+    row.append(label,typelabel,choiceslabel,required,whenlabel,islabel,remove);holder.append(row);
    });
   }
   $("#add-field").addEventListener("click",()=>{if(fields.length>=12)return;fields.push({key:"campo_"+crypto.randomUUID().replace(/-/g,"").slice(0,12),label:"",type:"text",required:false,choices:[]});render();sync();});

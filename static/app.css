@@ -1509,3 +1509,4 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .ft-dot.booked{border-color:var(--warn);background:var(--warn-soft)}.ft-dot.seated{border-color:var(--brand);background:var(--soft)}
 .floor-pick{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:6px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left;cursor:grab;touch-action:none;transform:translate(var(--dx,0),var(--dy,0))}
 .floor-pick.picked{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}.floor-pick.dragging{z-index:3;position:relative;cursor:grabbing}
+

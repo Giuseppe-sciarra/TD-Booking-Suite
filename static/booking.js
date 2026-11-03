@@ -2,7 +2,7 @@
 (() => {
  const $=id=>document.getElementById(id),config=JSON.parse($("widget-config").textContent);
  // 2.14.0: the client's page in English (?lang=en or the browser's language, html lang); keys are the Italian texts
- const T={en:{"Sede":"Location","Scegli la sede e la data.":"Choose the location and the date.","Scegli la sede":"Choose the location","Servizio":"Service","Scegli un ":"Choose a ","Persone":"People","Ospiti":"Guests","Persone / quantità":"People / quantity","Prestazione standard":"Standard","Qualsiasi unità libera":"Any free unit","Il primo disponibile":"First available","Unità / camera":"Unit / room","Operatore / risorsa":"Staff / resource","Arrivo":"Arrival","Data":"Date","Seleziona":"Select","Scegli le date per vedere le disponibilità.":"Choose the dates to see what is available.","Scegli la data per vedere gli orari liberi.":"Choose the date to see the free times.","Scegli servizio e data per vedere gli orari liberi.":"Choose service and date to see the free times.","Controllo delle disponibilità…":"Checking availability…","Impossibile verificare le disponibilità. Riprova.":"Availability could not be checked. Please try again.","Disponibilità non verificabile.":"Availability could not be checked."," · fino a ":" · up to "," ospiti":" guests","fino alle ":"until ","Scegli l'unità che preferisci.":"Choose the unit you prefer.","Scegli uno degli orari disponibili.":"Choose one of the available times.","Nessuna unità libera per tutte le date scelte.":"No unit is free for all the dates chosen.","Nessun orario disponibile: prova un'altra data.":"No times available: try another date.","Tutto pieno in queste date.":"Fully booked on these dates.","Tutto pieno in questo giorno.":"Fully booked on this day.","Non trovi l'orario che vuoi?":"Can't find the time you want?","Spunta la casella per ricevere l'avviso.":"Tick the box to get the notice.","Non è andata: riprova tra poco.":"It did not work: please try again shortly.","Fatto: ti scriviamo appena si libera un posto.":"Done: we will write to you as soon as a place frees up.","Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.":"No answer. Try again with the same details: the request is recognised.","Prenotazione non completata.":"Booking not completed.","Riferimento: ":"Reference: ","Richiesta inviata":"Request sent","Gestisci / annulla la richiesta":"Manage / cancel the request","Indifferente":"No preference"}}[document.documentElement.lang]||{},t=s=>T[s]||s;
+ const T={en:{"Sede":"Location","Scegli la sede e la data.":"Choose the location and the date.","Scegli la sede":"Choose the location","Servizio":"Service","Scegli un ":"Choose a ","Persone":"People","Ospiti":"Guests","Persone / quantità":"People / quantity","Prestazione standard":"Standard","Qualsiasi unità libera":"Any free unit","Il primo disponibile":"First available","Unità / camera":"Unit / room","Operatore / risorsa":"Staff / resource","Arrivo":"Arrival","Data":"Date","Seleziona":"Select","Scegli le date per vedere le disponibilità.":"Choose the dates to see what is available.","Scegli la data per vedere gli orari liberi.":"Choose the date to see the free times.","Scegli servizio e data per vedere gli orari liberi.":"Choose service and date to see the free times.","Controllo delle disponibilità…":"Checking availability…","Impossibile verificare le disponibilità. Riprova.":"Availability could not be checked. Please try again.","Disponibilità non verificabile.":"Availability could not be checked."," · fino a ":" · up to "," ospiti":" guests","fino alle ":"until ","Scegli l'unità che preferisci.":"Choose the unit you prefer.","Scegli uno degli orari disponibili.":"Choose one of the available times.","Nessuna unità libera per tutte le date scelte.":"No unit is free for all the dates chosen.","Nessun orario disponibile: prova un'altra data.":"No times available: try another date.","Tutto pieno in queste date.":"Fully booked on these dates.","Tutto pieno in questo giorno.":"Fully booked on this day.","Non trovi l'orario che vuoi?":"Can't find the time you want?","Spunta la casella per ricevere l'avviso.":"Tick the box to get the notice.","Non è andata: riprova tra poco.":"It did not work: please try again shortly.","Fatto: ti scriviamo appena si libera un posto.":"Done: we will write to you as soon as a place frees up.","Risposta non disponibile. Riprova con gli stessi dati: la richiesta viene riconosciuta.":"No answer. Try again with the same details: the request is recognised.","Prenotazione non completata.":"Booking not completed.","Riferimento: ":"Reference: ","Richiesta inviata":"Request sent","Gestisci / annulla la richiesta":"Manage / cancel the request","Indifferente":"No preference"," è fuori ufficio fino al ":" is out of office until ","Prenota con ":"Book with "}}[document.documentElement.lang]||{},t=s=>T[s]||s;
  const form=$("booking-form"),service=$("service"),option=$("option"),resource=$("resource"),party=$("party"),day=$("date"),departure=$("departure"),submit=$("booking-submit"),area=$("area");
  let selected=null,controller=null,sequence=0,busy=false,requestKey=crypto.randomUUID().replace(/-/g,""),forceOk=false;
  // 2.14.0: Forza at the desk: the time typed in for appointments and places, every date of the day for events
@@ -44,6 +44,11 @@
    else{input.type=field.type==="checkbox"?"checkbox":field.type==="number"?"number":"text";if(input.type==="text")input.maxLength=500;if(input.type==="number"){input.min=0;input.max=100000;}}
    wrap.append(label,input);holder.append(wrap);
   }
+  // 2.14.0: a question shown only for a given answer to an earlier one; hidden, it is neither required nor sent
+  const answer=key=>{const el=$("extra-"+key);return !el||el.closest("[hidden]")?"":el.type==="checkbox"?(el.checked?"sì":"no"):el.value;};
+  const conditions=()=>{for(const field of s?.fields||[]){if(!field.show_if)continue;const el=$("extra-"+field.key),wrap=el.closest("#booking-fields > *");
+   wrap.hidden=answer(field.show_if.key)!==field.show_if.value;el.disabled=wrap.hidden;}};
+  holder.addEventListener("input",conditions);holder.addEventListener("change",conditions);conditions();
  }
  // 2.14.0: more services in the same visit, one after the other: the appointments of the same location
  const visitAdd=$("visit-add");let extras=config.editing?.extra||[];
@@ -157,14 +162,24 @@
  function mark(){document.querySelectorAll("#resource-pick .pick").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.value===resource.value)));
   // the description of the operator or the room chosen, as its form promises
   const note=$("resource-description"),r=current()?.resources.find(x=>x.id===resource.value);
-  if(note){note.textContent=r?.description||"";note.hidden=!note.textContent;}}
+  if(note){note.textContent=r?.description||"";note.hidden=!note.textContent;}awayNote();}
  resource.addEventListener("change",mark);
+ // 2.14.0: the operator chosen is fuori ufficio that day: his stand-in offered in his place
+ function awayNote(){
+  const r=current()?.resources.find(x=>x.id===resource.value),a=r?.away,box=$("away-note");box?.remove();
+  if(!a||day.value<a[0]||day.value>a[1])return;
+  const p=document.createElement("p");p.id="away-note";p.className="notice";p.textContent=r.name+t(" è fuori ufficio fino al ")+a[1].split("-").reverse().join("/")+".";
+  if(a[2]&&current().resources.some(x=>x.id===a[2])){const b=document.createElement("button");b.type="button";b.className="secondary small";b.textContent=t("Prenota con ")+a[3];
+   b.addEventListener("click",()=>{resource.value=a[2];resource.dispatchEvent(new Event("change"));});p.append(" ",b);}
+  $("resource-wrap").after(p);
+ }
+ day.addEventListener("change",awayNote);
  form.addEventListener("submit",async e=>{
   e.preventDefault();if(busy||!selected||!form.reportValidity())return;
   busy=true;submit.disabled=true;$("booking-error").hidden=true;$("booking-error").className="notice error";
   try{
    const s=current(),answers={};
-   document.querySelectorAll("[data-field]").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
+   document.querySelectorAll("[data-field]:not(:disabled)").forEach(el=>{answers[el.dataset.field]=el.type==="checkbox"?el.checked:el.value;});
    const payload={service:s.id,option:option.value,resource:resource.value||selected.resource||"",start:selected.start,occurrence:selected.occurrence,end_date:departure.value,party:party.value,area:area.value};
    if(!config.editing)Object.assign(payload,{first_name:$("first-name").value,last_name:$("last-name").value,email:$("customer-email").value,phone:$("phone").value,notes:$("notes").value,answers,marketing:$("marketing-consent").checked,notices:$("notices")?$("notices").checked:true,channel:$("channel")&&$("phone").value.trim()?$("channel").value:"",allergies:[...document.querySelectorAll("[data-allergen]:checked")].map(b=>b.value)});
    if(!config.editing&&clientId)payload.contact=clientId;
@@ -189,6 +204,8 @@
    // done: the same data typed again later is a new booking, not this one (it may have been cancelled meanwhile)
    try{if(cacheKey)sessionStorage.removeItem(cacheKey);}catch{}
    if(result.redirect){location.assign(result.redirect);return;}
+   // 2.14.0: the business's thank-you page, also from the frame on its site
+   if(result.thanks){try{window.top.location.href=result.thanks;}catch{location.assign(result.thanks);}return;}
    form.hidden=true;$("booking-success").hidden=false;$("booking-reference").textContent=t("Riferimento: ")+result.reference;
    // 2.14.0: a request the business confirms later
    if(result.pending){$("booking-done").textContent=t("Richiesta inviata");$("booking-pending").hidden=false;$("cancel-link").textContent=t("Gestisci / annulla la richiesta");}
