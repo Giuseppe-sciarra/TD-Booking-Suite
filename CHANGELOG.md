@@ -1,6 +1,6 @@
-# TD Booking Suite 2.16.2 — registro modifiche
+# TD Booking Suite 2.17.0 — registro modifiche
 
-**3 novembre 2026 · versione 2.16.2**
+**3 novembre 2026 · versione 2.17.0**
 
 ## 2.17.0 — sito WordPress collegato al PC anche spento
 
