@@ -1,6 +1,6 @@
-# TD Booking Suite 2.15.0 — registro modifiche
+# TD Booking Suite 2.16.0 — registro modifiche
 
-**3 novembre 2026 · versione 2.15.0**
+**3 novembre 2026 · versione 2.16.0**
 
 ## 2.16.0 — collegamento ai registratori di cassa
 
