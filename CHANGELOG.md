@@ -1,6 +1,6 @@
-# TD Booking Suite 2.17.3 — registro modifiche
+# TD Booking Suite 2.18.0 — registro modifiche
 
-**3 novembre 2026 · versione 2.17.3**
+**3 novembre 2026 · versione 2.18.0**
 
 ## 2.18.0 — il sito come archivio centrale
 
@@ -9,6 +9,8 @@
 - **Agenda riservata del sito** (`[tdbs_agenda]`): con l'archivio acceso legge da lì e mostra anche i giorni passati; le schede di lavoro non ci sono mai
 - **Plugin WordPress 2.18.0**: interruttore e stato dell'archivio (record, spazio, ultimo invio) e il riquadro *Per il firewall del sito* con gli indirizzi da mettere in whitelist: `/wp-json/tdbs/v1/sync` e `/wp-json/tdbs/v1/archive/`, sempre POST JSON con `X-TDBS-Time` e `X-TDBS-Signature`, corpo fino a 512 KB. `/slots` e `/book` restano sotto il firewall
 - **Guida**: nuova sezione *Il sito come archivio centrale*
+- Plugin: spegnere l'archivio chiede conferma (la copia nel sito viene cancellata; per riaverla si riaccende e si preme *Carica tutto sul sito*). Il riquadro del firewall dice che `/sync` può superare 1 MB con tanti servizi e 90 giorni: se il proxy risponde 413, alzare il limite del corpo a 5 MB
+- Manuale Windows: capitolo 10 con *Il sito come archivio centrale* e *Per il firewall del sito*
 
 ## 2.17.3 — spiegazioni più chiare
 

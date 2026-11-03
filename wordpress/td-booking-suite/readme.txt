@@ -37,7 +37,8 @@ sparisce anche qui. Un PC nuovo riprende tutto con "Ripristina dal sito". [tdbs_
 giorni passati. Spento qui, l'archivio nel sito viene cancellato.
 
 Per il firewall del sito. Il PC chiama solo /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/push e /archive/pull, sempre
-in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 KB. Nel WAF: whitelist, tipo "path", due
+in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 KB per l'archivio (/sync di solito
+meno, fino a 5 MB con tanti servizi e 90 giorni: se il proxy risponde 413, alza il limite). Nel WAF: whitelist, tipo "path", due
 voci con nota "TD Booking Suite – PC": /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/ (per un solo sito:
 sitocliente.it|/wp-json/tdbs/v1/sync, host esatto, il www vuole una voce sua). Non mettere in whitelist tutto
 /wp-json/tdbs/v1/: /slots (GET) e /book (POST) li usano i visitatori e restano sotto il firewall.
