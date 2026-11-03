@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.17.3
+Stable tag: 2.18.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -29,3 +29,15 @@ richieste del sito non ancora prese dal PC. Il PC la manda cifrata con la chiave
 chi amministra il sito può tecnicamente leggerla. Blocco dopo 5 password sbagliate, sessione HttpOnly di 8 ore, Esci, pagina
 fuori dalla cache dei plugin e non indicizzata; la cache del server (per esempio la FastCGI cache di aaPanel) va
 esclusa a mano per quella pagina. Sola lettura.
+
+Il sito come archivio centrale (2.18.0). In Modalità PC spunta "Il sito come archivio centrale" e accendilo anche nel programma:
+a ogni sincronizzazione il PC manda le modifiche di prenotazioni, clienti con i dati fiscali, schede di lavoro, consensi e
+riepilogo degli scontrini, ogni record cifrato con la chiave condivisa (AES-256-GCM). Un cliente cancellato nel programma
+sparisce anche qui. Un PC nuovo riprende tutto con "Ripristina dal sito". [tdbs_agenda] legge allora dall'archivio, anche i
+giorni passati. Spento qui, l'archivio nel sito viene cancellato.
+
+Per il firewall del sito. Il PC chiama solo /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/push e /archive/pull, sempre
+in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 KB. Nel WAF: whitelist, tipo "path", due
+voci con nota "TD Booking Suite – PC": /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/ (per un solo sito:
+sitocliente.it|/wp-json/tdbs/v1/sync, host esatto, il www vuole una voce sua). Non mettere in whitelist tutto
+/wp-json/tdbs/v1/: /slots (GET) e /book (POST) li usano i visitatori e restano sotto il firewall.

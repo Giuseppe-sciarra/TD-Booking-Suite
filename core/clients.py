@@ -222,7 +222,10 @@ def merge(tenant,main,other,keep,actor):
         if not d.get("email") and taken(new):new=key_for(tenant,d,shared=True)
         if taken(new):raise BookingError("Un altro cliente ha già questa email o questo telefono.")
         main.email_index=new;seal_card(tenant,main,d);main.save()
-        for model in (Booking,Treatment,WaitEntry):model.objects.filter(contact=other).update(contact=main)
+        from .wpsync import touch
+        for model,kind in ((Booking,"booking"),(Treatment,"treatment"),(WaitEntry,"")):
+            if kind:touch(tenant.pk,kind,model.objects.filter(contact=other).values_list("pk",flat=True))  # 2.18.0: the site's archive moves them too
+            model.objects.filter(contact=other).update(contact=main)
         # a confirmation asked to a mailbox the card no longer has must not confirm anything
         ActionToken.objects.filter(contact=main if moved else other,kind="consent").delete()
         ActionToken.objects.filter(contact=other).update(contact=main)

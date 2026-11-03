@@ -174,6 +174,9 @@ class Tenant(models.Model):
     # and how the last sync went {"at","running","new","ids","ack","error"}
     wp_sync=models.TextField(blank=True)
     wp_state=models.JSONField(default=dict,blank=True)
+    # 2.18.0: the site keeps the whole archive (wpsync.touch): set by the agency; wp_seq the last number given to a change
+    wp_archive=models.BooleanField(default=False)
+    wp_seq=models.BigIntegerField(default=0)
     created=models.DateTimeField(auto_now_add=True)
     def save(self,*a,**kw):
         if not self.wrapped_key:self.wrapped_key=protect(b64(secrets.token_bytes(32)),"tenant-key:"+str(self.pk))
@@ -579,6 +582,13 @@ class ConsentEvent(Scoped):
         if not self._state.adding:raise ValueError("Lo storico dei consensi non si modifica.")
         super().save(*a,**kw)
     def delete(self,*a,**kw):raise ValueError("Lo storico dei consensi non si cancella.")
+class SiteOutbox(Scoped):
+    """2.18.0: a record changed (or gone) that the site's archive has not acked yet; one row per record, its number moved
+    up at each change: what is sent is the record as it is when sent (wpsync.push)."""
+    kind=models.CharField(max_length=10)
+    ref=models.CharField(max_length=36)
+    seq=models.BigIntegerField(db_index=True)
+    class Meta:constraints=[models.UniqueConstraint(fields=["tenant","kind","ref"],name="outbox_record")]
 class ActionToken(Scoped):
     digest=models.CharField(max_length=64,unique=True)
     kind=models.CharField(max_length=15)
@@ -775,3 +785,11 @@ class PricingPlan(models.Model):
         if not self.free_months:return ""
         return ("Il primo mese è gratis" if self.free_months==1 else "I primi "+str(self.free_months)+" mesi sono gratis")
     def feature_list(self):return [x.strip() for x in self.features.splitlines() if x.strip()]
+
+# 2.18.0: every change of what the site archives goes in its outbox, when the site is the archive (wpsync.changed)
+def _archived(sender,instance,**kw):
+    from .wpsync import changed
+    changed(sender,instance)
+for _m in (Booking,Contact,Sale,Treatment,ConsentEvent):
+    models.signals.post_save.connect(_archived,sender=_m,dispatch_uid="archive-save-"+_m.__name__)
+    models.signals.post_delete.connect(_archived,sender=_m,dispatch_uid="archive-delete-"+_m.__name__)

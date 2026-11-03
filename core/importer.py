@@ -438,8 +438,11 @@ def apply(tenant,p,actor,ask=False,batch=""):
         t=Treatment(tenant=tenant,contact=c,date=d["date"],author=who)
         t.pii=keys.seal({k:d[k] for k in ("service","staff","details")},"treatment",t.pk);rows.append(t)
     Treatment.objects.bulk_create(rows,batch_size=500)
-    ConsentEvent.objects.bulk_create([ConsentEvent(tenant=tenant,contact=c,kind="imported",channel="import",actor=who,ref=batch) for c in p["consents"]],batch_size=500)
+    events=ConsentEvent.objects.bulk_create([ConsentEvent(tenant=tenant,contact=c,kind="imported",channel="import",actor=who,ref=batch) for c in p["consents"]],batch_size=500)
     Contact.objects.filter(pk__in=[c.pk for c in p["consents"]],consent="none",suppressed=False).update(consent="pending")
+    from .wpsync import touch  # 2.18.0: written in bulk, without the models' signals: the site's archive gets them too
+    touch(tenant.pk,"contact",[c.pk for c in p["created"]+p["changed"]]);touch(tenant.pk,"treatment",[t.pk for t in rows])
+    touch(tenant.pk,"consent",[e.pk for e in events])
     sent=0
     if ask:
         busy=set(ActionToken.objects.filter(kind="consent",used=False,expires__gt=timezone.now()).values_list("contact_id",flat=True))

@@ -812,7 +812,7 @@ def series_create(tenant,booking,every,until,actor):
     """The free dates of the plan, tied to the booking (series); the ones taken meanwhile are skipped. How many made."""
     import uuid
     sid=booking.series or uuid.uuid4();made=0
-    if not booking.series:Booking.objects.filter(pk=booking.pk).update(series=sid);booking.series=sid
+    if not booking.series:booking.series=sid;booking.save(update_fields=["series"])  # 2.18.0: saved, not updated: the site's archive gets it
     for start,why in series_plan(tenant,booking,every,until):
         if why:continue
         try:create_booking(tenant,{**series_base(booking),"start":start.isoformat(),"request_key":secrets.token_urlsafe(24)},actor,series=sid);made+=1

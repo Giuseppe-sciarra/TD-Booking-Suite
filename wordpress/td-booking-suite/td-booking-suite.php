@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC.
- * Version: 2.17.3
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto.
+ * Version: 2.18.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.17.3';
+const TDBS_VERSION='2.18.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -220,18 +220,34 @@ add_action('rest_api_init',function(){
     register_rest_route('tdbs/v1','/sync',array('methods'=>'POST','callback'=>'tdbs_pc_sync','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/slots',array('methods'=>'GET','callback'=>'tdbs_pc_slots_api','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/book',array('methods'=>'POST','callback'=>'tdbs_pc_book','permission_callback'=>'__return_true'));
+    // 2.18.0: the PC's archive; with /sync the only routes of the PC, under one prefix a firewall can allow (/slots and /book are the visitors')
+    register_rest_route('tdbs/v1','/archive/push',array('methods'=>'POST','callback'=>'tdbs_archive_push','permission_callback'=>'__return_true'));
+    register_rest_route('tdbs/v1','/archive/pull',array('methods'=>'POST','callback'=>'tdbs_archive_pull','permission_callback'=>'__return_true'));
 });
 
-/** From the PC only: signature over "time.body", 5 minutes of window, each signature once. */
-function tdbs_pc_sync(WP_REST_Request $request) {
-    global $wpdb;
+/** From the PC only: POST JSON, signature over "time.body", 5 minutes of window, each signature once. The body decoded, or the error. */
+function tdbs_pc_verify(WP_REST_Request $request,$max) {
     if (empty(tdbs_pc()['secret'])) return tdbs_pc_error('Modalità PC non configurata.',404);
     $body=(string)$request->get_body();$ts=(string)$request->get_header('x-tdbs-time');$sig=(string)$request->get_header('x-tdbs-signature');
     $seen=get_option('tdbs_pc_seen',array());$seen=is_array($seen)?$seen:array();
-    if (strlen($body)>5000000 || !ctype_digit($ts) || abs(time()-(int)$ts)>300 || !hash_equals(tdbs_pc_sign($ts,$body),$sig) || in_array($sig,$seen,true)) return tdbs_pc_error('Firma non valida.',401);
-    update_option('tdbs_pc_seen',array_slice(array_merge($seen,array($sig)),-100),false);
+    if (strlen($body)>$max) return tdbs_pc_error('Richiesta troppo grande.',413);
+    if (!ctype_digit($ts) || abs(time()-(int)$ts)>300 || !hash_equals(tdbs_pc_sign($ts,$body),$sig) || in_array($sig,$seen,true)) return tdbs_pc_error('Firma non valida.',401);
+    // 2.18.0: 500 kept, the archive's calls come many in a row
+    update_option('tdbs_pc_seen',array_slice(array_merge($seen,array($sig)),-500),false);
     $data=json_decode($body,true);
-    if (!is_array($data)) return tdbs_pc_error('Richiesta non valida.');
+    return is_array($data)?$data:tdbs_pc_error('Richiesta non valida.');
+}
+/** The answer is signed as a string inside the envelope: WordPress encodes the envelope as it likes. */
+function tdbs_pc_reply($inner) {
+    $inner=wp_json_encode($inner);$now=(string)time();
+    $response=new WP_REST_Response(array('body'=>$inner,'time'=>$now,'sig'=>tdbs_pc_sign($now,$inner)),200);
+    $response->header('Cache-Control','no-store');
+    return $response;
+}
+function tdbs_pc_sync(WP_REST_Request $request) {
+    global $wpdb;
+    $data=tdbs_pc_verify($request,5000000);  // the free times of many services and days can be more than the archive's 512 KB
+    if ($data instanceof WP_REST_Response) return $data;
     $table=tdbs_pc_table();
     foreach (array_slice((array)($data['ack']??array()),0,500) as $id) if (is_string($id) && preg_match('/^[a-f0-9]{32}$/',$id)) $wpdb->delete($table,array('id'=>$id));
     // without a snapshot nothing changed on the PC since the last one: the times are still those, checked now
@@ -246,11 +262,69 @@ function tdbs_pc_sync(WP_REST_Request $request) {
         $slot=json_decode($row['slot'],true);$client=tdbs_pc_open($row['data']);
         if (is_array($slot) && is_array($client)) $out[]=array_merge($slot,$client,array('id'=>$row['id']));
     }
-    // the answer is signed as a string inside the envelope: WordPress encodes the envelope as it likes
-    $inner=wp_json_encode(array('ok'=>true,'bookings'=>$out));$now=(string)time();
-    $response=new WP_REST_Response(array('body'=>$inner,'time'=>$now,'sig'=>tdbs_pc_sign($now,$inner)),200);
-    $response->header('Cache-Control','no-store');
-    return $response;
+    return tdbs_pc_reply(array('ok'=>true,'bookings'=>$out));
+}
+
+/* ---------- 2.18.0 Il sito come archivio centrale: the PC pushes every change (bookings, client cards with fiscal data, client
+   records, consent history, receipts' summary), each record sealed by the PC with the shared secret; the site keeps the last
+   state of each, an empty one for what is gone, and gives it all back to a new PC. On only with the switch here too. */
+const TDBS_ARCHIVE_BODY=524288;
+function tdbs_archive_on() {$p=tdbs_pc();return !empty($p['archive']) && !empty($p['secret']);}
+function tdbs_archive_table() {
+    global $wpdb;$table=$wpdb->prefix.'tdbs_archive';
+    if (get_option('tdbs_archive_db')!=='1') {
+        require_once ABSPATH.'wp-admin/includes/upgrade.php';
+        dbDelta("CREATE TABLE $table (\n kind varchar(10) NOT NULL,\n ref char(36) NOT NULL,\n seq bigint(20) unsigned NOT NULL,\n day char(10) NOT NULL DEFAULT '',\n data longtext NOT NULL,\n PRIMARY KEY  (kind,ref),\n KEY day (kind,day)\n) ".$wpdb->get_charset_collate().';');
+        update_option('tdbs_archive_db','1');
+    }
+    return $table;
+}
+function tdbs_archive_status() {
+    global $wpdb;$row=$wpdb->get_row("SELECT SUM(data<>'') AS records,COALESCE(SUM(LENGTH(data)),0) AS size FROM ".tdbs_archive_table(),ARRAY_A);
+    return array('records'=>(int)($row['records']??0),'size'=>(int)($row['size']??0));
+}
+function tdbs_archive_push(WP_REST_Request $request) {
+    global $wpdb;
+    $data=tdbs_pc_verify($request,TDBS_ARCHIVE_BODY+4096);
+    if ($data instanceof WP_REST_Response) return $data;
+    if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
+    $table=tdbs_archive_table();$acked=array();
+    foreach (array_slice((array)($data['ops']??array()),0,1000) as $op) {
+        if (!is_array($op)) continue;
+        $kind=(string)($op['kind']??'');$ref=(string)($op['ref']??'');$seq=$op['seq']??null;$day=(string)($op['day']??'');$sealed=(string)($op['data']??'');
+        if (!in_array($kind,array('booking','contact','treatment','consent','sale'),true) || !preg_match('/^[a-f0-9-]{36}$/',$ref) || !is_int($seq) || $seq<1 || ($day!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$day)) || ($sealed!=='' && !preg_match('#^[A-Za-z0-9+/=]+$#',$sealed))) continue;
+        // a later state wins; what is gone stays as an empty row, so an older copy arriving late cannot bring it back
+        $done=$wpdb->query($wpdb->prepare("INSERT INTO $table (kind,ref,seq,day,data) VALUES (%s,%s,%d,%s,%s) ON DUPLICATE KEY UPDATE data=IF(VALUES(seq)>seq,VALUES(data),data),day=IF(VALUES(seq)>seq,VALUES(day),day),seq=GREATEST(seq,VALUES(seq))",$kind,$ref,$seq,$day,$sealed));
+        if ($done!==false) $acked[]=$seq;
+    }
+    update_option('tdbs_archive_at',time(),false);
+    return tdbs_pc_reply(array('ok'=>true,'acked'=>$acked)+tdbs_archive_status());
+}
+/** A page of one kind for a new PC, in order of id, about 400 KB at a time; next is where the following page starts. */
+function tdbs_archive_pull(WP_REST_Request $request) {
+    global $wpdb;
+    $data=tdbs_pc_verify($request,TDBS_ARCHIVE_BODY);
+    if ($data instanceof WP_REST_Response) return $data;
+    if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
+    $kind=in_array($data['kind']??'',array('booking','contact','treatment','consent','sale'),true)?$data['kind']:'contact';
+    $after=preg_match('/^[a-f0-9-]{36}$/',(string)($data['after']??''))?(string)$data['after']:'';
+    $rows=(array)$wpdb->get_results($wpdb->prepare('SELECT ref,data FROM '.tdbs_archive_table()." WHERE kind=%s AND ref>%s AND data<>'' ORDER BY ref LIMIT 500",$kind,$after),ARRAY_A);
+    $out=array();$size=0;
+    foreach ($rows as $r) {$size+=strlen($r['data'])+60;if ($out && $size>400000) break;$out[]=$r;}
+    $more=$out && (count($out)<count($rows) || count($rows)===500);
+    return tdbs_pc_reply(array('ok'=>true,'records'=>$out,'next'=>$more?end($out)['ref']:''));
+}
+/** The bookings of the archive from one day to another, as the agenda shows them; their operators added to its columns. */
+function tdbs_archive_bookings($from,$to,&$a) {
+    global $wpdb;$out=array();$ids=array_map('strval',array_column((array)($a['operators']??array()),'id'));
+    foreach ((array)$wpdb->get_col($wpdb->prepare('SELECT data FROM '.tdbs_archive_table()." WHERE kind='booking' AND day BETWEEN %s AND %s AND data<>''",$from,$to)) as $sealed) {
+        $b=tdbs_pc_open($sealed);$v=is_array($b)?($b['view']??null):null;
+        if (!is_array($v)) continue;  // the cancelled ones have no view
+        $rid=(string)($v['resource']??'');
+        if ($rid!=='' && !in_array($rid,$ids,true)) {$ids[]=$rid;$a['operators'][]=array('id'=>$rid,'name'=>(string)($v['operator']??''));}
+        $out[]=$v;
+    }
+    return $out;
 }
 
 /** The site's requests the PC has not taken yet: their times are no longer free on the site. */
@@ -471,13 +545,16 @@ function tdbs_agenda_shortcode() {
             .'<p class="tdbs-agenda-status" role="status">'.esc_html($msg).'</p></form></div>';
     }
     $stored=get_option('tdbs_agenda',array());$a=is_array($stored)&&!empty($stored['sealed'])?tdbs_pc_open($stored['sealed']):null;
+    if (!is_array($a) && tdbs_archive_on()) $a=array('timezone'=>(string)(tdbs_pc_snapshot()['timezone']??'Europe/Rome'),'operators'=>array(),'bookings'=>array());
     $out='<form class="inline" method="post" action="'.$post.'"><input type="hidden" name="action" value="tdbs_agenda_logout"><input type="hidden" name="back" value="'.$back.'">'.wp_nonce_field('tdbs_agenda_out','_wpnonce',false,false).'<button type="submit">Esci</button></form>';
     if (!is_array($a)) return '<div class="tdbs-agenda"><p>L’agenda arriva con la prossima sincronizzazione del PC.</p>'.$out.'</div>';
-    $a['bookings']=array_merge((array)($a['bookings']??array()),tdbs_agenda_pending());
     try {$tz=new DateTimeZone((string)($a['timezone']??'Europe/Rome'));} catch (Exception $e) {$tz=wp_timezone();}
     $today=(new DateTime('now',$tz))->format('Y-m-d');$week=($_GET['vista']??'')==='settimana';
     $day=preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)($_GET['giorno']??''))?(string)$_GET['giorno']:$today;
     $shift=function($d,$n){return gmdate('Y-m-d',strtotime($d.' 12:00 UTC')+$n*DAY_IN_SECONDS);};
+    // 2.18.0: with the archive, the days chosen from all of it, also the past ones
+    if (tdbs_archive_on()) {$first=$week?$shift($day,-((int)gmdate('N',strtotime($day.' 12:00 UTC'))-1)):$day;$a['bookings']=tdbs_archive_bookings($first,$week?$shift($first,6):$day,$a);}
+    $a['bookings']=array_merge((array)($a['bookings']??array()),tdbs_agenda_pending());
     $link=function($label,$args,$on=null){return '<a class="button" href="'.esc_url(add_query_arg($args)).'"'.($on===null?'':' aria-current="'.($on?'true':'false').'"').'>'.$label.'</a>';};
     $step=$week?7:1;$v=$week?'settimana':'giorno';
     $bar='<nav class="tdbs-agenda-bar" aria-label="Agenda">'.$link('Giorno',array('vista'=>'giorno','giorno'=>$day),!$week).$link('Settimana',array('vista'=>'settimana','giorno'=>$day),$week)
@@ -514,14 +591,21 @@ function tdbs_pc_settings($post) {
         .'<li>Crea una pagina, per esempio Agenda, con lo shortcode <code>[tdbs_agenda]</code>. Non metterla nel menu del sito; Google non la mostra.</li>'
         .'<li>Escludi quella pagina dalla cache del server, per esempio dalla FastCGI cache di aaPanel. I plugin di cache di WordPress la saltano da soli, la cache del server no: senza esclusione le prenotazioni potrebbero arrivare a chi non ha la password.</li>'
         .'<li>Dai la password solo a chi deve vedere l’agenda. L’agenda arriva alla sincronizzazione dopo, entro 2 minuti con il PC acceso.</li></ol>'
-        .'<p class="description">Il PC manda l’agenda cifrata con la chiave condivisa e il sito la decifra per mostrarla: chi amministra questo sito può tecnicamente leggerla.</p></td></tr></table>';
-    submit_button('Salva la modalità PC','secondary');echo '</form></div>';
+        .'<p class="description">Il PC manda l’agenda cifrata con la chiave condivisa e il sito la decifra per mostrarla: chi amministra questo sito può tecnicamente leggerla.</p></td></tr>';
+    // 2.18.0
+    $st=!empty($p['secret'])?tdbs_archive_status():array('records'=>0,'size'=>0);$at=(int)get_option('tdbs_archive_at',0);
+    echo '<tr><th>Archivio</th><td><label><input type="checkbox" name="archive" value="1"'.checked(!empty($p['archive']),true,false).'> Il sito come archivio centrale</label>'
+        .'<p class="description">Il sito tiene una copia cifrata di prenotazioni, clienti con i dati fiscali, schede di lavoro, consensi e riepilogo degli scontrini, aggiornata dal PC a ogni sincronizzazione: un PC nuovo riprende tutto da qui con <em>Ripristina dal sito</em>. Va acceso anche nel programma, nella card <em>Sito WordPress · modalità PC</em>. Con l’archivio, l’agenda riservata mostra anche i giorni passati. Spegnendolo, l’archivio nel sito viene cancellato.</p>'
+        .'<p>'.($at?'Record: '.(int)$st['records'].', spazio: '.esc_html(size_format((int)$st['size'])).', ultimo invio dal PC: '.esc_html(wp_date('d/m/Y H:i',$at)):'Ancora nessun invio dal PC.').'</p></td></tr></table>';
+    submit_button('Salva la modalità PC','secondary');echo '</form>';
+    echo '<h3>Per il firewall del sito</h3><p>Il PC chiama solo questi indirizzi, sempre in <strong>POST</strong> con dati JSON, con le intestazioni <code>X-TDBS-Time</code> e <code>X-TDBS-Signature</code> e corpo fino a <strong>512 KB</strong>:</p><ul style="list-style:disc;padding-left:20px"><li><code>/wp-json/tdbs/v1/sync</code></li><li><code>/wp-json/tdbs/v1/archive/push</code> e <code>/wp-json/tdbs/v1/archive/pull</code>, sotto <code>/wp-json/tdbs/v1/archive/</code></li></ul>'
+        .'<p>Nel WAF: <em>whitelist › tipo «path»</em>, aggiungi due voci con nota «TD Booking Suite – PC»: <code>/wp-json/tdbs/v1/sync</code> e <code>/wp-json/tdbs/v1/archive/</code>. Per limitarle a questo sito: <code>'.esc_html((string)wp_parse_url(home_url(),PHP_URL_HOST)).'|/wp-json/tdbs/v1/sync</code> (host esatto: il www vuole una voce sua). Non mettere in whitelist tutto <code>/wp-json/tdbs/v1/</code>: <code>/slots</code> (GET) e <code>/book</code> (POST) li usano i visitatori e devono restare sotto il firewall.</p></div>';
 }
 add_action('admin_post_tdbs_pc_save',function(){
     global $wpdb;
     tdbs_admin_check('tdbs_pc_save');
     $old=tdbs_pc();$secret=trim((string)wp_unslash($_POST['secret']??''));
-    $new=array('on'=>!empty($_POST['on']),'secret'=>(string)($old['secret']??''),'max_age'=>max(1,min(60,absint($_POST['max_age']??7))),'agenda'=>(string)($old['agenda']??''),'agenda_ver'=>(string)($old['agenda_ver']??''));
+    $new=array('on'=>!empty($_POST['on']),'archive'=>!empty($_POST['archive']),'secret'=>(string)($old['secret']??''),'max_age'=>max(1,min(60,absint($_POST['max_age']??7))),'agenda'=>(string)($old['agenda']??''),'agenda_ver'=>(string)($old['agenda_ver']??''));
     // 2.17.1: the agenda's password, hashed; a new one (or the agenda off) closes the sessions opened before
     $password=(string)wp_unslash($_POST['agenda']??'');
     if (!empty($_POST['agenda_off'])) {$new['agenda']='';$new['agenda_ver']='';delete_option('tdbs_agenda');}
@@ -538,11 +622,22 @@ add_action('admin_post_tdbs_pc_save',function(){
                 $client=tdbs_pc_open($row['data'],$new['secret']);
                 if (is_array($client)) $wpdb->update($table,array('data'=>tdbs_pc_seal($client,$secret)),array('id'=>$row['id']));
             }
+            // 2.18.0: and the archive, for the new PC that brought the new key; page by page, it can be large
+            $at=tdbs_archive_table();$last=array('','');
+            do {
+                $rows=(array)$wpdb->get_results($wpdb->prepare("SELECT kind,ref,data FROM $at WHERE (kind,ref)>(%s,%s) ORDER BY kind,ref LIMIT 500",$last[0],$last[1]),ARRAY_A);
+                foreach ($rows as $row) {
+                    $last=array($row['kind'],$row['ref']);$rec=$row['data']!==''?tdbs_pc_open($row['data'],$new['secret']):null;
+                    if (is_array($rec)) $wpdb->update($at,array('data'=>tdbs_pc_seal($rec,$secret)),array('kind'=>$row['kind'],'ref'=>$row['ref']));
+                }
+            } while (count($rows)===500);
         }
         if ($secret!==$new['secret']) delete_option('tdbs_agenda');  // sealed with the old key: the PC sends it again
         $new['secret']=$secret;
     }
     if ($new['on'] && $new['secret']==='') {$new['on']=false;tdbs_flash('Incolla prima la chiave generata nel programma.');update_option('tdbs_pc',$new,false);tdbs_back();}
+    // the archive off here: deleted, it holds personal data the PC no longer updates nor erases
+    if (empty($new['archive']) && !empty($old['archive'])) {$wpdb->query('DELETE FROM '.tdbs_archive_table());delete_option('tdbs_archive_at');}
     update_option('tdbs_pc',$new,false);
     tdbs_flash($new['on']?'Modalità PC attiva: il modulo usa i dati che manda il PC.':'Modalità PC salvata, spenta.','success');tdbs_back();
 });

@@ -145,7 +145,10 @@ def outcome(device,r):
 
 # ---------- the queue
 def stale(location):
-    Sale.objects.filter(location=location,status="sending",claimed__lt=timezone.now()-STALE).update(status="unknown",error="Nessuna risposta dalla cassa: guarda se lo scontrino è uscito prima di riprovare.")
+    from .wpsync import touch
+    late=Sale.objects.filter(location=location,status="sending",claimed__lt=timezone.now()-STALE)
+    touch(location.tenant_id,"sale",late.values_list("pk",flat=True))  # 2.18.0: the site's archive gets it too
+    late.update(status="unknown",error="Nessuna risposta dalla cassa: guarda se lo scontrino è uscito prima di riprovare.")
 def claim(location):
     """The oldest request waiting, now sending; none while another one is with the register (one at a time)."""
     Location.objects.select_for_update().get(pk=location.pk)
@@ -166,7 +169,9 @@ def finish(tenant,sale,state,info,attempt_id=None):
         sale.number=str(info.get("number") or "")[:20];sale.z=str(info.get("z") or "")[:10];sale.serial=sale.location.till.get("serial","");sale.printed=timezone.now()
     sale.save(update_fields=["status","error","number","z","serial","printed"])
     audit(tenant,None,"sale."+state,sale.pk,kind=sale.kind,number=sale.number)
-    if state=="done" and sale.kind=="void":Sale.objects.filter(pk=sale.voids_id).update(status="void")
+    if state=="done" and sale.kind=="void":
+        from .wpsync import touch
+        Sale.objects.filter(pk=sale.voids_id).update(status="void");touch(tenant.pk,"sale",[sale.voids_id])
     if state=="done" and sale.kind=="sale":
         from .booking import change_status,BookingError
         if sale.booking_id:

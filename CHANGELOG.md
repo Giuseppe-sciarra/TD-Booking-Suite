@@ -2,6 +2,14 @@
 
 **3 novembre 2026 · versione 2.17.3**
 
+## 2.18.0 — il sito come archivio centrale
+
+- **Sito come archivio centrale** (agenzia, card *Sito WordPress · modalità PC*; da accendere anche nel plugin): ogni modifica fatta sul PC (prenotazioni create, spostate, annullate e cambi di stato, schede dei clienti create, modificate, unite o cancellate, dati fiscali, schede di lavoro, storico dei consensi, riepilogo degli scontrini) va in coda e parte verso il sito con le sincronizzazioni, in ordine, numerata e a pezzi sotto i 512 KB, finché il sito non conferma. Il sito tiene l'ultimo stato di ogni record, cifrato con la chiave condivisa (AES-256-GCM). Un cliente cancellato per la privacy sparisce anche dal sito, con il suo storico
+- **Carica tutto sul sito** e **Ripristina dal sito** (agenzia, stessa card): la prima volta che si accende tutto va in coda da solo. Su un PC nuovo o reinstallato il ripristino riporta clienti, prenotazioni, schede di lavoro e consensi, senza doppioni; servizi, varianti e operatori si abbinano per nome e quelli mancanti vengono elencati. Su un'attività che ha già clienti o prenotazioni chiede la conferma
+- **Agenda riservata del sito** (`[tdbs_agenda]`): con l'archivio acceso legge da lì e mostra anche i giorni passati; le schede di lavoro non ci sono mai
+- **Plugin WordPress 2.18.0**: interruttore e stato dell'archivio (record, spazio, ultimo invio) e il riquadro *Per il firewall del sito* con gli indirizzi da mettere in whitelist: `/wp-json/tdbs/v1/sync` e `/wp-json/tdbs/v1/archive/`, sempre POST JSON con `X-TDBS-Time` e `X-TDBS-Signature`, corpo fino a 512 KB. `/slots` e `/book` restano sotto il firewall
+- **Guida**: nuova sezione *Il sito come archivio centrale*
+
 ## 2.17.3 — spiegazioni più chiare
 
 - **Guida del programma**: nuove sezioni, con i passi in ordine, per cassa e registratore (rete e USB), ponte cassa, dati fiscali, notifiche e promemoria, limiti, servizi riservati, pagina di ringraziamento, domande condizionate, Outlook, fuori ufficio, aggiornamenti, sito WordPress con il PC spento e agenda riservata; 10 casi nuovi in *Se qualcosa non va*

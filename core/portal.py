@@ -277,9 +277,22 @@ def setup_action(request,slug):
         request.session["wp_code"]=new_code(t,request.user)
         return redirect(reverse("setup",args=[slug])+"#wordpress")
     # 2.17.0: the site fed by this PC also when it is off (wpsync.py)
-    if action in ("wps_save","wps_secret","wps_now"):
+    if action in ("wps_save","wps_secret","wps_now","wps_upload","wps_restore"):
         from . import wpsync
         if action=="wps_secret":request.session["wps_secret"]=wpsync.new_secret(t,request.user)
+        elif action=="wps_upload":  # 2.18.0: the site as the archive, everything again
+            if not t.wp_archive:messages.error(request,"Accendi prima Sito come archivio centrale.")
+            else:
+                n=wpsync.upload_all(t);wpsync.sync(t,full=True);err=(t.wp_state or {}).get("archive",{}).get("error")
+                if err:messages.error(request,f"{n} record in coda per il sito, invio non riuscito: {err}. Riprova o attendi la prossima sincronizzazione.")
+                else:messages.success(request,f"{n} record in coda per il sito: partono adesso e con le prossime sincronizzazioni.")
+        elif action=="wps_restore":
+            try:r=wpsync.restore(t,request.user,confirm=request.POST.get("confirm")=="1")
+            except ValueError as ex:messages.error(request,"Ripristino non riuscito: "+str(ex).rstrip(".")+".")
+            else:
+                text=f"Ripristinati dal sito {r['contacts']} clienti, {r['bookings']} prenotazioni, {r['treatments']} schede di lavoro e {r['consents']} eventi dei consensi"+(f"; {r['skipped']} già presenti" if r["skipped"] else "")+"."
+                if r["missing"]:text+=" Nel catalogo mancano: "+", ".join(r["missing"][:20])+"."+(f" {r['lost']} prenotazioni non ripristinate: crea i servizi con lo stesso nome e ripristina di nuovo." if r["lost"] else "")
+                (messages.warning if r["missing"] else messages.success)(request,text)
         elif action=="wps_now":
             n=wpsync.sync(t,full=True);err=(t.wp_state or {}).get("error")
             if not wpsync.conf(t).get("on"):messages.error(request,"Accendi prima la sincronizzazione.")
