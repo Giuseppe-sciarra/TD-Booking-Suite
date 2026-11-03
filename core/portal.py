@@ -683,7 +683,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile","sign","fiscal")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile","sign","fiscal","channel")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json

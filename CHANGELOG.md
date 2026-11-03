@@ -1,10 +1,11 @@
-# TD Booking Suite 2.16.0 — registro modifiche
+# TD Booking Suite 2.16.1 — registro modifiche
 
-**3 novembre 2026 · versione 2.16.0**
+**3 novembre 2026 · versione 2.16.1**
 
 ## 2.16.1 — dati fiscali dei clienti
 
 - **Dati fiscali** nella scheda del cliente (*Clienti › scheda*, per chi crea prenotazioni e vede i recapiti; agli altri ruoli compaiono nascosti come gli altri recapiti): privato, azienda o professionista, codice fiscale e partita IVA controllati (carattere e cifra di controllo; per l'estero partita IVA e CAP liberi), ragione sociale, indirizzo con CAP, comune, provincia e nazione, codice destinatario SDI e PEC, cifrati con il resto della scheda. La **Cassa** mette il codice fiscale del cliente scelto, l'**importazione** riconosce le colonne Codice fiscale, Partita IVA, Ragione sociale, PEC, SDI o Codice destinatario, CAP e Provincia, l'**unione di due schede** li fa scegliere campo per campo, lo scarico privacy li comprende e la cancellazione li toglie.
+- **Canale preferito del cliente**: nella scheda la scelta email / SMS / WhatsApp ora si salva (prima finiva nella richiesta di cancellazione e dava l'errore «Scrivi CANCELLA»)
 
 ## 2.16.0 — collegamento ai registratori di cassa
 
