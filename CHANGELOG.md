@@ -1,6 +1,13 @@
-# TD Booking Suite 2.17.2 — registro modifiche
+# TD Booking Suite 2.17.3 — registro modifiche
 
-**3 novembre 2026 · versione 2.17.2**
+**3 novembre 2026 · versione 2.17.3**
+
+## 2.17.3 — spiegazioni più chiare
+
+- **Guida del programma**: nuove sezioni, con i passi in ordine, per cassa e registratore (rete e USB), ponte cassa, dati fiscali, notifiche e promemoria, limiti, servizi riservati, pagina di ringraziamento, domande condizionate, Outlook, fuori ufficio, aggiornamenti, sito WordPress con il PC spento e agenda riservata; 10 casi nuovi in *Se qualcosa non va*
+- **Pagine nuove**: in cima a ognuna una riga dice a cosa serve; spiegazioni dei campi riscritte in parole semplici. Il menu *SMS, WhatsApp e Google* si chiama *SMS, WhatsApp e calendari*
+- **Plugin WordPress 2.17.3**: la pagina delle impostazioni spiega passo per passo le due modalità e l'agenda riservata
+- **Edizione Windows**: il manuale ha i capitoli su cassa, dati fiscali, promemoria, aggiornamenti, sito con il PC spento e agenda riservata
 
 ## 2.17.2 — il colore dell'attività anche dentro il programma
 

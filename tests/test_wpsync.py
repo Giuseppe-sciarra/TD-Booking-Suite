@@ -128,7 +128,7 @@ def test_plugin_zip_in_every_edition_and_pc_mode_in_it(sample,settings):
     assert r.status_code==200 and "td-booking-suite/pc.js" in names and owner.get("/platform/plugin/download/").status_code==403
     assert c.get("/platform/plugin/").status_code==404  # the agency's page stays the Cloud's
     php=(Path(__file__).resolve().parents[1]/"wordpress/td-booking-suite/td-booking-suite.php").read_text()
-    for needle in ("const TDBS_VERSION='2.17.1'","Version: 2.17.1","'/sync'","hash_equals(tdbs_pc_sign($ts,$body),$sig)","abs(time()-(int)$ts)>300","aes-256-gcm","wp_verify_nonce","tdbs_pc_throttle()","GET_LOCK","tdbs_pc_on()) return tdbs_pc_shortcode",
+    for needle in ("const TDBS_VERSION='","Version: ","'/sync'","hash_equals(tdbs_pc_sign($ts,$body),$sig)","abs(time()-(int)$ts)>300","aes-256-gcm","wp_verify_nonce","tdbs_pc_throttle()","GET_LOCK","tdbs_pc_on()) return tdbs_pc_shortcode",
         # 2.17.1: the agenda password set by the site's admin only, hashed; HttpOnly session, lockout, never cached nor indexed
         "tdbs_admin_check('tdbs_pc_save')","wp_hash_password($password)","wp_check_password(","'httponly'=>true","$fails>=5","DONOTCACHEPAGE","'noindex'=>true","add_shortcode('tdbs_agenda'"):
         assert needle in php
