@@ -137,6 +137,11 @@ class Tenant(models.Model):
     # encrypted; set by the agency, or by the owner when the agency allows it
     alloggiati=models.TextField(blank=True)
     alloggiati_self=models.BooleanField(default=False)
+    # 2.16.0: the fiscal register (cassa.py): the agency lets the owner set it up himself; the owner lets the operators close
+    # bills too; till_on: some location has one, so Cassa shows (permissions.effective)
+    till_self=models.BooleanField(default=False)
+    till_operators=models.BooleanField(default=False)
+    till_on=models.BooleanField(default=False)
     smtp_daily_limit=models.PositiveIntegerField(default=500)
     smtp_hourly_limit=models.PositiveIntegerField(default=100)
     logo=models.BinaryField(null=True,blank=True)
@@ -230,6 +235,11 @@ class Location(Scoped):
     # 2.14.0: restaurants (tables.py): tables given by hand or the best fit suggested, and online only with a table free
     tables=models.CharField(max_length=7,default="off",choices=[("off","Nessuna gestione dei tavoli"),("manual","Li assegnate voi"),("suggest","Il programma propone il tavolo più adatto")])
     tables_online=models.BooleanField(default=False)
+    # 2.16.0: its fiscal register (cassa.py): {"device","address","serial","link","departments":{service id:{"dept","vat"}},
+    # "default_dept","payments":{"cash","card","other"}}; the hash of the bridge's token and when the bridge last asked
+    till=models.JSONField(default=dict,blank=True)
+    till_token=models.CharField(max_length=64,blank=True,db_index=True)
+    till_seen=models.DateTimeField(null=True,blank=True)
     def __str__(self):return self.name
 class Receipt(Scoped):
     """2.14.0: the Alloggiati Web receipt of a day of sending (stays.receipts): how many guests went, the Polizia's PDF
@@ -612,6 +622,33 @@ class ClientProfile(Scoped):
     data=models.TextField(blank=True)
     updated=models.DateTimeField(auto_now=True)
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant"],name="client_profile_unique")]
+class Sale(Scoped):
+    """2.16.0: a documento commerciale asked of the location's fiscal register (cassa.py), or its annullo (voids), or a
+    check of the connection (probe, test). The register emits and transmits it; this is what it answered. Lines,
+    payments, codice fiscale, lotteria and the email of the copy sealed in pii; key: one bill sent once."""
+    location=models.ForeignKey(Location,on_delete=models.PROTECT)
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="sales")
+    contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="sales")
+    voids=models.ForeignKey("self",null=True,blank=True,on_delete=models.PROTECT,related_name="voided_by")
+    kind=models.CharField(max_length=6,default="sale",choices=[("sale","Scontrino"),("void","Annullo"),("probe","Prova collegamento"),("test","Stampa di prova")])
+    status=models.CharField(max_length=8,default="queued",choices=[("queued","In coda"),("sending","In corso"),("done","Emesso"),("failed","Non emesso"),("unknown","Da verificare"),("void","Annullato")])
+    total=models.DecimalField(max_digits=9,decimal_places=2,default=0)
+    number=models.CharField(max_length=20,blank=True)
+    z=models.CharField(max_length=10,blank=True)
+    serial=models.CharField(max_length=20,blank=True)
+    printed=models.DateTimeField(null=True,blank=True)
+    error=models.CharField(max_length=200,blank=True)
+    claimed=models.DateTimeField(null=True,blank=True)
+    mailed=models.DateTimeField(null=True,blank=True)
+    key=models.CharField(max_length=64)
+    actor=models.CharField(max_length=36,blank=True)
+    pii=models.TextField()
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["tenant","key"],name="sale_key")]
+        indexes=[models.Index(fields=["location","status","created"])]
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"sale:"+str(self.pk))
 class Audit(Scoped):
     actor=models.CharField(max_length=36,blank=True)
     action=models.CharField(max_length=80)

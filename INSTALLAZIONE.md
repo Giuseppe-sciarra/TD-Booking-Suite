@@ -330,6 +330,24 @@ Valori facoltativi in `.env`: `TDBS_AGGIORNA_CODICE=1` (anche le versioni nuove 
 
 Il passaggio a una versione maggiore di PostgreSQL, per esempio dalla 17 alla 18, non lo fa mai da solo: si fa a mano, con backup e ripristino.
 
+## 14. Registratore di cassa e ponte cassa
+
+Il registratore telematico (RCH Print!F, Epson FP-81II / FP-90III RT) sta nella rete del negozio, non in quella del server: per questo nell'edizione Cloud e Docker il collegamento passa dal **ponte cassa**, `scripts/ponte_cassa.py`, che gira su un qualunque computer del negozio (Windows, Mac o Linux) con Python 3.9 o più nuovo.
+
+1. In *Registratore di cassa* (menu *Gestione tecnica* dell'attività) scegli per la sede il registratore, *Rete* con l'indirizzo IP della cassa (RCH: menu SRV, Connettività, Ethernet, con il web server acceso) oppure *USB / seriale* con la porta COM, la matricola, i reparti e i pagamenti. Salva.
+2. Premi *Crea il codice del ponte* e copia il codice (`tdcassa_…`): non viene più mostrato. *Scarica ponte_cassa.py* sul computer del negozio.
+3. Avvialo, e lascia aperta la finestra (o mettilo tra i programmi che partono con il computer):
+
+```
+python ponte_cassa.py https://prenotazioni.example.it/book/ATTIVITA/api/cassa/ tdcassa_IL-CODICE
+```
+
+4. In *Registratore di cassa* premi *Prova collegamento*: dopo qualche secondo, ricaricando la pagina, vedi se la cassa risponde e l'ultimo contatto del ponte.
+
+Il ponte chiama il programma ogni 2 secondi in HTTPS con il codice della sede (al massimo 120 volte al minuto) e parla con la cassa solo su indirizzi della rete locale. Se il codice finisce in mano sbagliata, *Revoca* o *Nuovo codice* lo fermano.
+
+**Cassa via USB**: sulle casse RCH l'USB compare in Windows come porta COM (Gestione dispositivi, *Porte (COM e LPT)*). Il computer del ponte ha bisogno di `pip install pyserial`; `python ponte_cassa.py --porte` elenca le porte. Il protocollo USB *RCH con conferma* aspetta dalla cassa la conferma di ogni comando; *Comandi semplici* non ha conferma, e ogni scontrino resta da verificare a mano. Le casse Epson qui si collegano solo in rete.
+
 ## Se qualcosa non va
 
 Per leggere gli errori: `docker compose logs --tail 50 web worker db`

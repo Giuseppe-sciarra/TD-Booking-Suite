@@ -488,3 +488,28 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  c.addEventListener("pointermove",e=>{if(!on)return;x.lineTo(...at(e));x.stroke();});
  const end=()=>{if(on)out.value=c.toDataURL("image/png");on=false;};c.addEventListener("pointerup",end);c.addEventListener("pointercancel",end);
  c.closest("form").querySelector("[data-sign-clear]")?.addEventListener("click",()=>{x.clearRect(0,0,c.width,c.height);out.value="";});});
+// 2.16.0: Cassa: tap a service to add it, quantity, price and lines by hand, the total as it is typed, the client looked up
+(()=>{const form=document.querySelector("form[data-till]");if(!form)return;
+ const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
+ const num=v=>parseFloat(String(v||"").replace(",","."))||0;
+ const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{t+=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value);});t-=num(form.querySelector("[name=discount]").value);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
+ document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
+  const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
+  if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
+  else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
+  sum();}));
+ body.addEventListener("click",e=>{const q=e.target.closest("[data-till-qty]"),x=e.target.closest("[data-till-remove]");
+  if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
+  if(x)x.closest("tr").remove();sum();});
+ form.addEventListener("input",sum);sum();
+ const search=document.querySelector("[data-till-search]");
+ search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();document.querySelectorAll(".till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
+  document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
+ const who=form.querySelector("[data-till-client]"),id=form.querySelector("[data-till-contact]"),found=form.querySelector("[data-till-found]");let timer;
+ who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
+  timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
+   found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="ghost small";
+    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();});li.append(b);return li;}));}catch{}},250);});
+})();
+// 2.16.0: a page waiting for the register looks again by itself
+(()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();

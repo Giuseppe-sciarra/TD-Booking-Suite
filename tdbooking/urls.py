@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
+from core import cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/logo.png",branding.logo,name="brand_logo"),
@@ -75,6 +75,8 @@ urlpatterns=[
  path("t/<slug:slug>/contacts/<uuid:contact_id>/unisci/",portal.contact_merge,name="contact_merge"),
  path("t/<slug:slug>/attesa/",portal.waitlist_view,name="waitlist"),
  path("t/<slug:slug>/richiami/",portal.recalls_view,name="recalls"),
+ path("t/<slug:slug>/cassa/",cassa.till_view,name="till"),
+ path("t/<slug:slug>/registratore/",cassa.settings_view,name="till_settings"),
  path("t/<slug:slug>/alloggi/",stays.stays_view,name="stays"),
  path("t/<slug:slug>/alloggi/file/<str:what>/",stays.stay_files,name="stay_files"),
  path("t/<slug:slug>/alloggi/ospiti/<uuid:booking_id>/",stays.guests_view,name="stay_guests"),
@@ -112,6 +114,7 @@ urlpatterns=[
  path("book/<slug:slug>/api/v1/services/",api.services,name="api_services"),
  path("book/<slug:slug>/api/v1/availability/",api.availability,name="api_availability"),
  path("book/<slug:slug>/calendario/<uuid:unit_id>/<str:token>.ics",stays.feed_view,name="unit_feed"),
+ path("book/<slug:slug>/api/cassa/",cassa.bridge,name="till_bridge"),
  path("book/<slug:slug>/api/config/",wpconnect.config_view,name="public_config"),
  path("api/wordpress/connect/",wpconnect.connect_view,name="wp_connect"),
  path("action/<slug:slug>/<str:token>/",public.action_view,name="action"),

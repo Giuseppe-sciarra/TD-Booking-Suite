@@ -18,7 +18,7 @@ def public_lang(request):
     lang=request.GET.get("lang","")
     return lang if lang in dict(settings.LANGUAGES) else translation.get_language_from_request(request)
 
-TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi","api"}
+TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi","api","registratore"}
 
 class GuardMiddleware:
     def __init__(self,get_response):self.get_response=get_response

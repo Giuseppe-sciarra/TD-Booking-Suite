@@ -1428,6 +1428,19 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .sheet{table-layout:fixed}@media screen{.sheet{min-width:760px}}.sheet .c-time{width:130px}.sheet .c-who{width:22%}.sheet .c-what{width:18%}.sheet .c-num{width:90px}.sheet .c-phone{width:160px}
 .sheet td{padding:10px 12px;vertical-align:top;overflow-wrap:anywhere}.sheet td small{display:block;margin-top:2px}.sheet .num{text-align:center}
 .sheet-notes{min-width:180px;max-width:360px}.sheet-notes .allergy-chip{margin:0 6px 4px 0}
+/* 2.16.0: Cassa */
+.till{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+.till-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0 16px}
+.till-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:68px;padding:12px 14px;text-align:left;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;font-weight:600;line-height:1.3}
+.till-item:hover,.till-item:focus-visible{border-color:var(--brand)}.till-item span{font-size:13px;font-weight:400;color:var(--muted)}.till-item[hidden],[data-till-group][hidden]{display:none}
+#till-search{width:100%;margin:4px 0 8px}
+.till-lines td{vertical-align:middle}.till-lines input{width:100%;min-width:0}.till-qty{display:flex;align-items:center;gap:4px}.till-qty input{width:56px;text-align:center}
+.till-total{justify-content:flex-end}.till-total strong{font-size:26px;line-height:1.2}
+.till-pay{border:0;padding:0;margin:12px 0}.till-pay legend{font-weight:600;margin-bottom:4px}.till-pay .check{display:inline-flex;margin:6px 18px 6px 0}
+.till-bill details{margin:10px 0}.till-found{margin-top:6px;display:grid;gap:4px}
+.till-today li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}.till-today .actions{margin:0}
+.till-copy{max-width:440px}.till-copy li{padding:2px 0}
+@media (max-width:900px){.till{grid-template-columns:1fr}}
 @media print{
  @page{margin:12mm}
  :root,:root[data-theme]{color-scheme:light;--bg:#fff;--paper:#fff;--ink:#000;--muted:#444;--line:#aaa;--soft:#f2f2f2}

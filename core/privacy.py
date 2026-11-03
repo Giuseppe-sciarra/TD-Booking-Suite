@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,audit
+from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,audit
 from .crypto import encrypt
 from .booking import BookingError,OPEN
 
@@ -60,6 +60,8 @@ def _anonymize_contact(tenant,c,forget=False):
     ActionToken.objects.filter(contact=c).delete()
     Treatment.objects.filter(contact=c).delete()  # 2.8.0: the client record goes with the person
     WaitEntry.objects.filter(contact=c).delete()  # 2.14.0: and the waiting list
+    from .cassa import forget
+    forget(tenant,Sale.objects.filter(contact=c))  # 2.16.0: his receipts keep lines and totals, not his codice fiscale
     for d in Delivery.objects.filter(contact=c).exclude(payload=""):
         d.payload=encrypt(tenant,{"redacted":True},"delivery:"+str(d.pk))
         if d.status in ("pending","sending"):d.status="skipped"
@@ -106,6 +108,8 @@ def apply_retention(tenant,apply=False,now=None):
         for c in stale:
             _anonymize_contact(tenant,c);record(tenant,c,"erased","retention")
         old_records.delete();gone.delete()
+        from .cassa import forget
+        forget(tenant,Sale.objects.filter(created__lt=cutoff).exclude(actor=""))
         for d in Delivery.objects.filter(created__lt=cutoff).exclude(payload=""):
             d.payload="";d.status="skipped" if d.status in ("pending","sending") else d.status
             d.save(update_fields=["payload","status"])

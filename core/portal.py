@@ -158,7 +158,7 @@ def setup_desk(request,slug):
         cats=parse_categories(request.POST.get("client_categories","")) if "client_categories" in request.POST else t.client_categories
     except (ValueError,BookingError) as ex:
         messages.error(request,str(ex) if isinstance(ex,BookingError) else "Scelta non valida.");return redirect(reverse("setup",args=[slug])+"#banco")
-    Tenant.objects.filter(pk=t.pk).update(force_all=on,absences_request=absences,wait_mode=mode,wait_minutes=minutes,client_categories=cats)
+    Tenant.objects.filter(pk=t.pk).update(force_all=on,till_operators=request.POST.get("till_operators")=="on",absences_request=absences,wait_mode=mode,wait_minutes=minutes,client_categories=cats)
     audit(t,request.user,"tenant.force_all",t.pk,on=on,absences=absences,wait_mode=mode,wait_minutes=minutes)
     messages.success(request,("Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")+" Regole salvate.")
     return redirect(reverse("setup",args=[slug])+"#banco")
@@ -520,6 +520,7 @@ def booking_detail(request,slug,booking_id):
     ctx["table_names"]=names(booking)
     # 2.14.0: the texts about it and what their provider said; moved or deleted in Google (gcal.changed)
     ctx["texts"]=Delivery.objects.filter(booking=booking).order_by("created")
+    ctx["sales"]=booking.sales.filter(kind="sale").order_by("created")  # 2.16.0: its receipts from the Cassa
     g=booking.snapshot.get("google","");ctx["google_moved"]=datetime.fromisoformat(g[6:]).astimezone(tz) if g.startswith("moved:") and len(g)>6 else None
     return render(request,"booking_detail.html",ctx)
 def test_due(booking):
@@ -801,6 +802,7 @@ def contact_detail(request,slug,contact_id):
             if b:prefill=from_booking(b,tz)
         ctx.update(tpage=Paginator(entries,30).get_page(request.GET.get("tp")),entries_count=len(entries),prefill=prefill,today=now.astimezone(tz).date(),**record_options(spec))
     ctx["channels"]=Contact._meta.get_field("channel").choices
+    ctx["sales"]=contact.sales.filter(kind="sale").order_by("-created")[:20]  # 2.16.0: his receipts from the Cassa
     return render(request,"contact_detail.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;

@@ -24,12 +24,14 @@ PERMS={
  "privacy.manage":"Gestire richieste privacy (accesso e cancellazione dei dati)",
  # 2.14.0: at the desk, a booking outside hours, over the places, overlapping or in the past (booking.bounds)
  "booking.force":"Forzare orari e posti al banco",
+ # 2.16.0: the bill sent to the fiscal register (cassa.py), its annullo
+ "sale.write":"Chiudere il conto alla cassa",
 }
 ALL=frozenset(PERMS)
 ROLES={
  "owner":("Amministratore",ALL),
- "manager":("Amministratore sede",frozenset({"booking.read","booking.write","booking.cancel","booking.force","pii.read","notes.read","contacts.read","export.operational"})),
- "reception":("Reception",frozenset({"booking.read","booking.write","booking.cancel","pii.read","notes.read","contacts.read"})),
+ "manager":("Amministratore sede",frozenset({"booking.read","booking.write","booking.cancel","booking.force","pii.read","notes.read","contacts.read","export.operational","sale.write"})),
+ "reception":("Reception",frozenset({"booking.read","booking.write","booking.cancel","pii.read","notes.read","contacts.read","sale.write"})),
  "operator":("Operatore sede",frozenset({"booking.read","booking.write","pii.read","notes.read"})),
  "marketing":("Marketing",frozenset({"contacts.read","pii.read","campaign.manage","export.marketing"})),
  "viewer":("Consultazione",frozenset({"booking.read"})),
@@ -54,6 +56,10 @@ def effective(request):
         if getattr(getattr(request,"user",None),"is_staff",False):perms.add("catalog.write")
         # 2.14.0: the owner lets everyone who books at the desk use Forza too (Tenant.force_all)
         if "booking.write" in perms and getattr(getattr(request,"tenant",None),"force_all",False):perms.add("booking.force")
+        # 2.16.0: the operators close bills when the owner says so; nobody where no location has a register
+        tenant=getattr(request,"tenant",None)
+        if m.role=="operator" and getattr(tenant,"till_operators",False):perms.add("sale.write")
+        if not getattr(tenant,"till_on",False):perms.discard("sale.write")
     elif grant:perms=set(SUPPORT)
     elif getattr(getattr(request,"user",None),"is_staff",False):
         # 2.6.0: the agency configures every business (locations, hours, services): no customer data involved
