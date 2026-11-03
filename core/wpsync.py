@@ -136,7 +136,7 @@ def sync(tenant,full=False):
         req=urllib.request.Request(c["url"]+"/wp-json/tdbs/v1/sync",data=body,method="POST",headers={"Content-Type":"application/json","Accept":"application/json","User-Agent":"TD-Booking-Suite","X-TDBS-Time":ts,"X-TDBS-Signature":sign(c["secret"],ts,body)})
         try:
             with urllib.request.urlopen(req,timeout=30) as r:raw=r.read(5_000_000)
-        except urllib.error.HTTPError as ex:raise ValueError({401:"il sito non riconosce la chiave: incollala di nuovo nel plugin",403:"il sito non riconosce la chiave: incollala di nuovo nel plugin",404:"nel sito manca il plugin TD Booking Suite 2.17 in modalità PC"}.get(ex.code,f"il sito ha risposto con l'errore {ex.code}"))
+        except urllib.error.HTTPError as ex:raise ValueError({401:"il sito non riconosce la chiave: incollala di nuovo nel plugin",403:"il sito non riconosce la chiave: incollala di nuovo nel plugin",404:"nel sito manca il plugin TD Booking Suite in modalità PC, o la chiave non è ancora nel plugin"}.get(ex.code,f"il sito ha risposto con l'errore {ex.code}"))
         except (urllib.error.URLError,OSError) as ex:raise ValueError(f"sito non raggiungibile ({getattr(ex,'reason',ex)})")
         try:env=json.loads(raw);inner=str(env["body"]).encode()
         except (ValueError,KeyError,TypeError):raise ValueError("il sito ha risposto in modo non valido")

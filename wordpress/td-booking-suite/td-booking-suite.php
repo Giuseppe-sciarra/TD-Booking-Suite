@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite (Cloud o Private). Si collega al portale con un codice e si configura da solo. Modalità PC (2.17.0): con il programma su un PC spesso spento, il modulo funziona dai dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Agenda riservata (2.17.1): [tdbs_agenda] mostra al titolare e ai collaboratori, con una password, le prenotazioni mandate cifrate dal PC.
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC.
  * Version: 2.17.1
  * Requires at least: 6.2
  * Requires PHP: 8.0
@@ -132,6 +132,9 @@ function tdbs_settings_page() {
     $s=tdbs_settings();$connected=tdbs_connected();$post=esc_url(admin_url('admin-post.php'));
     echo '<div class="wrap"><h1>TD Booking Suite · Prenotazioni</h1>';
     tdbs_notice();
+    echo '<div class="card" style="max-width:860px"><h2>Come funziona</h2><p>Il plugin mostra nel sito il modulo di prenotazione, con lo shortcode <code>[td_booking_suite]</code> in una pagina. Si usa in uno dei due modi, secondo dove sta il programma:</p><ul style="list-style:disc;padding-left:20px">'
+        .'<li><strong>Online, collegato al portale</strong>: il programma è su Internet, sempre acceso (Cloud o server dell’agenzia). Usa il riquadro <em>Collegati al portale</em>.</li>'
+        .'<li><strong>Modalità PC</strong>: il programma è su un PC dell’attività, che spesso è spento (edizione Windows). Usa il riquadro <em>Modalità PC</em> più in basso, che ha anche l’agenda riservata.</li></ul><p>Nel dubbio chiedi a chi ti ha installato il programma.</p></div>';
     if ($connected) {
         $p=is_array($s['profile']??null)?$s['profile']:array();$many=count($p['locations']??array())>1;
         echo '<div class="card" style="max-width:860px"><h2>Collegato a '.esc_html($p['name']??$s['tenant']).'</h2><p>Portale <code>'.esc_html($s['origin']).'</code>, attività <code>'.esc_html($s['tenant']).'</code>'.(!empty($p['business_label'])?', '.esc_html($p['business_label']):'').'.</p>';
@@ -144,7 +147,7 @@ function tdbs_settings_page() {
         echo '<form method="post" action="'.$post.'" style="display:inline"><input type="hidden" name="action" value="tdbs_refresh">';wp_nonce_field('tdbs_refresh');submit_button('Aggiorna la configurazione','secondary','submit',false);echo '</form> ';
         echo '<form method="post" action="'.$post.'" style="display:inline" onsubmit="return confirm(\'Scollegare il sito dal portale?\')"><input type="hidden" name="action" value="tdbs_disconnect">';wp_nonce_field('tdbs_disconnect');submit_button('Scollega','delete','submit',false);echo '</form></p></div>';
     }
-    echo '<div class="card" style="max-width:860px"><h2>'.($connected?'Collega a un’altra attività':'Collegati al portale').'</h2><p>Nel portale apri <em>Configura l’attività › Sito WordPress</em> e genera il codice di collegamento. Il plugin autorizza questo sito, legge la configurazione e, se vuoi, crea la pagina Prenota.</p>';
+    echo '<div class="card" style="max-width:860px"><h2>'.($connected?'Collega a un’altra attività':'Collegati al portale').'</h2><ol><li>Nel portale apri <em>Configura l’attività › Sito WordPress</em> e premi <em>Genera il codice di collegamento</em>: vale 24 ore e una volta sola.</li><li>Qui sotto scrivi l’indirizzo del portale, quello che apri nel browser per entrare, e incolla il codice.</li><li>Premi <em>'.($connected?'Collega':'Collegati').'</em>: il plugin autorizza questo sito, legge sedi e servizi e, se lasci la spunta, crea la pagina Prenota con il modulo.</li><li>Per una sola sede o un solo servizio usa gli shortcode che compaiono qui dopo il collegamento.</li></ol>';
     echo '<form method="post" action="'.$post.'"><input type="hidden" name="action" value="tdbs_connect">';wp_nonce_field('tdbs_connect');
     echo '<table class="form-table"><tr><th><label for="tdbs-portal">Indirizzo del portale</label></th><td><input type="url" class="regular-text" id="tdbs-portal" name="portal" value="'.esc_attr($s['origin']??'').'" required placeholder="https://portale.tuodominio.it"></td></tr>';
     echo '<tr><th><label for="tdbs-code">Codice di collegamento</label></th><td><input class="regular-text" id="tdbs-code" name="code" required autocomplete="off" placeholder="ABCD-EFGH-JKLM-NPQR" style="text-transform:uppercase;letter-spacing:.05em"></td></tr>';
@@ -492,15 +495,26 @@ add_action('init',function(){add_shortcode('tdbs_agenda','tdbs_agenda_shortcode'
 function tdbs_pc_settings($post) {
     $p=tdbs_pc();$snap=tdbs_pc_snapshot();
     global $wpdb;$waiting=!empty($p['secret'])?(int)$wpdb->get_var('SELECT COUNT(*) FROM '.tdbs_pc_table()):0;
-    echo '<div class="card" style="max-width:860px"><h2>Modalità PC (sincronizzazione)</h2><p>Per il programma installato su un PC dell’attività, spesso spento e non raggiungibile da Internet. Quando è acceso il PC manda al sito servizi, operatori e orari liberi, e prende le richieste arrivate: il modulo nel sito funziona anche a PC spento. Nel programma, <em>Configura l’attività › Sito WordPress · modalità PC</em>: indirizzo del sito <code>'.esc_html(tdbs_site_origin()).'</code> e chiave da incollare qui.</p>';
-    if (!empty($snap['received'])) echo '<p>Ultimi dati dal PC: '.esc_html(wp_date('d/m/Y H:i',(int)$snap['received'])).', '.count((array)($snap['services']??array())).' servizi. Richieste in attesa del PC: '.$waiting.'.</p>';
+    echo '<div class="card" style="max-width:860px"><h2>Modalità PC (sincronizzazione)</h2><p>Per il programma installato su un PC dell’attività, spesso spento e non raggiungibile da Internet. Quando il PC è acceso, ogni 2 minuti manda a questo sito servizi, operatori e orari liberi e prende le richieste arrivate: il modulo funziona anche a PC spento.</p>'
+        .'<ol><li>Nel programma apri <em>Configura l’attività › Sito WordPress · modalità PC</em> (la vede chi amministra il programma). Scrivi l’indirizzo di questo sito, <code>'.esc_html(tdbs_site_origin()).'</code>, premi <em>Salva</em>, poi <em>Genera la chiave</em> e <em>Copia</em>.</li>'
+        .'<li>Qui sotto incolla la chiave in <em>Chiave dal programma</em>, spunta <em>Usa la modalità PC</em> e premi <em>Salva la modalità PC</em>.</li>'
+        .'<li>Metti lo shortcode <code>[td_booking_suite]</code> in una pagina, per esempio Prenota.</li>'
+        .'<li>Nel programma accendi <em>Sincronizzazione attiva</em>, premi <em>Salva</em> e poi <em>Sincronizza ora</em>. La riga in alto nel programma dice com’è andata; qui compare «Ultimi dati dal PC».</li>'
+        .'<li>Se il server tiene le pagine in una sua cache (per esempio la FastCGI cache di aaPanel), escludi la pagina con il modulo: altrimenti mostra orari vecchi.</li></ol>';
+    if (empty($snap['received'])) echo '<p><strong>Ancora nessun dato dal PC.</strong> Arrivano alla prima sincronizzazione con la chiave giusta.</p>';
+    else echo '<p>Ultimi dati dal PC: '.esc_html(wp_date('d/m/Y H:i',(int)$snap['received'])).', '.count((array)($snap['services']??array())).' servizi. Richieste in attesa del PC: '.$waiting.'.</p>';
     echo '<form method="post" action="'.$post.'"><input type="hidden" name="action" value="tdbs_pc_save">';wp_nonce_field('tdbs_pc_save');
     echo '<table class="form-table"><tr><th>Modalità</th><td><label><input type="checkbox" name="on" value="1"'.checked(!empty($p['on']),true,false).'> Usa la modalità PC per <code>[td_booking_suite]</code> al posto del modulo dal portale</label></td></tr>';
     echo '<tr><th><label for="tdbs-secret">Chiave dal programma</label></th><td><input type="password" class="regular-text" id="tdbs-secret" name="secret" autocomplete="off" placeholder="'.(!empty($p['secret'])?'Chiave salvata: lascia vuoto per tenerla':'Incolla la chiave').'"></td></tr>';
     echo '<tr><th><label for="tdbs-age">Dati validi per</label></th><td><input type="number" min="1" max="60" id="tdbs-age" name="max_age" value="'.esc_attr((string)($p['max_age']??7)).'"> giorni <p class="description">Se il PC non si fa sentire da più tempo, il modulo mostra “contattaci” invece degli orari.</p></td></tr>';
     echo '<tr><th><label for="tdbs-agenda-pw">Password dell’agenda</label></th><td><input type="password" class="regular-text" id="tdbs-agenda-pw" name="agenda" autocomplete="new-password" minlength="10" placeholder="'.(!empty($p['agenda'])?'Password salvata: lascia vuoto per tenerla':'Almeno 10 caratteri').'">'
         .(!empty($p['agenda'])?' <label><input type="checkbox" name="agenda_off" value="1"> Spegni l’agenda</label>':'')
-        .'<p class="description">Con la password, lo shortcode <code>[tdbs_agenda]</code> in una pagina mostra al titolare e ai collaboratori le prenotazioni dei prossimi giorni, anche a PC spento. Sola lettura. Il PC le manda cifrate con la chiave condivisa e il sito le decifra per mostrarle: chi amministra questo sito può tecnicamente leggerle.</p></td></tr></table>';
+        .'<p class="description"><strong>Agenda riservata</strong>: il titolare e i collaboratori vedono le prenotazioni dei prossimi giorni anche a PC spento, per esempio dal telefono. Sola lettura. Senza password resta spenta.</p>'
+        .'<ol class="description"><li>Scrivi qui una password, almeno 10 caratteri, e premi <em>Salva la modalità PC</em>. Una password nuova chiude le sessioni aperte.</li>'
+        .'<li>Crea una pagina, per esempio Agenda, con lo shortcode <code>[tdbs_agenda]</code>. Non metterla nel menu del sito; Google non la mostra.</li>'
+        .'<li>Escludi quella pagina dalla cache del server, per esempio dalla FastCGI cache di aaPanel. I plugin di cache di WordPress la saltano da soli, la cache del server no: senza esclusione le prenotazioni potrebbero arrivare a chi non ha la password.</li>'
+        .'<li>Dai la password solo a chi deve vedere l’agenda. L’agenda arriva alla sincronizzazione dopo, entro 2 minuti con il PC acceso.</li></ol>'
+        .'<p class="description">Il PC manda l’agenda cifrata con la chiave condivisa e il sito la decifra per mostrarla: chi amministra questo sito può tecnicamente leggerla.</p></td></tr></table>';
     submit_button('Salva la modalità PC','secondary');echo '</form></div>';
 }
 add_action('admin_post_tdbs_pc_save',function(){
