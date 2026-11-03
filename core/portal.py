@@ -19,6 +19,7 @@ from .permissions import can,require,visible_bookings,shown,check_new_booking
 from .booking import choice,change_status,BookingError,queue,capacity_available,can_undo,linked,details,OPEN,ACCEPTED,MOVABLE,REASONS
 from .calendar import fits,blocked_stay,blocked,covering,holidays
 from .crypto import index,tenant_key,encrypt
+from .wpsync import panel as wps_panel
 from .mail import enqueue_campaign,campaign_contacts
 from .site import mail_ready
 from .client_mails import whatsapp
@@ -115,7 +116,7 @@ def setup(request,slug):
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
     return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
-        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),
+        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
@@ -275,6 +276,19 @@ def setup_action(request,slug):
         from .wpconnect import new_code
         request.session["wp_code"]=new_code(t,request.user)
         return redirect(reverse("setup",args=[slug])+"#wordpress")
+    # 2.17.0: the site fed by this PC also when it is off (wpsync.py)
+    if action in ("wps_save","wps_secret","wps_now"):
+        from . import wpsync
+        if action=="wps_secret":request.session["wps_secret"]=wpsync.new_secret(t,request.user)
+        elif action=="wps_now":
+            n=wpsync.sync(t,full=True);err=(t.wp_state or {}).get("error")
+            if not wpsync.conf(t).get("on"):messages.error(request,"Accendi prima la sincronizzazione.")
+            elif err and not n:messages.error(request,"Sincronizzazione non riuscita: "+err+".")
+            else:messages.success(request,f"Sincronizzato con il sito: {n} prenotazion{'e nuova' if n==1 else 'i nuove'}.")
+        else:
+            try:wpsync.save(t,request.POST,request.user);messages.success(request,"Sito WordPress salvato.")
+            except ValueError as ex:messages.error(request,str(ex))
+        return redirect(reverse("setup",args=[slug])+"#wordpress-pc")
     if action=="wp_remove":
         site=request.POST.get("site","")
         if site in (t.embed_origins or []):

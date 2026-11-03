@@ -191,8 +191,7 @@ def css(request):
           f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{--brand:{dark};--violet:{color};--pastel:{pastel};--soft:{soft_dark}}}}}")
     r=HttpResponse(body,content_type="text/css");r["Cache-Control"]="public, max-age=86400";return r
 
-# The WordPress connector, downloadable by the agency (Cloud edition only: in Private the
-# business installs what it receives with its own package).
+# The WordPress connector: its page for the agency in the Cloud edition; the zip alone in every edition (2.17.0).
 def plugin_allowed(request):
     from django.http import Http404
     if settings.EDITION!="cloud":raise Http404
@@ -221,7 +220,10 @@ def plugin_view(request):
     return render(request,"plugin.html",{"version":plugin_version(),"origin":settings.PUBLIC_ORIGIN,"tenants":tenants})
 
 def plugin_download(request):
-    plugin_allowed(request)
+    # 2.17.0: the zip in every edition, built from the folder that comes with the program (Windows: Sito WordPress card)
+    from django.http import Http404
+    staff_only(request)
+    if not (settings.BASE_DIR/"wordpress"/"td-booking-suite"/"td-booking-suite.php").is_file():raise Http404("Il plugin WordPress non è incluso in questa installazione.")
     r=HttpResponse(plugin_zip(),content_type="application/zip")
     r["Content-Disposition"]=f'attachment; filename="td-booking-suite-{plugin_version()}-wordpress.zip"'
     return r

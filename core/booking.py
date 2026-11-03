@@ -540,18 +540,20 @@ def queue(tenant,payload,contact=None,campaign=None):
     delivery=Delivery(tenant=tenant,contact=contact,campaign=campaign,next_attempt=timezone.now())
     delivery.payload=encrypt(tenant,payload,"delivery:"+str(delivery.pk));delivery.save()
     return delivery
-def create_booking(tenant,data,actor=None,origin="public",source="",wait="",series=None,visit=None,allowed=None):
+def create_booking(tenant,data,actor=None,origin="public",source="",wait="",series=None,visit=None,allowed=None,late=False):
     """origin and source (2.14.0): the channel of an online booking, from the signed ticket of its page (public.py);
     the staff's bookings are the desk's, or of a client without appointment (walkin: now, already in progress).
     wait: the waiting-list entry whose link opened the page: the place kept for it is its own (waitlist.claim).
     series (2.14.0): a date repeated from the desk: tied to the others, without its own email and notice.
     data["extra"] (2.14.0): more services in the same visit (create_visit); visit: (id, the service placed, the first
-    service, whose questions the client answered), the email and the notice are the visit's. allowed: staff_resources."""
+    service, whose questions the client answered), the email and the notice are the visit's. allowed: staff_resources.
+    late (2.17.0): a booking taken on the WordPress site while the PC was off and refused now: kept as a request at the
+    time the client chose, for the business to accept, move or refuse (wpsync.py)."""
     # All inventory writers take the same stable tenant row lock.
     with transaction.atomic():
         tenant=Tenant.objects.select_for_update().get(pk=tenant.pk)
         if not operational(tenant):raise BookingError(gettext("Prenotazioni non disponibili."))
-        if actor is None and tenant.receive_schedule and not fits(tenant,timezone.now(),timezone.now()+timedelta(seconds=1),purpose="receive"):
+        if actor is None and not late and tenant.receive_schedule and not fits(tenant,timezone.now(),timezone.now()+timedelta(seconds=1),purpose="receive"):
             raise BookingError(gettext("Le richieste online sono accettate soltanto negli orari indicati dall'attività."))
         key=str(data.get("request_key",""))
         if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}",key):raise BookingError("Identificativo richiesta mancante.")
@@ -570,9 +572,9 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         when={**data,"start":timezone.now().replace(second=0,microsecond=0).isoformat()} if walkin else data
         if visit:(_,option,resource,start,end,bs,be,gap,second),party,event,issues=visit[1],1,None,[]
         else:
-            start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=staff and (walkin or data.get("force") is True),prefer=last_operator(tenant,service,pii,data,staff))
+            start,end,bs,be,party,option,resource,event,issues=bounds(tenant,service,when,desk=staff,force=late or staff and (walkin or data.get("force") is True),prefer=last_operator(tenant,service,pii,data,staff))
             gap,second=kit(service,start,end,bs,be,resource,issues)
-            overrun(issues,data)
+            if not late:overrun(issues,data)
         from .tables import seat,pick_area
         area,tables=seat(service,party,bs,be,pick_area(service,data.get("area")),data.get("tables") if staff else None,online=not staff)
         known_by_phone=None
@@ -616,7 +618,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         ch=data.get("channel") if data.get("channel") in ("email","sms","whatsapp") and data.get("phone") else ""
         if new_contact and ch:contact.channel=ch
         if contact:contact.save()
-        status="in_progress" if walkin else "pending" if not staff and needs_request(service,party,pii,contact) else "confirmed"
+        status="in_progress" if walkin else "pending" if late or not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
             status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,visit=visit and visit[0],snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in (visit[2] if visit else service).fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
@@ -624,7 +626,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if ch:booking.snapshot["channel"]=ch
         # 2.14.0: the language of the client's page, for the emails that follow (client_mails.send)
         if not staff and get_language()!="it":booking.snapshot["lang"]=get_language()
-        if issues:booking.snapshot["forced"]=issues
+        if issues and not late:booking.snapshot["forced"]=issues
         (booking.gap_start,booking.gap_end)=gap;equip(booking,second)
         booking.area,booking.tables=area,tables
         # 2.14.0: "Il primo disponibile": the client may move it to whoever is free then (public.py)

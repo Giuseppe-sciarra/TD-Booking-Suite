@@ -124,7 +124,8 @@ def test_plugin_only_for_the_agency(sample):
 def test_no_plugin_page_in_the_private_edition(settings):
     settings.EDITION="private"
     c,u=staff_client()
-    assert c.get("/platform/plugin/download/").status_code==404 and c.get("/platform/plugin/").status_code==404
+    # 2.17.0: the zip is downloadable in every edition (Windows: the Sito WordPress card), the agency's page is the Cloud's
+    assert c.get("/platform/plugin/download/").status_code==200 and c.get("/platform/plugin/").status_code==404
 
 def test_portal_default_theme_until_each_person_picks_one(sample):
     """2.8.1: the agency picks light, dark or automatic for everybody; public booking pages keep following the visitor."""

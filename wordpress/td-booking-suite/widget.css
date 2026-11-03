@@ -1,1 +1,4 @@
 .tdbs-embed{width:100%;max-width:1100px;margin:auto}.tdbs-frame{border:0;border-radius:14px;display:block;width:100%;background:transparent}.tdbs-embed>p{text-align:center;font-size:13px}
+.tdbs-pc{max-width:720px;margin:auto}.tdbs-pc select,.tdbs-pc input[type=text],.tdbs-pc input[type=email],.tdbs-pc input[type=tel],.tdbs-pc textarea{width:100%;max-width:100%;box-sizing:border-box}
+.tdbs-pc-slots{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.tdbs-pc-slot{min-width:4.5em}.tdbs-pc-slot[aria-pressed=true]{outline:3px solid currentColor;outline-offset:1px;font-weight:700}
+.tdbs-pc-updated{font-size:13px;opacity:.75}.tdbs-pc-done{font-weight:600}

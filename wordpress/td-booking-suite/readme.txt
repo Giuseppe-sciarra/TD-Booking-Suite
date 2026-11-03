@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.16.2
+Stable tag: 2.17.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -13,3 +13,12 @@ Shortcode per una sola sede o un solo servizio: [td_booking_suite location="..."
 Tema facoltativo: [td_booking_suite theme="dark"] o theme="light".
 Impostazioni manuali sempre disponibili: indirizzo del portale e indirizzo breve, con il sito autorizzato nel portale.
 Non memorizza dati personali nel database WordPress. Link alternativo per aprire la pagina fuori dal riquadro.
+
+Modalità PC (2.17.0), per il programma installato su un PC spesso spento e non raggiungibile da Internet (edizione Windows, Un PC solo).
+Nel programma, Configura l'attività > Sito WordPress · modalità PC: indirizzo del sito e "Genera la chiave". In WordPress,
+Impostazioni > TD Booking Suite > Modalità PC: spunta la modalità e incolla la chiave. Il PC chiama il sito ogni 2 minuti
+quando è acceso (nessuna porta da aprire), manda servizi, operatori e orari liberi e prende le richieste arrivate.
+[td_booking_suite] mostra allora il modulo dai dati del PC, con "Disponibilità aggiornata alle ..."; ogni richiesta toglie subito
+l'orario dal sito, il cliente riceve "Richiesta ricevuta" e la conferma vera arriva dal programma. Le richieste restano nel
+database cifrate con una chiave ricavata dalla chiave condivisa e si cancellano appena il PC le ha prese. Se il PC non si fa
+sentire da più dei giorni indicati, il modulo dice di contattare l'attività. Richiede i permalink attivi (/wp-json/).

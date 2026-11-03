@@ -5,7 +5,7 @@ class Command(BaseCommand):
     help="Elabora la coda email; --once per un solo ciclo."
     def add_arguments(self,p):p.add_argument("--once",action="store_true")
     def handle(self,*a,**kw):
-        last_refresh=last_remind=last_busy=0
+        last_refresh=last_remind=last_busy=last_wp=0
         while True:
             if time.time()-last_refresh>3600:
                 from django.core.management import call_command
@@ -31,6 +31,10 @@ class Command(BaseCommand):
                 from core.texts import receipts  # 2.14.0: delivered or not, asked to Twilio and Skebby
                 if receipts():self.stdout.write("Esiti degli SMS letti.")
                 last_busy=time.time()
+            if time.time()-last_wp>120:
+                from core.wpsync import run as site  # 2.17.0: the WordPress site fed from here, also right after the start
+                if n:=site():self.stdout.write(f"Prenotazioni dal sito: {n}.")
+                last_wp=time.time()
             from core.waitlist import run as waitlist  # 2.14.0: places freed, offered to the waiting list; kept places that expire
             if waitlist():self.stdout.write("Avvisi della lista d'attesa accodati.")
             result=worker_once()

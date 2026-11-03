@@ -170,6 +170,10 @@ class Tenant(models.Model):
     # 2.14.0: the English page and emails; empty = the Italian text
     privacy_text_en=models.TextField("Informativa in inglese (facoltativa)",blank=True)
     consent_text_en=models.TextField("Consenso in inglese (facoltativo)",blank=True)
+    # 2.17.0: the WordPress site fed by this PC even when it is off (wpsync.py): sealed {"url","secret","days","on"},
+    # and how the last sync went {"at","running","new","ids","ack","error"}
+    wp_sync=models.TextField(blank=True)
+    wp_state=models.JSONField(default=dict,blank=True)
     created=models.DateTimeField(auto_now_add=True)
     def save(self,*a,**kw):
         if not self.wrapped_key:self.wrapped_key=protect(b64(secrets.token_bytes(32)),"tenant-key:"+str(self.pk))
