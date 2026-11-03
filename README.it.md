@@ -257,8 +257,7 @@ Prima fai il backup e leggi il [CHANGELOG](CHANGELOG.md) della versione nuova.
 (timer systemd, o cron). Prende l'ultima immagine di Python 3.12 con i suoi pacchetti Debian, tutte le
 librerie Python all'ultima versione (nei limiti di `requirements.in`) e l'ultimo PostgreSQL 17.x. Prima fa il
 backup cifrato, poi prova la versione nuova dentro il suo container; se qualcosa non va torna da solo a quella
-di prima, database compreso, e manda un'email di riepilogo. Il codice di TD Booking Suite non lo tocca e GitHub
-non lo guarda: la versione nuova la installi tu, coi comandi qui sopra. I dettagli sono in
+di prima, database compreso, e manda un'email di riepilogo. Con `TDBS_AGGIORNA_CODICE=1` in `.env` installa da solo anche la versione nuova pubblicata su GitHub (mai versioni di prova), con lo stesso backup e ritorno indietro. I dettagli sono in
 [INSTALLAZIONE.md](INSTALLAZIONE.md), passo 13.
 
 ## Tecnologie
