@@ -222,7 +222,7 @@ Un cron rimasto dalle versioni di prima non fa danni (la pulizia rifatta non cam
 
 ## 11. Aggiornare a una versione nuova
 
-La versione nuova la installi sempre tu: l'aggiornamento automatico del passo 13 non la scarica. Leggi prima il registro modifiche della versione. Poi, con lo zip nuovo in `/opt`:
+Con l'aggiornamento automatico del passo 13 e `TDBS_AGGIORNA_CODICE=1` in `.env` (le installazioni nuove ce l'hanno già) la versione nuova si installa da sola, di notte, appena è pubblicata su GitHub: non devi fare niente, nell'email del mattino trovi da quale a quale versione e il link alle novità. Puoi sempre installarla a mano, per esempio subito o con l'aggiornamento automatico spento. Leggi prima il registro modifiche della versione. Poi, con lo zip nuovo in `/opt`:
 
 ```
 /usr/local/bin/tdbs-backup
@@ -281,7 +281,13 @@ Non serve ricostruire l'immagine né lanciare `migrate`: basta `docker compose u
 
 Ogni notte, da solo, aggiorna quello su cui gira il portale: l'immagine di Python 3.12 con i pacchetti Debian, tutte le librerie Python all'ultima versione (tranne i limiti scritti in `requirements.in`, per esempio Django resta sulla 5.2) e PostgreSQL all'ultima 17.x. Prima di toccare qualcosa fa il backup cifrato del database. Dopo prova la versione nuova: pagina di accesso e `manage.py selftest` dentro il container, cioè database, cifratura, password, loghi, app Authenticator, passkey e pagine. Se qualcosa non va torna da solo alla versione di prima, database compreso. Alla fine manda un'email con il riepilogo. Il portale resta fermo da qualche secondo a un minuto, solo quando c'è qualcosa da aggiornare.
 
-Il codice di TD Booking Suite non lo tocca e GitHub non lo guarda: la versione nuova la installi tu (passo 11). Le librerie aggiornate stanno in file a parte (qui sotto), quindi installando una versione nuova non tornano indietro.
+Con `TDBS_AGGIORNA_CODICE=1` in `.env` aggiorna anche **TD Booking Suite** all'ultima versione pubblicata su GitHub ([release](https://github.com/Giuseppe-sciarra/td-booking-suite/releases)). Non torna mai a una versione più vecchia e non installa le versioni di prova. Scarica lo zip dei sorgenti, controlla che contenga la cartella `td-booking-suite/` con la versione giusta e lo mette al posto del codice di adesso. `.env`, `logs/`, `backups/` e i file qui sotto restano dove sono. Il codice di prima resta in `.agg-codice-prima`: se la versione nuova non passa la prova, torna quello, insieme all'immagine e al database di prima. Le installazioni nuove hanno già la riga in `.env`. Su quelle fatte prima della 2.14.0 aggiungila tu:
+
+```
+echo TDBS_AGGIORNA_CODICE=1 >> /opt/td-booking-suite/.env
+```
+
+Senza la riga, o con `bash scripts/aggiorna-tutto.sh --solo-librerie`, il codice non lo tocca: la versione nuova la installi tu (passo 11). Le librerie aggiornate stanno in file a parte (qui sotto), quindi una versione nuova non le fa tornare indietro.
 
 Cosa serve:
 
@@ -320,7 +326,7 @@ docker compose build
 docker compose up -d
 ```
 
-Valori facoltativi in `.env`: `TDBS_AGG_EMAIL` (a chi va il riepilogo), `TDBS_AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato), `TDBS_AGG_TIENI_ROLLBACK=3` (quante immagini di prima tenere), `TDBS_AGG_CHIAVE` e `TDBS_AGG_BACKUP` (chiave e cartella dei backup, se non sono quelle del passo 9).
+Valori facoltativi in `.env`: `TDBS_AGGIORNA_CODICE=1` (anche le versioni nuove del codice), `TDBS_AGG_EMAIL` (a chi va il riepilogo), `TDBS_AGG_MAIL_SEMPRE=1` (email anche quando era già tutto aggiornato), `TDBS_AGG_TIENI_ROLLBACK=3` (quante immagini di prima tenere), `TDBS_AGG_CHIAVE` e `TDBS_AGG_BACKUP` (chiave e cartella dei backup, se non sono quelle del passo 9).
 
 Il passaggio a una versione maggiore di PostgreSQL, per esempio dalla 17 alla 18, non lo fa mai da solo: si fa a mano, con backup e ripristino.
 
