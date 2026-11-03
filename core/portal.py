@@ -116,7 +116,7 @@ def setup(request,slug):
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
     return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
-        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),
+        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),"wps_password":request.session.pop("wps_password",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
@@ -289,6 +289,16 @@ def setup_action(request,slug):
             try:wpsync.save(t,request.POST,request.user);messages.success(request,"Sito WordPress salvato.")
             except ValueError as ex:messages.error(request,str(ex))
         return redirect(reverse("setup",args=[slug])+"#wordpress-pc")
+    # 2.17.1: the private agenda on the site, read-only: who, what they see, the password
+    if action in ("wps_agenda","wps_agenda_revoke"):
+        from . import wpsync
+        if action=="wps_agenda_revoke":wpsync.agenda_revoke(t,request.POST.get("id",""),request.user);messages.success(request,"Accesso all'agenda tolto: il sito lo cancella alla prossima sincronizzazione.")
+        else:
+            try:
+                made=wpsync.agenda_save(t,request.POST,request.user);messages.success(request,"Accesso all'agenda salvato: il sito lo riceve alla prossima sincronizzazione.")
+                if made:request.session["wps_password"]={"label":request.POST.get("label","").strip()[:60],"password":made}
+            except ValueError as ex:messages.error(request,str(ex))
+        return redirect(reverse("setup",args=[slug])+"#wordpress-agenda")
     if action=="wp_remove":
         site=request.POST.get("site","")
         if site in (t.embed_origins or []):

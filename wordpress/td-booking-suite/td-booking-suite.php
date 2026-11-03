@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite (Cloud o Private). Si collega al portale con un codice e si configura da solo. Modalità PC (2.17.0): con il programma su un PC spesso spento, il modulo funziona dai dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende.
- * Version: 2.17.0
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite (Cloud o Private). Si collega al portale con un codice e si configura da solo. Modalità PC (2.17.0): con il programma su un PC spesso spento, il modulo funziona dai dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Agenda riservata (2.17.1): [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni, cifrate dal PC e leggibili solo nel browser con la password.
+ * Version: 2.17.1
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.17.0';
+const TDBS_VERSION='2.17.1';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -217,6 +217,7 @@ add_action('rest_api_init',function(){
     register_rest_route('tdbs/v1','/sync',array('methods'=>'POST','callback'=>'tdbs_pc_sync','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/slots',array('methods'=>'GET','callback'=>'tdbs_pc_slots_api','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/book',array('methods'=>'POST','callback'=>'tdbs_pc_book','permission_callback'=>'__return_true'));
+    register_rest_route('tdbs/v1','/agenda',array('methods'=>'GET','callback'=>'tdbs_agenda_api','permission_callback'=>'__return_true'));
 });
 
 /** From the PC only: signature over "time.body", 5 minutes of window, each signature once. */
@@ -234,6 +235,10 @@ function tdbs_pc_sync(WP_REST_Request $request) {
     // without a snapshot nothing changed on the PC since the last one: the times are still those, checked now
     $snap=isset($data['snapshot']) && is_array($data['snapshot']) ? $data['snapshot'] : tdbs_pc_snapshot();
     if ($snap) {$snap['received']=time();update_option('tdbs_pc_snapshot',$snap,false);}
+    // 2.17.1: the private agenda, sealed by the PC; a list sent replaces the old one, so a revoked access goes away
+    $agenda=get_option('tdbs_agenda',array());$agenda=is_array($agenda)?$agenda:array();
+    if (isset($data['agenda']) && is_array($data['agenda'])) $agenda['entries']=tdbs_agenda_clean($data['agenda']);
+    if (!empty($agenda['entries'])) {$agenda['received']=time();update_option('tdbs_agenda',$agenda,false);} else delete_option('tdbs_agenda');
     $out=array();
     foreach ((array)$wpdb->get_results("SELECT id,slot,data FROM $table ORDER BY created LIMIT 200",ARRAY_A) as $row) {
         $slot=json_decode($row['slot'],true);$client=tdbs_pc_open($row['data']);
@@ -371,6 +376,70 @@ function tdbs_pc_shortcode($atts) {
         .'<p><button type="submit">Invia la richiesta</button></p></form><div class="tdbs-pc-done" role="status" hidden></div></div>';
 }
 
+/* ---------- 2.17.1 Agenda riservata: for each access the PC sends its bookings sealed with a key derived from its password
+   (PBKDF2-HMAC-SHA256 + AES-256-GCM); the site never has the password and never decrypts them: agenda.js does, in the
+   browser. The requests taken here and not yet by the PC are sealed for each access with its RSA public key. */
+function tdbs_agenda_clean($list) {
+    $out=array();
+    foreach (array_slice($list,0,20) as $e) {
+        if (!is_array($e) || !preg_match('/^[a-f0-9]{32}$/',(string)($e['id']??''))) continue;
+        foreach (array('salt','nonce','ct','public') as $k) if (!is_string($e[$k]??null) || base64_decode($e[$k],true)===false) continue 2;
+        $out[]=array('id'=>$e['id'],'label'=>sanitize_text_field((string)($e['label']??'')),'generated'=>sanitize_text_field((string)($e['generated']??'')),'iterations'=>max(200000,(int)($e['iterations']??0)),
+            'salt'=>$e['salt'],'nonce'=>$e['nonce'],'ct'=>$e['ct'],'public'=>$e['public'],
+            'resources'=>array_values(array_filter((array)($e['resources']??array()),function($r){return is_string($r) && preg_match('/^[a-f0-9-]{36}$/i',$r);})));
+    }
+    return $out;
+}
+/** The site's requests not yet taken by the PC, as the agenda shows them: "in attesa di conferma". */
+function tdbs_agenda_pending() {
+    global $wpdb;$out=array();
+    if (empty(tdbs_pc()['secret'])) return $out;
+    $snap=tdbs_pc_snapshot();
+    foreach ((array)$wpdb->get_results('SELECT id,slot,data FROM '.tdbs_pc_table().' ORDER BY created',ARRAY_A) as $row) {
+        $slot=json_decode($row['slot'],true);$client=tdbs_pc_open($row['data']);
+        if (!is_array($slot) || !is_array($client)) continue;
+        $sv=tdbs_pc_service($snap,(string)($slot['service']??''));$name=$sv?(string)$sv['name']:'Richiesta dal sito';$who='';
+        foreach ((array)($sv['options']??array()) as $o) if (($o['id']??'')===($slot['option']??'')) $name.=' · '.$o['name'];
+        foreach ((array)($sv['resources']??array()) as $r) if (($r['id']??'')===($slot['resource']??'')) $who=(string)$r['name'];
+        $out[]=array('id'=>$row['id'],'start'=>$slot['date'].'T'.$slot['time'],'end'=>$slot['date'].'T'.$slot['end'],'service'=>$name,'resource'=>(string)$slot['resource'],'operator'=>$who,
+            'status'=>'In attesa di conferma · dal sito','pending'=>true,'client'=>trim($client['first_name'].' '.$client['last_name']),'phone'=>$client['phone'],'notes'=>$client['notes']);
+    }
+    return $out;
+}
+/** AES-256-GCM with a fresh key, the key wrapped with RSA-OAEP (SHA-1, as WebCrypto reads openssl's padding). */
+function tdbs_agenda_wrap($rows,$public) {
+    $pem="-----BEGIN PUBLIC KEY-----\n".chunk_split($public,64,"\n")."-----END PUBLIC KEY-----\n";
+    $key=random_bytes(32);$iv=random_bytes(12);$tag='';
+    $ct=openssl_encrypt(wp_json_encode($rows),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag,'',16);
+    if ($ct===false || !openssl_public_encrypt($key,$wrapped,$pem,OPENSSL_PKCS1_OAEP_PADDING)) return null;
+    return array('key'=>base64_encode($wrapped),'iv'=>base64_encode($iv),'ct'=>base64_encode($ct.$tag));
+}
+/** Public, ciphertext only (no names of the accesses either), a few calls per address and per hour. */
+function tdbs_agenda_api() {
+    $agenda=get_option('tdbs_agenda',array());
+    if (empty($agenda['entries'])) return tdbs_pc_error('Agenda non disponibile.',404);
+    $key='tdbs_ag_'.md5((string)($_SERVER['REMOTE_ADDR']??'').wp_salt('nonce'));$n=(int)get_transient($key);
+    if ($n>=30) return tdbs_pc_error('Troppi tentativi: riprova tra un’ora.',429);
+    set_transient($key,$n+1,HOUR_IN_SECONDS);
+    $pending=tdbs_agenda_pending();$out=array();
+    foreach ($agenda['entries'] as $e) {
+        $mine=array_values(array_filter($pending,function($p)use($e){return !$e['resources'] || in_array($p['resource'],$e['resources'],true);}));
+        $out[]=array('salt'=>$e['salt'],'nonce'=>$e['nonce'],'ct'=>$e['ct'],'iterations'=>$e['iterations'],'pending'=>$mine?tdbs_agenda_wrap($mine,$e['public']):null);
+    }
+    $response=new WP_REST_Response(array('ok'=>true,'checked'=>(int)($agenda['received']??0),'entries'=>$out),200);
+    $response->header('Cache-Control','no-store');
+    return $response;
+}
+function tdbs_agenda_shortcode() {
+    wp_enqueue_style('tdbs-widget',plugins_url('widget.css',__FILE__),array(),TDBS_VERSION);
+    wp_enqueue_script('tdbs-agenda',plugins_url('agenda.js',__FILE__),array(),TDBS_VERSION,true);
+    return '<div class="tdbs-agenda" data-rest="'.esc_attr(esc_url_raw(rest_url('tdbs/v1/'))).'"><form class="tdbs-agenda-login">'
+        .'<p><label>Password dell’agenda<br><input type="password" name="password" required autocomplete="current-password"></label></p>'
+        .'<p><label><input type="checkbox" name="remember"> Ricordala finché non chiudo la scheda</label></p>'
+        .'<p><button type="submit">Apri l’agenda</button></p><p class="tdbs-agenda-status" role="status" aria-live="polite"></p></form><div class="tdbs-agenda-view" hidden></div></div>';
+}
+add_action('init',function(){add_shortcode('tdbs_agenda','tdbs_agenda_shortcode');});
+
 /* the settings page: Modalità PC (sincronizzazione) */
 function tdbs_pc_settings($post) {
     $p=tdbs_pc();$snap=tdbs_pc_snapshot();
@@ -381,6 +450,8 @@ function tdbs_pc_settings($post) {
     echo '<table class="form-table"><tr><th>Modalità</th><td><label><input type="checkbox" name="on" value="1"'.checked(!empty($p['on']),true,false).'> Usa la modalità PC per <code>[td_booking_suite]</code> al posto del modulo dal portale</label></td></tr>';
     echo '<tr><th><label for="tdbs-secret">Chiave dal programma</label></th><td><input type="password" class="regular-text" id="tdbs-secret" name="secret" autocomplete="off" placeholder="'.(!empty($p['secret'])?'Chiave salvata: lascia vuoto per tenerla':'Incolla la chiave').'"></td></tr>';
     echo '<tr><th><label for="tdbs-age">Dati validi per</label></th><td><input type="number" min="1" max="60" id="tdbs-age" name="max_age" value="'.esc_attr((string)($p['max_age']??7)).'"> giorni <p class="description">Se il PC non si fa sentire da più tempo, il modulo mostra “contattaci” invece degli orari.</p></td></tr></table>';
+    $agenda=get_option('tdbs_agenda',array());
+    echo '<p>Agenda riservata: '.(!empty($agenda['entries'])?'accessi '.esc_html(implode(', ',array_column($agenda['entries'],'label'))).'. Pagina con lo shortcode <code>[tdbs_agenda]</code>: si apre con la password data dal programma.':'nessun accesso; si creano nel programma, nella stessa card.').'</p>';
     submit_button('Salva la modalità PC','secondary');echo '</form></div>';
 }
 add_action('admin_post_tdbs_pc_save',function(){

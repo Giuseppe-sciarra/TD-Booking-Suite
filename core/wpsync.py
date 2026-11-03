@@ -6,12 +6,12 @@ meanwhile. They become bookings here like the online ones (origin "wordpress"); 
 desk) they become requests at that time. The next call acks them and the site deletes them. Both ways are signed
 HMAC-SHA256 with the shared secret over "time.body", within 5 minutes; the site also refuses a time already seen.
 """
-import hashlib,hmac,json,re,secrets,time,urllib.error,urllib.request
+import base64,hashlib,hmac,json,re,secrets,time,urllib.error,urllib.request
 from datetime import date,datetime,timedelta
 from zoneinfo import ZoneInfo
 from django.utils import timezone
 from .crypto import encrypt,decrypt
-from .models import Tenant,Service,Option,Location,Booking,Audit,audit
+from .models import Tenant,Service,Option,Location,Resource,Booking,Audit,audit
 from .tenancy import scope
 
 EVERY=120
@@ -19,6 +19,8 @@ WINDOW=300
 MAX_DAYS=90
 FULL=timedelta(minutes=15)  # the free times are slow to count: again only after a change in the register, or after this
 RUNNING=timedelta(minutes=10)  # a sync that never ended (the PC switched off meanwhile) is no longer "in corso"
+ITERATIONS=300_000  # PBKDF2-HMAC-SHA256 of the agenda passwords: the browser derives the same key (agenda.js)
+MAX_AGENDA=20
 
 def sign(secret,ts,body):return hmac.new(secret.encode(),str(ts).encode()+b"."+body,hashlib.sha256).hexdigest()
 def verify(secret,ts,body,sig,now=None):
@@ -73,6 +75,60 @@ def snapshot(tenant,days):
         "texts":{"privacy":tenant.privacy_text,"consent":tenant.consent_text,
             "notices":"Mandami per email la conferma, il promemoria e gli avvisi su questa prenotazione" if reminder else "Mandami per email la conferma e gli avvisi su questa prenotazione"}}
 
+def agenda_save(tenant,post,actor):
+    """2.17.1: an access to the private agenda on the site: a name, all the business or some operators, a password typed
+    here or made here (returned, shown once). Kept only as the key derived from it, sealed with the rest; a new password
+    also makes a new RSA pair, whose public half lets the site seal its own requests for this access."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    c=conf(tenant);entries=c.setdefault("agenda",[]);eid=str(post.get("id",""))
+    e=next((x for x in entries if x["id"]==eid),None)
+    if eid and not e:raise ValueError("Accesso non trovato.")
+    label=str(post.get("label","")).strip()[:60]
+    if not label:raise ValueError("Scrivi il nome di chi usa l'agenda.")
+    with scope(tenant):ids={str(r) for r in Resource.objects.filter(active=True).values_list("pk",flat=True)}
+    every=post.get("scope")=="all";who=[] if every else [r for r in post.getlist("resources") if r in ids]
+    if not every and not who:raise ValueError("Scegli tutta l'attività o almeno un operatore.")
+    password=str(post.get("password",""));made=""
+    if not password and not e:password=made=secrets.token_urlsafe(12)
+    if password and len(password)<10:raise ValueError("La password deve avere almeno 10 caratteri.")
+    if not e:
+        if len(entries)>=MAX_AGENDA:raise ValueError(f"Al massimo {MAX_AGENDA} accessi.")
+        e={"id":secrets.token_hex(16)};entries.append(e)
+    e.update(label=label,all=every,resources=who)
+    if password:
+        salt=secrets.token_bytes(16);pair=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+        e.update(salt=base64.b64encode(salt).decode(),key=base64.b64encode(hashlib.pbkdf2_hmac("sha256",password.encode(),salt,ITERATIONS,32)).decode(),
+            private=base64.b64encode(pair.private_bytes(serialization.Encoding.DER,serialization.PrivateFormat.PKCS8,serialization.NoEncryption())).decode(),
+            public=base64.b64encode(pair.public_key().public_bytes(serialization.Encoding.DER,serialization.PublicFormat.SubjectPublicKeyInfo)).decode())
+    store(tenant,c);state(tenant,sent="")  # the next call sends the agenda again
+    with scope(tenant):audit(tenant,actor,"wpsync.agenda",tenant.pk,id=e["id"],new=bool(password))
+    return made
+def agenda_revoke(tenant,eid,actor):
+    c=conf(tenant);c["agenda"]=[x for x in c.get("agenda",[]) if x["id"]!=eid];store(tenant,c);state(tenant,sent="")  # the site deletes it at the next call
+    with scope(tenant):audit(tenant,actor,"wpsync.agenda_revoked",tenant.pk,id=eid)
+
+def agenda(tenant,c):
+    """2.17.1: each access's bookings of the next days (from today, cancelled ones out), sealed end-to-end with the key of
+    its password (AES-256-GCM): the site gets only ciphertext, salt, nonce and the public key of its own requests."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    entries=c.get("agenda") or []
+    if not entries:return []
+    tz=ZoneInfo(tenant.timezone);start=datetime.combine(timezone.now().astimezone(tz).date(),datetime.min.time(),tz)
+    status=dict(Booking._meta.get_field("status").choices);rows=[]
+    for b in Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=int(c.get("days",30)))).exclude(status="cancelled").select_related("service","option","resource").order_by("start"):
+        d=b.data;rows.append({"id":str(b.pk),"start":b.start.astimezone(tz).strftime("%Y-%m-%dT%H:%M"),"end":b.end.astimezone(tz).strftime("%Y-%m-%dT%H:%M"),
+            "service":b.service.name+(" · "+b.option.name if b.option else ""),"resource":str(b.resource_id or ""),"operator":b.resource.name if b.resource else "",
+            "status":status[b.status],"pending":b.status=="pending","client":f"{d.get('first_name','')} {d.get('last_name','')}".strip(),"phone":d.get("phone",""),"notes":d.get("notes","")})
+    people=[{"id":str(r.pk),"name":r.name} for r in Resource.objects.filter(active=True).order_by("name")];now=timezone.now().isoformat();out=[]
+    for e in entries:
+        mine=lambda rid:e["all"] or rid in e["resources"]
+        plain={"label":e["label"],"generated":now,"timezone":tenant.timezone,"operators":[p for p in people if mine(p["id"])],"bookings":[r for r in rows if mine(r["resource"])],"key":e["private"]}
+        nonce=secrets.token_bytes(12);ct=AESGCM(base64.b64decode(e["key"])).encrypt(nonce,json.dumps(plain,ensure_ascii=False,separators=(",",":")).encode(),None)
+        out.append({"id":e["id"],"label":e["label"],"generated":now,"iterations":ITERATIONS,"salt":e["salt"],"nonce":base64.b64encode(nonce).decode(),"ct":base64.b64encode(ct).decode(),
+            "public":e["public"],"resources":[] if e["all"] else e["resources"]})
+    return out
+
 def take(tenant,rows):
     """The site's bookings: each one once (request_key wp-<id>), refused now a request at the same time; one that cannot
     be kept at all is acked too, and its client told by email why. Returns the new bookings' ids, the ids to ack, errors."""
@@ -111,7 +167,7 @@ def sync(tenant,full=False):
         with scope(tenant):
             mark=str(Audit.objects.exclude(action__startswith="wpsync.").order_by("-created").values_list("created","pk").first() or "")
             due=full or mark!=old.get("mark") or not old.get("sent") or timezone.now()-datetime.fromisoformat(old["sent"])>FULL
-            body=json.dumps({"ack":old.get("ack",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30)))} if due else {})},separators=(",",":")).encode()
+            body=json.dumps({"ack":old.get("ack",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30))),"agenda":agenda(tenant,c)} if due else {})},separators=(",",":")).encode()
         ts=str(int(time.time()))
         req=urllib.request.Request(c["url"]+"/wp-json/tdbs/v1/sync",data=body,method="POST",headers={"Content-Type":"application/json","Accept":"application/json","User-Agent":"TD-Booking-Suite","X-TDBS-Time":ts,"X-TDBS-Signature":sign(c["secret"],ts,body)})
         try:
@@ -152,5 +208,7 @@ def banner(tenant):
 def panel(tenant):
     """What the card shows: never the secret, only whether there is one."""
     c=conf(tenant);s=tenant.wp_state or {}
-    return {"url":c.get("url",""),"days":c.get("days",30),"on":c.get("on",False),"secret":bool(c.get("secret")),
+    with scope(tenant):people={str(r.pk):r.name for r in Resource.objects.filter(active=True).order_by("name")}
+    return {"url":c.get("url",""),"days":c.get("days",30),"on":c.get("on",False),"secret":bool(c.get("secret")),"people":people,
+        "agenda":[{"id":e["id"],"label":e["label"],"all":e["all"],"resources":e["resources"],"names":", ".join(people.get(r,"") for r in e["resources"])} for e in c.get("agenda",[])],
         "at":datetime.fromisoformat(s["at"]) if s.get("at") else None,"new":s.get("new",0),"error":s.get("error","")}

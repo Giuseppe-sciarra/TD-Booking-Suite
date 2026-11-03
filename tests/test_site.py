@@ -106,7 +106,8 @@ def test_agency_downloads_the_wordpress_plugin(sample):
     page=c.get("/platform/plugin/").content.decode()
     assert "Plugin WordPress" in page and t.slug in page and "/platform/plugin/download/" in page
     r=c.get("/platform/plugin/download/")
-    version=(Path_root()/"VERSION").read_text().strip()
+    from core.site import plugin_version
+    version=plugin_version();assert version.startswith((Path_root()/"VERSION").read_text().strip()[:4])  # 2.17.1: the plugin can be a patch ahead of the program
     assert r.status_code==200 and r["Content-Type"]=="application/zip" and f"td-booking-suite-{version}-wordpress.zip" in r["Content-Disposition"]
     z=zipfile.ZipFile(io.BytesIO(r.content))
     names=set(z.namelist());assert {"td-booking-suite/td-booking-suite.php","td-booking-suite/readme.txt","td-booking-suite/widget.js"}<=names

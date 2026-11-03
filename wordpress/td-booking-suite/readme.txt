@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.17.0
+Stable tag: 2.17.1
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -22,3 +22,9 @@ quando è acceso (nessuna porta da aprire), manda servizi, operatori e orari lib
 l'orario dal sito, il cliente riceve "Richiesta ricevuta" e la conferma vera arriva dal programma. Le richieste restano nel
 database cifrate con una chiave ricavata dalla chiave condivisa e si cancellano appena il PC le ha prese. Se il PC non si fa
 sentire da più dei giorni indicati, il modulo dice di contattare l'attività. Richiede i permalink attivi (/wp-json/).
+
+Agenda riservata (2.17.1). Nel programma, nella stessa card, l'agenzia crea gli accessi: nome, password e cosa si vede
+(tutta l'attività o alcuni operatori). In una pagina del sito metti [tdbs_agenda]: con la password si apre l'agenda del giorno
+o della settimana, una colonna per operatore, con il dettaglio di ogni prenotazione e le richieste del sito non ancora prese
+dal PC. Il sito riceve e dà solo dati cifrati (PBKDF2-HMAC-SHA256 + AES-256-GCM, chiave ricavata dalla password): si decifrano
+solo nel browser, la password non viene mai inviata. Sola lettura.

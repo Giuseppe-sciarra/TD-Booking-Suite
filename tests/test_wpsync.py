@@ -128,5 +128,65 @@ def test_plugin_zip_in_every_edition_and_pc_mode_in_it(sample,settings):
     assert r.status_code==200 and "td-booking-suite/pc.js" in names and owner.get("/platform/plugin/download/").status_code==403
     assert c.get("/platform/plugin/").status_code==404  # the agency's page stays the Cloud's
     php=(Path(__file__).resolve().parents[1]/"wordpress/td-booking-suite/td-booking-suite.php").read_text()
-    for needle in ("const TDBS_VERSION='2.17.0'","Version: 2.17.0","'/sync'","hash_equals(tdbs_pc_sign($ts,$body),$sig)","abs(time()-(int)$ts)>300","aes-256-gcm","wp_verify_nonce","tdbs_pc_throttle()","GET_LOCK","tdbs_pc_on()) return tdbs_pc_shortcode"):
+    for needle in ("const TDBS_VERSION='2.17.1'","Version: 2.17.1","'/sync'","hash_equals(tdbs_pc_sign($ts,$body),$sig)","abs(time()-(int)$ts)>300","aes-256-gcm","wp_verify_nonce","tdbs_pc_throttle()","GET_LOCK","tdbs_pc_on()) return tdbs_pc_shortcode"):
         assert needle in php
+
+# 2.17.1: the private agenda on the site, sealed end-to-end with each access's password
+def opened(blob,password):
+    import base64,hashlib
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    key=hashlib.pbkdf2_hmac("sha256",password.encode(),base64.b64decode(blob["salt"]),blob["iterations"],32)  # what agenda.js derives
+    return json.loads(AESGCM(key).decrypt(base64.b64decode(blob["nonce"]),base64.b64decode(blob["ct"]),None))
+def access(t,label,password,resources=()):
+    from django.http import QueryDict
+    q=QueryDict(mutable=True);q.update({"label":label,"password":password,"scope":"some" if resources else "all"});q.setlist("resources",[str(r.pk) for r in resources])
+    return wpsync.agenda_save(t,q,None)
+
+def test_agenda_is_sealed_with_the_password_and_scoped(sample):
+    import base64
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives import hashes,serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    t,o,s=sample
+    with scope(t):
+        loc,anna,bruno,taglio,colore=shop(t)
+        create_booking(t,{**payload(taglio,hour=10),"resource":str(anna.pk)});create_booking(t,{**payload(taglio,hour=11,first_name="Gino"),"resource":str(bruno.pk)})
+    wpsync.store(t,{"url":"https://www.salone.example","secret":SECRET,"days":5,"on":True})
+    access(t,"Titolare","password-titolare");access(t,"Anna","password-di-anna",[anna])
+    assert access(t,"Bruno","",[bruno])  # made here, returned once
+    assert "password-titolare" not in json.dumps(wpsync.conf(t))
+    with scope(t):boss,mine,_=wpsync.agenda(t,wpsync.conf(t))
+    assert "Mario" not in json.dumps(boss) and boss["iterations"]>=200_000 and mine["resources"]==[str(anna.pk)]
+    everything=opened(boss,"password-titolare")
+    assert {b["client"] for b in everything["bookings"]}=={"Mario Rossi","Gino Rossi"} and everything["bookings"][0]["phone"] and everything["bookings"][0]["notes"]=="Prodotto delicato"
+    annas=opened(mine,"password-di-anna")
+    assert [b["operator"] for b in annas["bookings"]]==["Anna"] and [p["name"] for p in annas["operators"]]==["Anna"]
+    with pytest.raises(InvalidTag):opened(mine,"password-titolare")
+    # the site seals its own requests for this access with the public key (openssl OAEP SHA-1); the agenda carries the private one
+    wrapped=serialization.load_der_public_key(base64.b64decode(mine["public"])).encrypt(b"k"*32,padding.OAEP(padding.MGF1(hashes.SHA1()),hashes.SHA1(),None))
+    assert serialization.load_der_private_key(base64.b64decode(annas["key"]),None).decrypt(wrapped,padding.OAEP(padding.MGF1(hashes.SHA1()),hashes.SHA1(),None))==b"k"*32
+
+def test_agenda_goes_with_the_sync_and_a_revoked_access_is_deleted(sample,monkeypatch):
+    t,o,s=sample
+    with scope(t):shop(t)
+    site=Site();linked_site(t,site,monkeypatch)
+    access(t,"Titolare","password-titolare");wpsync.sync(t)
+    sent=site.calls[0]["agenda"];assert [a["label"] for a in sent]==["Titolare"]
+    wpsync.sync(t);assert "agenda" not in site.calls[1]  # nothing changed
+    wpsync.agenda_revoke(t,sent[0]["id"],None);wpsync.sync(t)
+    assert site.calls[2]["agenda"]==[]  # the site replaces its list: the access goes away
+
+def test_agenda_accesses_are_for_the_agency_only(sample):
+    t,o,s=sample
+    with scope(t):loc,anna,bruno,taglio,colore=shop(t)
+    owner,_=client_as(t)
+    assert owner.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_agenda","label":"X","scope":"all"}).status_code==403
+    c,_=staff_client()
+    page=c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_agenda","label":"Anna","scope":"some","resources":[str(anna.pk)]},follow=True).content.decode()
+    t.refresh_from_db();a=wpsync.conf(t)["agenda"][0]
+    assert a["resources"]==[str(anna.pk)] and "Password di Anna" in page
+    assert "Password di Anna" not in c.get(f"/t/{t.slug}/setup/").content.decode()  # shown once
+    c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_agenda","label":"Nessuno","scope":"some"})
+    t.refresh_from_db();assert len(wpsync.conf(t)["agenda"])==1  # no operator chosen: refused
+    c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_agenda_revoke","id":a["id"]})
+    t.refresh_from_db();assert wpsync.conf(t)["agenda"]==[]

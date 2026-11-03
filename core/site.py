@@ -198,7 +198,10 @@ def plugin_allowed(request):
     staff_only(request)
 
 def plugin_version():
-    return settings.VERSION
+    import re
+    try:m=re.search(r"^ \* Version: (\S+)",(settings.BASE_DIR/"wordpress"/"td-booking-suite"/"td-booking-suite.php").read_text(),re.M)  # 2.17.1: the plugin's own, it can be a patch ahead
+    except OSError:m=None
+    return m.group(1) if m else settings.VERSION
 
 def plugin_zip():
     import io,zipfile

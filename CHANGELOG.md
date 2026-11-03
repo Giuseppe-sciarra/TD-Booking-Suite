@@ -2,6 +2,12 @@
 
 **3 novembre 2026 · versione 2.17.0**
 
+## 2.17.1 — agenda riservata sul sito
+
+- **Agenda riservata sul sito WordPress (modalità PC)**: il titolare e i collaboratori vedono le prenotazioni anche con il PC spento, in una pagina del sito con lo shortcode `[tdbs_agenda]`, aperta con una password. Vista giorno e settimana con una colonna per operatore, dettaglio con un tocco (orario, servizio, operatore, stato, cliente, telefono, note), comprese quelle *in attesa di conferma* e le richieste arrivate dal sito che il PC non ha ancora preso; «Aggiornata alle HH:MM del GG/MM»; prende caratteri e colori del tema; *Esci* chiude e dimentica tutto, la password si può ricordare solo finché si chiude la scheda. Sola lettura
+- **Accessi all'agenda** nella card *Sito WordPress · modalità PC*, solo per l'agenzia: nome, password scritta o creata dal programma (si vede una volta), tutta l'attività o solo alcuni operatori; si cambiano o si tolgono quando serve, e il sito li cancella alla sincronizzazione dopo
+- **Cifratura da un capo all'altro**: a ogni sincronizzazione il PC cifra le prenotazioni dei giorni prenotabili di ogni accesso con una chiave ricavata dalla sua password (PBKDF2-HMAC-SHA256, 300.000 passaggi, sale casuale; AES-256-GCM): il sito conserva e dà solo dati cifrati, con un limite di richieste, e la password non esce mai dal browser, che decifra da solo. Le richieste arrivate dal sito sono cifrate per ogni accesso con la sua chiave pubblica. Plugin WordPress 2.17.1
+
 ## 2.17.0 — sito WordPress collegato al PC anche spento
 
 - **Sito WordPress con il PC spento (modalità PC)**: per l'edizione Windows Un PC solo, spesso spenta e non raggiungibile da Internet. Il PC chiama il sito ogni 2 minuti quando è acceso (nessuna porta da aprire): gli manda servizi su appuntamento, varianti, operatori e orari liberi dei prossimi giorni (30 di serie, fino a 90) con le regole della pagina online, e riprende le prenotazioni arrivate dal sito, che diventano prenotazioni con origine *Sito WordPress* e la conferma vera per email dal programma; alla chiamata dopo il sito le cancella. Ogni prenotazione entra una volta sola. Se l'orario nel frattempo è stato dato al banco, arriva tra le *Richieste da confermare* e il cliente riceve l'email di richiesta. Chiamate e risposte firmate HMAC-SHA256 con la chiave condivisa, valide 5 minuti e una volta sola. Gli orari liberi si ricalcolano dopo ogni cambio nel registro e comunque ogni 15 minuti
