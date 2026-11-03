@@ -509,7 +509,8 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
   timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
    found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="ghost small";
-    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();});li.append(b);return li;}));}catch{}},250);});
+    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();
+     const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}});li.append(b);return li;}));}catch{}},250);});
 })();
 // 2.16.0: a page waiting for the register looks again by itself
 (()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();

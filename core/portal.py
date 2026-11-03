@@ -624,11 +624,11 @@ def contacts(request,slug):
         "filtered":bool(q or tag or vip),"keep":keep})
 def contacts_search(request,slug):
     """Quick search for the manual booking form: at most 8 clients, only for who sees names."""
-    from .clients import search as find
+    from .clients import search as find,receipt_code
     require(request,"contacts.read","pii.read")
     from django.http import JsonResponse
     return JsonResponse({"results":[{"id":str(c.pk),"first_name":c.found.get("first_name",""),"last_name":c.found.get("last_name",""),
-        "email":c.found.get("email",""),"phone":c.found.get("phone","")} for c in find(request.tenant,request.GET.get("q",""),limit=8)]})
+        "email":c.found.get("email",""),"phone":c.found.get("phone",""),"cf":receipt_code(c.found)} for c in find(request.tenant,request.GET.get("q",""),limit=8)]})
 def contacts_import(request,slug):
     """Clients and treatment history from the old program (CSV or Excel): file, columns, preview, import.
     Needs what adding clients and treatments by hand needs; the marketing consents also the privacy permission."""
@@ -683,7 +683,7 @@ def contact_detail(request,slug,contact_id):
     from .privacy import history,export_contact,erase_contact
     require(request,"contacts.read")
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
-    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile","sign")) or request.GET.get("download"):
+    if (request.method=="POST" and request.POST.get("action") not in ("notes","card","treatment","treatment_remove","discount","notices","profile","sign","fiscal")) or request.GET.get("download"):
         require(request,"privacy.manage")
         if request.GET.get("download"):
             import json
@@ -754,6 +754,17 @@ def contact_detail(request,slug,contact_id):
             messages.success(request,"Scheda aggiornata.")
         except BookingError as ex:messages.error(request,str(ex))
         return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#profilo")
+    if request.method=="POST" and request.POST.get("action")=="fiscal":
+        # 2.16.1: the fiscal data, sealed in the card: who edits the card's data
+        require(request,"booking.write","pii.read")
+        from .clients import clean_fiscal,save_fiscal
+        try:
+            with transaction.atomic():
+                save_fiscal(request.tenant,contact,clean_fiscal(request.POST))
+                audit(request.tenant,request.user,"contact.fiscal",contact.pk)
+            messages.success(request,"Dati fiscali salvati.")
+        except BookingError as ex:messages.error(request,str(ex))
+        return redirect(reverse("contact_detail",args=[slug,contact.pk])+"#fiscali")
     if request.method=="POST" and request.POST.get("action") in ("notes","card"):
         require(request,"booking.write",*(("notes.read",) if request.POST["action"]=="notes" else ("pii.read",)))
         try:
@@ -801,6 +812,8 @@ def contact_detail(request,slug,contact_id):
             b=visible_bookings(request,Booking.objects.filter(contact=contact)).filter(pk=uid(request.GET["da"])).first()
             if b:prefill=from_booking(b,tz)
         ctx.update(tpage=Paginator(entries,30).get_page(request.GET.get("tp")),entries_count=len(entries),prefill=prefill,today=now.astimezone(tz).date(),**record_options(spec))
+    from .clients import FISCAL,FISCAL_KINDS
+    ctx.update(fiscal_kinds=FISCAL_KINDS,fiscal=[(l,dict(FISCAL_KINDS).get(data[k],data[k]) if k=="fiscal_kind" else data[k]) for k,l in FISCAL if data.get(k)])
     ctx["channels"]=Contact._meta.get_field("channel").choices
     ctx["sales"]=contact.sales.filter(kind="sale").order_by("-created")[:20]  # 2.16.0: his receipts from the Cassa
     return render(request,"contact_detail.html",ctx)
@@ -884,7 +897,8 @@ def contact_merge(request,slug,contact_id):
     rows=[]
     if other:
         a,b=contact.data,other.data
-        rows=[{"key":f,"label":l,"mine":a.get(f,""),"theirs":b.get(f,""),"pick":"this" if a.get(f) or not b.get(f) else "other"} for f,l in MERGE_FIELDS]
+        rows=[{"key":f,"label":l,"mine":a.get(f,""),"theirs":b.get(f,""),"pick":"this" if a.get(f) or not b.get(f) else "other"} for f,l in MERGE_FIELDS
+            if f in ("first_name","last_name","email","phone","birthday") or a.get(f) or b.get(f)]  # fiscal data only when a card has them
         for c in (contact,other):c.bookings=Booking.objects.filter(contact=c).count()
     return render(request,"contact_merge.html",{"contact":contact,"other":other,"found":found,"rows":rows,"error":error,"q":request.GET.get("q",""),
         "mine":contact.data,"theirs":other.data if other else {}})

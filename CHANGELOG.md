@@ -2,6 +2,10 @@
 
 **3 novembre 2026 · versione 2.16.0**
 
+## 2.16.1 — dati fiscali dei clienti
+
+- **Dati fiscali** nella scheda del cliente (*Clienti › scheda*, per chi crea prenotazioni e vede i recapiti; agli altri ruoli compaiono nascosti come gli altri recapiti): privato, azienda o professionista, codice fiscale e partita IVA controllati (carattere e cifra di controllo; per l'estero partita IVA e CAP liberi), ragione sociale, indirizzo con CAP, comune, provincia e nazione, codice destinatario SDI e PEC, cifrati con il resto della scheda. La **Cassa** mette il codice fiscale del cliente scelto, l'**importazione** riconosce le colonne Codice fiscale, Partita IVA, Ragione sociale, PEC, SDI o Codice destinatario, CAP e Provincia, l'**unione di due schede** li fa scegliere campo per campo, lo scarico privacy li comprende e la cancellazione li toglie.
+
 ## 2.16.0 — collegamento ai registratori di cassa
 
 - **Cassa**, nel menu *Ogni giorno* (titolare, amministratore sede e reception; gli operatori se il titolare lo permette in *Configura l'attività*, *Al banco*): una griglia di servizi e varianti con i prezzi, da toccare, con la ricerca; quantità con − e +, prezzo e descrizione da cambiare, riga libera, sconto in euro, pagamento in contanti, carta o altro anche diviso, codice fiscale e codice lotteria facoltativi, il cliente cercato nella rubrica. *Invia alla cassa* manda il conto al registratore telematico, che stampa e trasmette lo scontrino: il programma non emette mai documenti fiscali da solo. Sotto, gli scontrini di oggi con la copia da stampare, la copia da rimandare per email e l'annullo.

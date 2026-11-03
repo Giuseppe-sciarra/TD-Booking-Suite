@@ -109,6 +109,8 @@ def shown(request,data):
     if not can(request,"pii.read"):
         for key in ("first_name","last_name"):data[key]=initials(data.get(key))
         for key in ("email","phone"):data[key]="•••" if data.get(key) else ""
+        for key in ("company","tax_code","vat","address","zip","city","province","country","sdi","pec"):  # 2.16.1: fiscal data
+            if data.get(key):data[key]="•••"
         data["answers"]={};data["masked"]=True;data.pop("guests",None)
     if not can(request,"notes.read"):
         # allergies are health data: they go with the notes (2.8.0)

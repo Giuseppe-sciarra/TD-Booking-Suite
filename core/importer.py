@@ -18,7 +18,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 from .booking import BookingError,normalize_phone,action_token,queue
-from .clients import ERASED
+from .clients import ERASED,FISCAL,clean_fiscal
 from .crypto import seal,open_seal,tenant_key
 from .models import Contact,Treatment,ConsentEvent,ActionToken
 
@@ -33,14 +33,18 @@ KEEP_SECONDS=7200     # the sealed copy between the steps
 FIELDS=[("","Non importare"),("first_name","Nome"),("last_name","Cognome"),("full_name","Nome e cognome insieme"),
     ("phone","Telefono"),("email","Email"),("code","Codice cliente del vecchio programma"),("notes","Note"),
     ("extra","Nelle note, con il titolo della colonna"),("date","Data del trattamento"),("service","Trattamento fatto"),
-    ("staff","Operatore"),("details","Dettagli del trattamento"),("consent","Consenso marketing")]
+    ("staff","Operatore"),("details","Dettagli del trattamento"),("consent","Consenso marketing"),
+    # 2.16.1: the fiscal data of the card
+    ("company","Ragione sociale"),("tax_code","Codice fiscale"),("vat","Partita IVA"),("address","Indirizzo"),("zip","CAP"),("city","Comune"),
+    ("province","Provincia"),("sdi","Codice destinatario SDI"),("pec","PEC")]
 RECORD={"date","service","staff","details"}
-SINGLE={"first_name","last_name","full_name","code","date","service","staff","consent"}
+SINGLE={"first_name","last_name","full_name","code","date","service","staff","consent","company","tax_code","vat","address","zip","city","province","sdi","pec"}
 # column titles of the common programs and of hand-made sheets, without spaces and accents
-SKIP=("cf","sesso","genere","partitaiva","piva")
-SKIP_START=("codicefiscale","codfisc")
-EXTRA=("datanascita","datadinascita","nascita","compleanno","ultimavisita","dataultimavisita","primavisita","dataiscrizione","datainserimento","datacreazione","indirizzo","via","citta","cap","provincia","comune","professione","tessera")
-GUESS=(("full_name",("nomecognome","cognomenome","nomeecognome","cognomeenome","nominativo","cliente","nomecliente","fullname","name")),
+SKIP=("sesso","genere")
+EXTRA=("datanascita","datadinascita","nascita","compleanno","ultimavisita","dataultimavisita","primavisita","dataiscrizione","datainserimento","datacreazione","indirizzo","via","citta","comune","professione","tessera")
+GUESS=(("tax_code",("cf","codicefiscale","codfisc","codfiscale")),("vat",("partitaiva","piva")),("company",("ragionesociale",)),
+    ("pec",("pec","emailpec")),("sdi",("sdi","codicesdi","codicedestinatario","codiceunivoco")),("zip",("cap",)),("province",("provincia","prov")),
+    ("full_name",("nomecognome","cognomenome","nomeecognome","cognomeenome","nominativo","cliente","nomecliente","fullname","name")),
     ("first_name",("nome","firstname","givenname")),("last_name",("cognome","lastname","surname","familyname")),
     ("email",("email","mail","eposta","posta","emailaddress","indirizzoemail")),
     ("phone",("telefono","cellulare","cell","tel","mobile","phone","whatsapp","recapito")),
@@ -66,7 +70,7 @@ def guess(head,record,consent):
     out=[]
     for title in head:
         t=plain(title);field=""
-        if t in SKIP or t.startswith(SKIP_START):field=""
+        if t in SKIP:field=""
         elif t in EXTRA or any(t.startswith(x) for x in EXTRA):field="extra"
         else:
             field=next((f for f,names in GUESS if t in names),None)
@@ -373,6 +377,13 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
             learn(card)
             if d!=before and not card.new:changed[card.pk]=card
             status="nuovo" if card.new else "già presente"
+        filled=False
+        for f,_ in FISCAL:  # 2.16.1: the fiscal data the card lacks, checked as on the card; a wrong one stays out
+            if f in got and not card.d.get(f):
+                try:card.d[f]=clean_fiscal({"fiscal_kind":"azienda",f:one(f)})[f];filled=True
+                except BookingError:report["bad_fiscal"]+=1
+        if filled and not card.d.get("fiscal_kind") and (card.d.get("company") or card.d.get("vat") or card.d.get("tax_code","").isdigit()):card.d["fiscal_kind"]="azienda"
+        if filled and not card.new:changed[card.pk]=card
         note+=["Altra email: "+e for e in found_emails if e!=card.d.get("email")]+["Altro telefono: "+p for p in found_phones if p!=card.d.get("phone")]
         if note:
             old=card.d.get("staff_notes","")

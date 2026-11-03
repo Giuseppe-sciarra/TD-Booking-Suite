@@ -184,3 +184,37 @@ def test_search_reaches_every_card_beyond_5000(sample):
     with scope(t):  # at the desk with the phone only: his card, though 6000 are more recent
         b,_=create_booking(t,staff_payload(s,first_name="Zebedeo",phone="333 000 0001"),actor=u)
         assert b.contact_id==first.pk
+
+def test_fiscal_data_checked_sealed_masked_and_used(sample):
+    """2.16.1: dati fiscali in the card: Italian checks, sealed, masked without pii.read, in the Cassa search, import,
+    merge, privacy export and erasure."""
+    from types import SimpleNamespace
+    from core import importer
+    from core.clients import clean_fiscal
+    from core.permissions import shown
+    from core.privacy import export_contact,erase_contact
+    t,o,s=sample
+    ok={"fiscal_kind":"privato","tax_code":"rssmra80a01h501u","zip":"00179","province":"rm","sdi":"0000000","pec":"Mario@Pec.example.invalid"}
+    f=clean_fiscal(ok);assert f["tax_code"]=="RSSMRA80A01H501U" and f["country"]=="IT" and f["province"]=="RM" and f["pec"]=="mario@pec.example.invalid"
+    for bad in ({"tax_code":"RSSMRA80A01H501A"},{"tax_code":"01234567897"},{"vat":"01234567890"},{"zip":"0017"},{"province":"Roma"},{"sdi":"ABC12"},{"pec":"no"}):
+        with pytest.raises(BookingError):clean_fiscal({**ok,**bad})
+    assert clean_fiscal({"fiscal_kind":"azienda","tax_code":"01234567897","vat":"01234567897","company":"Rossi srl"})["company"]=="Rossi srl"
+    assert clean_fiscal({"country":"DE","vat":"DE 123456789","zip":"10115"})["vat"]=="DE123456789" and clean_fiscal({"company":"X"})=={}  # a private client has no ragione sociale
+    owner,_=client_as(t)
+    with scope(t):
+        a,_=find_or_create(t,{"first_name":"Mario","last_name":"Rossi","email":"mario@example.invalid","phone":""})
+        b,_=find_or_create(t,{"first_name":"Mario","last_name":"Rossi","email":"","phone":"+393331234567"})
+    assert owner.post(f"/t/{t.slug}/contacts/{a.pk}/",{"action":"fiscal",**ok}).status_code==302
+    with scope(t):a=Contact.objects.get(pk=a.pk);assert a.data["tax_code"]=="RSSMRA80A01H501U" and "RSSMRA" not in a.pii
+    page=owner.get(f"/t/{t.slug}/contacts/{a.pk}/").content.decode();assert "Dati fiscali" in page and "RSSMRA80A01H501U" in page
+    hidden=shown(SimpleNamespace(_perms={"contacts.read"}),a.data);assert hidden["tax_code"]==hidden["pec"]=="•••"
+    assert owner.get(f"/t/{t.slug}/contacts/search/?q=mario@example.invalid").json()["results"][0]["cf"]=="RSSMRA80A01H501U"  # the Cassa fills it in
+    with scope(t):
+        p=importer.plan(t,["Telefono","Partita IVA","Ragione sociale","CAP"],[["3331234567","01234567897","Rossi srl","1"]],importer.guess(["Telefono","Partita IVA","Ragione sociale","CAP"],False,False),False)
+        assert p["report"]["bad_fiscal"]==1;importer.apply(t,p,None)
+        b=Contact.objects.get(pk=b.pk);assert (b.data["vat"],b.data["company"],b.data["fiscal_kind"])==("01234567897","Rossi srl","azienda") and "zip" not in b.data
+    keep={f:"main" for f,_ in __import__("core.clients",fromlist=["MERGE_FIELDS"]).MERGE_FIELDS};keep["vat"]="other"
+    with scope(t):
+        m=merge(t,a,b,keep,None).data;assert m["tax_code"]=="RSSMRA80A01H501U" and m["vat"]=="01234567897" and "company" not in m
+        m=Contact.objects.get(pk=a.pk);assert export_contact(t,m)["contact"]["vat"]=="01234567897"
+        erase_contact(t,m,None);assert "vat" not in Contact.objects.get(pk=a.pk).data

@@ -122,7 +122,58 @@ def update(tenant,contact,fields=None,notes=None):
     seal_card(tenant,contact,data);contact.save(update_fields=["pii","email_index",*INDEXES])
     return data
 
-MERGE_FIELDS=[("first_name","Nome"),("last_name","Cognome"),("email","Email"),("phone","Telefono"),("birthday","Data di nascita")]
+# 2.16.1: the fiscal data of the client, sealed in the card like the rest (no column of their own)
+FISCAL_KINDS=[("privato","Privato"),("azienda","Azienda o ditta"),("professionista","Professionista")]
+FISCAL=[("fiscal_kind","Tipo"),("company","Ragione sociale"),("tax_code","Codice fiscale"),("vat","Partita IVA"),("address","Indirizzo"),
+    ("zip","CAP"),("city","Comune"),("province","Provincia"),("country","Nazione"),("sdi","Codice destinatario SDI"),("pec","PEC")]
+CF=re.compile(r"[A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]")
+ODD=[1,0,5,7,9,13,15,17,19,21,2,4,18,20,11,3,6,8,12,14,16,10,22,25,24,23]  # value of a character in an odd place, 0-9 as A-J
+def cf_ok(v):
+    n=lambda c:int(c) if c.isdigit() else ord(c)-65
+    return bool(CF.fullmatch(v)) and chr(65+sum(ODD[n(c)] if i%2==0 else n(c) for i,c in enumerate(v[:15]))%26)==v[15]
+def vat_ok(v):
+    """The 11 digits of a partita IVA (and of a company's codice fiscale), the last one the check digit."""
+    if not re.fullmatch(r"\d{11}",v):return False
+    s=sum(int(c) if i%2==0 else 2*int(c)-9*(int(c)>4) for i,c in enumerate(v[:10]))
+    return (10-s%10)%10==int(v[10])
+def clean_fiscal(post):
+    """2.16.1: tipo, codice fiscale, partita IVA, ragione sociale, address, SDI and PEC as the staff typed them. The checks
+    are the Italian ones; for another country the partita IVA and the CAP are free text. Nothing typed, nothing kept."""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    f={k:str(post.get(k,"") or "") for k,_ in FISCAL}
+    if any(any(ord(c)<32 for c in v) for v in f.values()):raise BookingError("Dati fiscali non validi.")
+    f={k:" ".join(v.split()) for k,v in f.items()}
+    for k in ("tax_code","vat","zip","province","country","sdi"):f[k]=f[k].replace(" ","").upper()
+    f["pec"]=f["pec"].casefold();f["country"]=f["country"] or "IT";f["fiscal_kind"]=f["fiscal_kind"] or "privato"
+    it=f["country"]=="IT";company=f["fiscal_kind"]!="privato"
+    if f["fiscal_kind"] not in dict(FISCAL_KINDS):raise BookingError("Tipo di cliente non valido.")
+    if not company:f["company"]=""
+    for k,limit in (("company",160),("address",200),("city",80),("vat",30),("zip",12),("pec",254)):
+        if len(f[k])>limit:raise BookingError(f"{dict(FISCAL)[k]}: al massimo {limit} caratteri.")
+    if not re.fullmatch(r"[A-Z]{2}",f["country"]):raise BookingError("Nazione: la sigla di due lettere, per esempio IT.")
+    if f["tax_code"] and not (cf_ok(f["tax_code"]) or company and vat_ok(f["tax_code"])):
+        raise BookingError("Codice fiscale non valido: controlla i 16 caratteri"+(", o le 11 cifre di un'azienda." if company else "."))
+    if f["vat"] and it and not vat_ok(f["vat"]):raise BookingError("Partita IVA non valida: 11 cifre, controlla di averle scritte tutte giuste.")
+    if f["zip"] and it and not re.fullmatch(r"\d{5}",f["zip"]):raise BookingError("CAP non valido: 5 cifre.")
+    if f["province"] and not re.fullmatch(r"[A-Z]{2}",f["province"]):raise BookingError("Provincia: la sigla di due lettere, per esempio RM.")
+    if f["sdi"] and not re.fullmatch(r"[A-Z0-9]{7}",f["sdi"]):raise BookingError("Codice destinatario non valido: 7 caratteri tra lettere e numeri, o 0000000.")
+    if f["pec"]:
+        try:validate_email(f["pec"])
+        except ValidationError:raise BookingError("PEC non valida.")
+    if f["fiscal_kind"]=="privato" and not any(v for k,v in f.items() if k not in ("fiscal_kind","country")):return {}
+    return f
+def save_fiscal(tenant,contact,f):
+    data=dict(contact.data)
+    for k,_ in FISCAL:
+        if f.get(k):data[k]=f[k]
+        else:data.pop(k,None)
+    seal_card(tenant,contact,data);contact.save(update_fields=["pii",*INDEXES])
+def receipt_code(d):
+    """The code for the receipt: the codice fiscale, otherwise the 11 digits of the partita IVA."""
+    return d.get("tax_code") or (d.get("vat","") if re.fullmatch(r"\d{11}",d.get("vat","")) else "")
+
+MERGE_FIELDS=[("first_name","Nome"),("last_name","Cognome"),("email","Email"),("phone","Telefono"),("birthday","Data di nascita")]+FISCAL
 def merge(tenant,main,other,keep,actor):
     """2.14.0: two cards of the same person made one, for good. main keeps its place (address, history); each field
     takes the value chosen (keep: field -> "main" or "other"), notes and tags of both; VIP and "not bookable online" if

@@ -24,6 +24,7 @@ from django.shortcuts import render,redirect,get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from .clients import receipt_code
 from .crypto import encrypt,token_hash
 from .models import Booking,ConsentEvent,Contact,Location,Option,Sale,Service,Tenant,audit
 from .permissions import can,require,visible_bookings
@@ -335,7 +336,8 @@ def till_view(request,slug):
     who=booking.data if booking and can(request,"pii.read") else {}
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
-        "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None})
+        "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,
+        "cf":receipt_code(booking.contact.data) if booking and booking.contact_id and can(request,"pii.read") else ""})
 
 def allowed(request):
     return request.user.is_staff or request.tenant.till_self and getattr(request.member,"role","")=="owner"
