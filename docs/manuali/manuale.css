@@ -1,0 +1,80 @@
+/* Istruzioni in PDF di TD Booking Suite per Windows: A4, i caratteri del programma, il suo viola.
+   Le costruisce docs/manuali/build.py con Chromium (Playwright). */
+@font-face{font-family:Figtree;font-weight:400;src:url(../../static/fonts/figtree-latin-400-normal.woff2)}
+@font-face{font-family:Figtree;font-weight:500;src:url(../../static/fonts/figtree-latin-500-normal.woff2)}
+@font-face{font-family:Figtree;font-weight:600;src:url(../../static/fonts/figtree-latin-600-normal.woff2)}
+@font-face{font-family:Figtree;font-weight:700;src:url(../../static/fonts/figtree-latin-700-normal.woff2)}
+@font-face{font-family:Poppins;font-weight:600;src:url(../../static/fonts/poppins-latin-600-normal.woff2)}
+@font-face{font-family:Poppins;font-weight:700;src:url(../../static/fonts/poppins-latin-700-normal.woff2)}
+
+:root{--brand:#7a55ad;--brand-dark:#4b2f73;--ink:#241b2f;--muted:#6b6079;--line:#e4dcee;--soft:#f5f1fa;--warm:#fbf1e4;--warm-line:#c98a2e;--night:#2a2139}
+@page{size:A4;margin:18mm 17mm 20mm}
+@page:first{margin:0}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font:400 10pt/1.55 Figtree,system-ui,sans-serif;color:var(--ink);hyphens:auto}
+h1,h2,h3{font-family:Poppins,Figtree,sans-serif;color:var(--ink);line-height:1.2;break-after:avoid}
+h2{font-size:17pt;font-weight:700;margin:0 0 4mm;padding-top:2mm;break-before:page}
+h2 .num{display:inline-block;min-width:9mm;color:var(--brand)}
+h3{font-size:12pt;font-weight:600;margin:6mm 0 2mm}
+p{margin:0 0 2.6mm}
+a{color:var(--brand-dark);text-decoration:none}
+strong{font-weight:600}
+code,kbd{font:500 8.8pt/1.4 ui-monospace,Consolas,monospace;background:var(--soft);border-radius:3px;padding:.2mm 1.2mm;overflow-wrap:anywhere}
+pre{font:500 8.4pt/1.5 ui-monospace,Consolas,monospace;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:3mm 4mm;white-space:pre-wrap;overflow-wrap:anywhere;break-inside:avoid;margin:0 0 3mm}
+ul,ol{margin:0 0 3mm;padding-left:6mm}
+li{margin:0 0 1.2mm}
+.lead{font-size:11.2pt;color:var(--muted);margin-bottom:5mm}
+
+/* copertina */
+.cover{height:297mm;padding:30mm 22mm 24mm;background:linear-gradient(160deg,#3a2655 0%,#2a2139 55%,#1d1727 100%);color:#fff;display:flex;flex-direction:column;break-after:page;position:relative;overflow:hidden}
+.cover:after{content:"";position:absolute;right:-60mm;top:-40mm;width:170mm;height:170mm;border-radius:50%;background:radial-gradient(circle,rgba(176,126,230,.35),rgba(176,126,230,0) 70%)}
+.mark{width:18mm;height:18mm;border-radius:5mm;background:linear-gradient(135deg,#c24f9e,#7a55ad 60%,#5a3e8c);display:flex;align-items:center;justify-content:center;font:700 16pt Poppins,sans-serif;color:#fff;margin-bottom:12mm}
+.cover .kicker{font:600 10pt Figtree,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#cdbfe0;margin-bottom:5mm}
+.cover h1{font-size:34pt;font-weight:700;color:#fff;margin:0 0 6mm;max-width:150mm}
+.cover .sub{font-size:13.5pt;line-height:1.45;color:#e6dcf3;max-width:140mm}
+.cover .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;font-size:10pt;color:#cdbfe0;position:relative;z-index:1}
+.cover .foot strong{display:block;color:#fff;font-size:11pt}
+
+/* indice */
+.toc{break-after:page}
+.toc h2{break-before:auto}
+.toc ol{list-style:none;padding:0;columns:1}
+.toc li{display:flex;gap:4mm;padding:2.2mm 0;border-bottom:1px solid var(--line);margin:0}
+.toc li span{color:var(--brand);font-weight:600;min-width:8mm}
+.toc li small{color:var(--muted);margin-left:auto;font-size:9pt}
+
+/* figure e riquadri */
+figure{margin:3mm 0 5mm;break-inside:avoid}
+figure img{display:block;max-width:100%;max-height:112mm;margin:0 auto;border:1px solid var(--line);border-radius:6px}
+figure.narrow img{max-width:72%}
+figure.half img{max-height:60mm}
+figcaption{text-align:center}
+figure.half{display:inline-block;width:48.5%;vertical-align:top;margin-right:2%}
+figure.half+figure.half{margin-right:0}
+figcaption{font-size:8.8pt;color:var(--muted);margin-top:1.6mm;line-height:1.4}
+figcaption strong{color:var(--ink)}
+.note,.warn,.tip{border-radius:6px;padding:3mm 4mm;margin:0 0 4mm;break-inside:avoid;font-size:9.6pt}
+.note{background:var(--soft);border-left:3px solid var(--brand)}
+.warn{background:var(--warm);border-left:3px solid var(--warm-line)}
+.tip{background:#eef7f1;border-left:3px solid #3f9a62}
+.note>strong:first-child,.warn>strong:first-child,.tip>strong:first-child{display:block;margin-bottom:.8mm}
+
+/* passi numerati */
+ol.steps{list-style:none;padding:0;counter-reset:s}
+ol.steps>li{counter-increment:s;position:relative;padding-left:9mm;margin-bottom:2.6mm}
+ol.steps>li:before{content:counter(s);position:absolute;left:0;top:.2mm;width:5.8mm;height:5.8mm;border-radius:50%;background:var(--brand);color:#fff;font:600 8.4pt/5.8mm Figtree,sans-serif;text-align:center}
+
+/* tabelle */
+table{width:100%;border-collapse:collapse;margin:0 0 4mm;font-size:9.2pt;break-inside:auto}
+th,td{text-align:left;vertical-align:top;padding:2mm 2.6mm;border-bottom:1px solid var(--line)}
+th{font-weight:600;background:var(--soft)}
+tr{break-inside:avoid}
+td:first-child{font-weight:600;width:32%}
+table.plain td:first-child{font-weight:400}
+.cols{display:flex;gap:5mm}
+.cols>div{flex:1}
+.card{border:1px solid var(--line);border-radius:6px;padding:3mm 4mm;break-inside:avoid}
+.card h4{margin:0 0 1.5mm;font:600 10.5pt Poppins,sans-serif}
+.card p{font-size:9.4pt;margin:0}
+.muted{color:var(--muted)}
