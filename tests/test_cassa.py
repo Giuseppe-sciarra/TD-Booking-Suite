@@ -58,7 +58,7 @@ def test_rch_commands_and_answers(shop):
         d={"lines":[{"desc":"Taglio (donna)","qty":2,"cents":2500,"dept":2},{"desc":"Shampoo","qty":1,"cents":800,"dept":1}],"discount":300,"payments":[["cash",5000],["card",500]],"cf":"RSSMRA80A01H501U","lottery":"AB12CD34"}
         cmds=cassa.rch(s,d,loc.till)
     # the discount spread on the pieces: the cents left on the dearest; parentheses out of the text
-    assert cmds==["=K",'="/?C/(RSSMRA80A01H501U)','="/?L/$1/(AB12CD34)',"=R2/$2370/(Taglio donna)","=R2/$2371/(Taglio donna)","=R1/$759/(Shampoo)","=S","=T1/$5000","=T4/$500"]
+    assert cmds==["=K","=C1",'="/?C/(RSSMRA80A01H501U)','="/?L/$1/(AB12CD34)',"=R2/$2370/(Taglio donna)","=R2/$2371/(Taglio donna)","=R1/$759/(Shampoo)","=S","=T1/$5000","=T4/$500"]
     assert sum(int(c.split("$")[1].split("/")[0]) for c in cmds if c.startswith("=R"))==5500
     assert cassa.read("rch",200,RCH_OK)==("done",{})
     assert cassa.read("rch",200,RCH_BUSY)[0]=="busy"
@@ -202,7 +202,7 @@ def test_row_discount_in_percent_or_euro_on_rch_and_epson(shop):
         s=Sale(tenant=t,location=loc)
         cmds=cassa.rch(s,d,loc.till)
         # the row's discount after its sale, split over the pieces; empty command: prices already discounted
-        assert cmds[1:7]==["=R1/$43000/(Cucitura extension)","=R1/$2100/(Piega glam lunghi)","=V-/$2100","=R1/$4000/(Color care)","=V-/$500","=R1/$4000/(Color care)"] and cmds[7]=="=V-/$500"
+        assert cmds[1]=="=C1" and cmds[2:8]==["=R1/$43000/(Cucitura extension)","=R1/$2100/(Piega glam lunghi)","=V-/$2100","=R1/$4000/(Color care)","=V-/$500","=R1/$4000/(Color care)"] and cmds[8]=="=V-/$500"
         assert [c for c in cassa.rch(s,d,{**loc.till,"rch_off":""}) if c.startswith("=R")][1:]==["=R1/$0/(Piega glam lunghi)","=R1/$3500/(Color care)","=R1/$3500/(Color care)"]
         xml=cassa.epson(Sale(tenant=t,location=loc,kind="sale"),d,{**loc.till,"payments":{"cash":0,"card":2,"other":5}})
         assert '<printRecItemAdjustment operator="1" adjustmentType="0" description="SCONTO 100%" amount="21,00" department="1"' in xml
@@ -214,7 +214,8 @@ def test_rch_closure_and_annullo_commands(shop):
     t,loc,svc=shop
     with scope(t):
         assert cassa.rch(Sale(tenant=t,location=loc,kind="close"),{},loc.till)==["=K","=C3","=C10","=C1"]
-        assert cassa.rch(Sale(tenant=t,location=loc,kind="void"),{"z":"2026","number":"12","day":"2026-10-24"},loc.till)==["=K","=k/&241026/[2026/]0012"]
+        assert cassa.rch(Sale(tenant=t,location=loc,kind="void"),{"z":"2026","number":"12","day":"2026-10-24"},loc.till)==["=K","=C1","=k/&241026/[2026/]0012"]
+        assert cassa.rch(Sale(tenant=t,location=loc,kind="test"),{},loc.till)==["=K","=C1","=o",'="/(PROVA DI COLLEGAMENTO)','="/(TD BOOKING SUITE)','="/(DOCUMENTO NON FISCALE)',"=o"]
         assert cassa.rch(Sale(tenant=t,location=loc,kind="close"),{},{**loc.till,"rch_close":"=C2 =C10"})==["=K","=C2","=C10"]
         loc.till={**loc.till,"device":"epson","serial":"99MEX012345"}
         assert "<printZReport" in cassa.epson(Sale(tenant=t,location=loc,kind="close"),{},loc.till)

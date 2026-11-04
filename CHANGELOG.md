@@ -1,6 +1,12 @@
-# TD Booking Suite 2.20.1 — registro modifiche
+# TD Booking Suite 2.20.2 — registro modifiche
 
-**4 novembre 2026 · versione 2.20.1**
+**4 novembre 2026 · versione 2.20.2**
+
+## 2.20.2 — correzione importante per il Cloud e cassa RCH più sicura
+
+- **Correzione (Cloud con Postgres)**: dalla 2.20.0 ogni nuovo consenso (prenotazione online con privacy, conferma della newsletter, import clienti) andava in errore, perché il programma provava a segnare la data di modifica anche sullo storico dei consensi, che nel database non si può cambiare. Lo storico dei consensi ora usa la sua data e non viene più toccato. Chi è sulla 2.20.0 o 2.20.1 con Postgres deve aggiornare
+- **Cassa RCH**: ogni scontrino e ogni annullo rimette prima la cassa in posizione REG (`=C1`), così una chiusura interrotta a metà non blocca gli scontrini dopo
+- **Cassa RCH: Stampa scontrino di prova** anche sulla RCH: un documento non fiscale con tre righe di testo, per provare la stampa senza fare uno scontrino vero
 
 ## 2.20.1 — cassa più leggibile
 

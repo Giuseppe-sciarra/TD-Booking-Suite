@@ -230,7 +230,7 @@ def touch(tenant_id,kind,refs,stamp=True):
     refs=[str(r) for r in refs if r]
     if not refs or QUIET.get():return None
     when=None
-    if stamp:
+    if stamp and kind!="consent":  # the consent history is append-only in the database (a trigger on Postgres): its version is `at`
         when=timezone.now()
         for i in range(0,len(refs),500):KINDS[kind].raw.filter(tenant_id=tenant_id,pk__in=refs[i:i+500]).update(updated=when)
     n=len(refs);now=time.time_ns()//1000

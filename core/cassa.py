@@ -85,6 +85,10 @@ def rch(sale,d,conf):
     """The commands, one a line: in the XML of the web service, or a frame each through USB."""
     pay=conf["payments"]
     cmds=["=K"]  # clears whatever a failed request left open; shortcut: the probe reads the status off the answer to a clear, a real status command when RCH documents one
+    if sale.kind in ("sale","void","test"):cmds.append("=C1")  # the key back on REG, in case a closure stopped halfway left it on Z
+    if sale.kind=="test":
+        # the non-fiscal document of the forum's examples: =o opens and closes it, ="/(...) a line of text
+        cmds+=["=o",'="/(PROVA DI COLLEGAMENTO)','="/(TD BOOKING SUITE)','="/(DOCUMENTO NON FISCALE)',"=o"]
     if sale.kind=="sale":
         # shortcut: codice fiscale and lotteria before the lines, as in the forum's example; move them if the register refuses
         cmds+=([f'="/?C/({d["cf"]})'] if d.get("cf") else [])+([f'="/?L/$1/({d["lottery"]})'] if d.get("lottery") else [])
@@ -448,7 +452,6 @@ def settings_view(request,slug):
                 messages.success(request,"Registratore salvato." if device else "Registratore tolto dalla sede.")
             elif action in ("probe","test"):
                 if not loc.till.get("device"):raise ValueError("Prima salva il registratore.")
-                if action=="test" and loc.till["device"]!="epson":raise ValueError("Questo registratore non ha una stampa di prova non fiscale.")
                 enqueue(t,loc,kind=action,actor=str(request.user.pk))
                 messages.success(request,"Richiesta inviata alla cassa." if loc.till.get("link")=="direct" else "Richiesta in coda: la manda il ponte cassa appena si collega.")
             elif action=="token":
