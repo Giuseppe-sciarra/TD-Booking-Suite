@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.18.0
+Stable tag: 2.19.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -28,7 +28,16 @@ password si apre l'agenda del giorno o della settimana, una colonna per operator
 richieste del sito non ancora prese dal PC. Il PC la manda cifrata con la chiave condivisa e il sito la decifra per mostrarla:
 chi amministra il sito può tecnicamente leggerla. Blocco dopo 5 password sbagliate, sessione HttpOnly di 8 ore, Esci, pagina
 fuori dalla cache dei plugin e non indicizzata; la cache del server (per esempio la FastCGI cache di aaPanel) va
-esclusa a mano per quella pagina. Sola lettura.
+esclusa a mano per quella pagina.
+
+Nuovo appuntamento nell'agenda riservata (2.19.0). Con la password dell'agenda si aggiungono anche appuntamenti: premi
+"Nuovo appuntamento", scegli servizio, prestazione (se ce n'è più di una), operatore o "Chiunque", giorno e uno degli orari
+liberi, oppure scrivi "Altro orario" (lo controlla il PC); poi nome, cognome e telefono del cliente, email facoltativa, note,
+e premi "Salva l'appuntamento". L'orario sparisce subito dal modulo pubblico e l'appuntamento compare in agenda come
+"Da sincronizzare" finché il PC non lo prende: se l'orario è ancora libero diventa una prenotazione confermata con origine
+"Agenda del sito" e il cliente con l'email riceve la conferma dal programma; se non lo è più va tra le Richieste da
+confermare. Dal sito non si spostano né si annullano appuntamenti: serve il programma. I dati del cliente restano cifrati
+come le richieste dei visitatori, fino al PC. Nell'agenda gli operatori e le prenotazioni scorrono insieme anche sul telefono.
 
 Il sito come archivio centrale (2.18.0). In Modalità PC spunta "Il sito come archivio centrale" e accendilo anche nel programma:
 a ogni sincronizzazione il PC manda le modifiche di prenotazioni, clienti con i dati fiscali, schede di lavoro, consensi e
@@ -41,4 +50,5 @@ in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 
 meno, fino a 5 MB con tanti servizi e 90 giorni: se il proxy risponde 413, alza il limite). Nel WAF: whitelist, tipo "path", due
 voci con nota "TD Booking Suite – PC": /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/ (per un solo sito:
 sitocliente.it|/wp-json/tdbs/v1/sync, host esatto, il www vuole una voce sua). Non mettere in whitelist tutto
-/wp-json/tdbs/v1/: /slots (GET) e /book (POST) li usano i visitatori e restano sotto il firewall.
+/wp-json/tdbs/v1/: /slots (GET), /book (POST) e /agenda/book (POST, il Nuovo appuntamento dell'agenda) li usa il browser
+di chi apre il sito e restano sotto il firewall.

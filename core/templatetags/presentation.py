@@ -107,7 +107,7 @@ def icon(name):
     return mark_safe(f'<svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">{ICONS.get(name) or ICONS["sliders"]}</svg>')
 
 # 2.14.0: where a booking came from, as a small icon with its name (and the tag of the link, ?src=instagram)
-ORIGIN_ICONS={"public":"globe","wordpress":"plug","desk":"shop","walkin":"user","import":"archive"}
+ORIGIN_ICONS={"public":"globe","wordpress":"plug","desk":"shop","walkin":"user","import":"archive","agenda":"day"}
 @register.filter
 def origin_icon(booking,full=""):
     """full: the name written next to the icon (the booking's page), otherwise only for screen readers and on hover."""

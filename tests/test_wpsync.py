@@ -158,3 +158,34 @@ def test_agenda_goes_sealed_with_the_snapshot(sample,monkeypatch):
     assert rows["Gino Rossi"]["pending"] and rows["Gino Rossi"]["status"]=="In attesa di conferma" and {"Anna","Bruno"}<={x["name"] for x in a["operators"]}
     with pytest.raises(InvalidTag):opened(sealed,"x"*43)
     wpsync.sync(t);assert "agenda" not in site.calls[1]  # nothing changed: it goes again with the free times
+
+# 2.19.0: Nuovo appuntamento in the site's agenda: the staff's, a booking of the desk with its own origin
+def mails(t,to="lucia@example.invalid"):
+    with scope(t):return [m["subject"].split(" · ")[0] for m in (decrypt(t,d.payload,"delivery:"+str(d.pk)) for d in Delivery.objects.filter(channel="email").order_by("created")) if m.get("to")==to]
+
+def test_agenda_appointment_is_confirmed_with_the_desk_email(sample,monkeypatch):
+    t,o,s=sample
+    with scope(t):loc,anna,bruno,taglio,colore=shop(t)
+    linked_site(t,Site([site_booking(taglio,anna,11,source="agenda",email="",notes="Chiamata"),site_booking(taglio,bruno,12,id="b"*32,source="agenda")]),monkeypatch)
+    assert wpsync.sync(t)==2 and not t.wp_state["error"]
+    with scope(t):
+        b=Booking.objects.get(request_key="wp-"+"a"*32)
+        assert (b.origin,b.get_origin_display(),b.status,b.resource_id,b.data["phone"])==("agenda","Agenda del sito","confirmed",anna.pk,"+393337654321")
+        assert b.contact and b.contact.data["phone"]=="+393337654321"  # the card, as at the desk: by phone, the email can be missing
+        assert Audit.objects.filter(action="booking.created",target=str(b.pk),detail__origin="agenda").exists()
+        assert Booking.objects.get(request_key="wp-"+"b"*32).status=="confirmed"
+    assert mails(t)==["Prenotazione confermata"]  # the desk's email, never "Richiesta ricevuta"
+
+def test_agenda_appointment_not_free_now_goes_to_the_requests(sample,monkeypatch):
+    t,o,s=sample
+    with scope(t):
+        loc,anna,bruno,taglio,colore=shop(t)
+        create_booking(t,{**payload(taglio,hour=11),"resource":str(anna.pk)})  # the desk took it meanwhile
+    linked_site(t,Site([site_booking(taglio,anna,11,source="agenda"),site_booking(taglio,bruno,11,id="b"*32,source="agenda",free=True,time="11:10",email="ugo@example.invalid")]),monkeypatch)
+    assert wpsync.sync(t)==2
+    with scope(t):
+        taken=Booking.objects.get(request_key="wp-"+"a"*32)
+        assert (taken.origin,taken.status,taken.resource_id)==("agenda","pending",anna.pk)  # in Richieste da confermare
+        other=Booking.objects.get(request_key="wp-"+"b"*32)  # Altro orario, off the grid, Bruno free then
+        assert (other.status,other.resource_id,other.start.astimezone(ZoneInfo(t.timezone)).strftime("%H:%M"))==("confirmed",bruno.pk,"11:10")
+    assert mails(t)==[] and mails(t,"ugo@example.invalid")==["Prenotazione confermata"]  # no "Richiesta ricevuta" for the pending one

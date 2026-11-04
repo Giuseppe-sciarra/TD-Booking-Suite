@@ -135,8 +135,9 @@ def test_plugin_has_the_archive_and_only_two_pc_prefixes():
     root=Path(__file__).resolve().parents[1]
     php=(root/"wordpress/td-booking-suite/td-booking-suite.php").read_text()
     routes=dict(re.findall(r"register_rest_route\('tdbs/v1','([^']+)',array\('methods'=>'(\w+)'",php))
-    assert routes=={"/sync":"POST","/slots":"GET","/book":"POST","/archive/push":"POST","/archive/pull":"POST"}
-    for needle in ("TDBS_ARCHIVE_BODY=524288","ON DUPLICATE KEY UPDATE data=IF(VALUES(seq)>seq","tdbs_archive_bookings(","DELETE FROM '.tdbs_archive_table()","Per il firewall del sito","const TDBS_VERSION='2.18.0'"):
+    # 2.19.0: /agenda/book is the browser's (the agenda's Nuovo appuntamento), outside the PC's two prefixes
+    assert routes=={"/sync":"POST","/slots":"GET","/book":"POST","/agenda/book":"POST","/archive/push":"POST","/archive/pull":"POST"}
+    for needle in ("TDBS_ARCHIVE_BODY=524288","ON DUPLICATE KEY UPDATE data=IF(VALUES(seq)>seq","tdbs_archive_bookings(","DELETE FROM '.tdbs_archive_table()","Per il firewall del sito","const TDBS_VERSION='2.19.0'"):
         assert needle in php
     for doc in ("templates/guide.html","wordpress/td-booking-suite/readme.txt"):
         assert "/wp-json/tdbs/v1/archive/" in (root/doc).read_text() and "512 KB" in (root/doc).read_text()

@@ -1,6 +1,14 @@
-# TD Booking Suite 2.18.0 — registro modifiche
+# TD Booking Suite 2.19.0 — registro modifiche
 
-**3 novembre 2026 · versione 2.18.0**
+**4 novembre 2026 · versione 2.19.0**
+
+## 2.19.0 — appuntamenti dall'agenda del sito
+
+- **Nuovo appuntamento nell'agenda riservata del sito** (`[tdbs_agenda]`, modalità PC): chi entra con la password dell'agenda aggiunge appuntamenti anche con il PC spento. Sceglie *Servizio*, *Prestazione* se ce n'è più di una, *Operatore* (solo chi fa quel servizio, più *Chiunque*), *Giorno* e uno degli orari liberi, oppure scrive *Altro orario*, che controlla il PC; poi *Nome*, *Cognome*, *Telefono*, *Email (facoltativa)* e *Note*, e preme **Salva l'appuntamento**. L'orario sparisce subito dal modulo pubblico e in agenda l'appuntamento è «Da sincronizzare» finché il PC non lo prende. Spostare e annullare restano del programma
+- **Nel programma** questi appuntamenti hanno l'origine nuova **Agenda del sito**: con orario e operatore ancora liberi diventano prenotazioni confermate, come al banco, e il cliente con l'email riceve la conferma del banco (mai «Richiesta ricevuta»); se nel frattempo l'orario è stato dato ad altri, o l'altro orario non va bene, finiscono tra le **Richieste da confermare**, senza email finché non vengono accettate. Il cliente si trova o si crea in rubrica come al banco, per email o per telefono. Registro attività e archivio del sito come per ogni prenotazione
+- **Agenda del sito sul telefono**: la riga degli operatori e le prenotazioni scorrono insieme, di lato, in un solo riquadro, nella vista giorno e nella vista settimana; gli operatori restano in alto e, nella settimana, i giorni a sinistra
+- **Plugin WordPress 2.19.0**: indirizzo nuovo `/wp-json/tdbs/v1/agenda/book` (POST, dal browser, con la sessione dell'agenda, nonce e limite di richieste); come `/slots` e `/book` resta sotto il firewall: la whitelist del PC non cambia (`/sync` e `/archive/`). I dati del cliente restano cifrati nel sito come le richieste dei visitatori, fino al PC
+- **Guida**: *Agenda riservata sul sito* spiega come aggiungere un appuntamento
 
 ## 2.18.0 — il sito come archivio centrale
 

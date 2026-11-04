@@ -120,28 +120,33 @@ def agenda(tenant,c):
     return seal(c["secret"],{"generated":timezone.now().isoformat(),"timezone":tenant.timezone,
         "operators":[{"id":str(r.pk),"name":r.name} for r in Resource.objects.filter(active=True).order_by("name")],"bookings":rows})
 
+STAFF=type("SiteAgenda",(),{"pk":""})()  # 2.19.0: who writes in the site's agenda: the desk's rules, no user of this program
 def take(tenant,rows):
     """The site's bookings: each one once (request_key wp-<id>), refused now a request at the same time; one that cannot
-    be kept at all is acked too, and its client told by email why. Returns the new bookings' ids, the ids to ack, errors."""
+    be kept at all is acked too, and its client told by email why. Returns the new bookings' ids, the ids to ack, errors.
+    2.19.0: source "agenda", written by the staff in the site's agenda: a booking of the desk, origin "Agenda del sito",
+    confirmed when the time and the operator are still free, otherwise a request, without emails to the client until then."""
     from .booking import create_booking,queue,BookingError
     from .calendar import local_datetime
     tz=ZoneInfo(tenant.timezone);new=[];ack=[];errors=[]
     for r in rows[:200] if isinstance(rows,list) else []:
         sid=str(r.get("id","")) if isinstance(r,dict) else ""
         if not re.fullmatch(r"[a-f0-9]{32}",sid):continue
-        key="wp-"+sid;ack.append(sid)
+        key="wp-"+sid;ack.append(sid);staff=r.get("source")=="agenda"
+        how={"actor":STAFF,"origin":"agenda"} if staff else {"origin":"wordpress"}
         with scope(tenant):
             if Booking.objects.filter(request_key=key).exists():continue
             try:start=local_datetime(date.fromisoformat(str(r.get("date"))),datetime.strptime(str(r.get("time")),"%H:%M").time(),tz).isoformat()
             except (ValueError,AttributeError):errors.append("una prenotazione del sito con data non valida");continue
             data={"service":str(r.get("service","")),"option":str(r.get("option") or ""),"resource":"" if r.get("any") else str(r.get("resource","")),"start":start,"party":1,
-                **{k:str(r.get(k) or "") for k in ("first_name","last_name","email","phone","notes")},"marketing":r.get("marketing") is True,"notices":r.get("notices") is not False,"request_key":key}
-            try:b,_=create_booking(tenant,data,origin="wordpress")
+                **{k:str(r.get(k) or "") for k in ("first_name","last_name","email","phone","notes")},"marketing":r.get("marketing") is True and not staff,"notices":r.get("notices") is not False,"request_key":key,
+                **({"force":True} if staff and r.get("free") else {})}  # Altro orario: any time, kept if nothing is in the way
+            try:b,_=create_booking(tenant,data,**how)
             except BookingError:
-                try:b,_=create_booking(tenant,{**data,"resource":str(r.get("resource",""))},origin="wordpress",late=True)
+                try:b,_=create_booking(tenant,{**data,"resource":str(r.get("resource",""))},late=True,**how)
                 except BookingError as ex:
                     when=f"{r.get('date')} {r.get('time')}";errors.append(f"{when}: {ex}")
-                    if "@" in data["email"]:queue(tenant,{"to":data["email"],"subject":"Richiesta non registrata · "+tenant.name,
+                    if "@" in data["email"] and not staff:queue(tenant,{"to":data["email"],"subject":"Richiesta non registrata · "+tenant.name,
                         "body":f"La tua richiesta di prenotazione per il {date.fromisoformat(str(r['date'])).strftime('%d/%m/%Y')} alle {r.get('time')} non è stata registrata: {ex}\nContatta {tenant.name} per prenotare."})
                     continue
             new.append(str(b.pk))
