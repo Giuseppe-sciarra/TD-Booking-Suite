@@ -644,7 +644,7 @@ class Sale(Scoped):
     booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="sales")
     contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="sales")
     voids=models.ForeignKey("self",null=True,blank=True,on_delete=models.PROTECT,related_name="voided_by")
-    kind=models.CharField(max_length=6,default="sale",choices=[("sale","Scontrino"),("void","Annullo"),("probe","Prova collegamento"),("test","Stampa di prova")])
+    kind=models.CharField(max_length=6,default="sale",choices=[("sale","Scontrino"),("void","Annullo"),("probe","Prova collegamento"),("test","Stampa di prova"),("close","Chiusura giornaliera")])
     status=models.CharField(max_length=8,default="queued",choices=[("queued","In coda"),("sending","In corso"),("done","Emesso"),("failed","Non emesso"),("unknown","Da verificare"),("void","Annullato")])
     total=models.DecimalField(max_digits=9,decimal_places=2,default=0)
     number=models.CharField(max_length=20,blank=True)

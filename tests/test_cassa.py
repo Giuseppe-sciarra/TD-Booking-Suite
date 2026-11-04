@@ -209,3 +209,24 @@ def test_row_discount_in_percent_or_euro_on_rch_and_epson(shop):
     for bad in ("101%","50","abc%"):
         q.setlist("off",["",bad,""])
         with pytest.raises(ValueError):cassa.bill(q,loc.till)
+
+def test_rch_closure_and_annullo_commands(shop):
+    t,loc,svc=shop
+    with scope(t):
+        assert cassa.rch(Sale(tenant=t,location=loc,kind="close"),{},loc.till)==["=K","=C3","=C10","=C1"]
+        assert cassa.rch(Sale(tenant=t,location=loc,kind="void"),{"z":"2026","number":"12","day":"2026-10-24"},loc.till)==["=K","=k/&241026/[2026/]0012"]
+        assert cassa.rch(Sale(tenant=t,location=loc,kind="close"),{},{**loc.till,"rch_close":"=C2 =C10"})==["=K","=C2","=C10"]
+        loc.till={**loc.till,"device":"epson","serial":"99MEX012345"}
+        assert "<printZReport" in cassa.epson(Sale(tenant=t,location=loc,kind="close"),{},loc.till)
+        assert "VOID 2026 0012 24102026 99MEX012345" in cassa.epson(Sale(tenant=t,location=loc,kind="void"),{"z":"2026","number":"12","day":"2026-10-24"},loc.till)
+
+def test_close_and_annullo_by_hand_from_the_page(shop):
+    from django.urls import reverse
+    t,loc,svc=shop
+    c,_=client_as(t,role="reception");url=reverse("till",args=[t.slug])
+    assert c.post(url,{"sede":loc.pk,"action":"close"}).status_code==302
+    assert c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"2026-0012"}).status_code==302
+    c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"12"})  # no closure number: refused
+    with scope(t):
+        assert list(Sale.objects.order_by("created").values_list("kind",flat=True))==["close","void"]
+        assert Sale.objects.get(kind="void").data=={"z":"2026","number":"0012","day":"2026-10-24"}

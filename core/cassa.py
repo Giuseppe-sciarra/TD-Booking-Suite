@@ -10,7 +10,7 @@ with the location's token, sends them and gives back the answer, read here. Both
 A request is marked "sending" and committed before it leaves: an answer lost on the way leaves it "unknown", and the
 operator checks the register before sending it again, so a bill is never printed twice."""
 import importlib.util,ipaddress,json,re,secrets,time,unicodedata
-from datetime import datetime,timedelta
+from datetime import datetime,timedelta,date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape,quoteattr
@@ -61,8 +61,11 @@ def text(value,n=32):
     value=unicodedata.normalize("NFKD",str(value or "")).encode("ascii","ignore").decode()
     return " ".join(re.sub(r"[()\x00-\x1f\x7f]","",value).split())[:n]
 def money(c):return f"{c//100},{c%100:02d}"
-# shortcut: RCH's discount command is guessed (its manual needs an RCH login); the agency can change it in Registratore di cassa
+# shortcut: RCH's commands for the row discount, the annullo and the closure are guessed (its manual needs an RCH login,
+# the annullo from the forum, the closure from the keys Z + 10): the agency can change them in Registratore di cassa
 RCH_OFF="=V-/${importo}"
+RCH_CMDS={"rch_off":(RCH_OFF,"{importo}"),"rch_void":("=k/&{data}/[{z}/]{numero}","{numero}"),"rch_close":("=C3 =C10 =C1","")}
+def rch_cmd(conf,key):return conf.get(key,RCH_CMDS[key][0])
 def units(d,line=True):
     """RCH: one sale line a piece, with the discount of its row split over its pieces (line=False: taken off the price);
     the discount on the whole bill spread over the pieces in proportion, the cents left on the dearest.
@@ -85,17 +88,23 @@ def rch(sale,d,conf):
     if sale.kind=="sale":
         # shortcut: codice fiscale and lotteria before the lines, as in the forum's example; move them if the register refuses
         cmds+=([f'="/?C/({d["cf"]})'] if d.get("cf") else [])+([f'="/?L/$1/({d["lottery"]})'] if d.get("lottery") else [])
-        off=conf.get("rch_off",RCH_OFF)
+        off=rch_cmd(conf,"rch_off")
         for desc,dept,c,x in units(d,bool(off)):cmds+=[f"=R{dept}/${c}/({text(desc)})"]+([off.replace("{importo}",str(x))] if x else [])
         cmds+=["=S"]+[f"=T{pay[k]}/${c}" for k,c in d["payments"]]
+    elif sale.kind=="void":
+        day=date.fromisoformat(d["day"])
+        cmds+=[c.replace("{data}",f"{day:%d%m%y}").replace("{z}",f"{int(d['z']):04d}").replace("{numero}",f"{int(d['number']):04d}") for c in rch_cmd(conf,"rch_void").split()]
+    elif sale.kind=="close":cmds+=rch_cmd(conf,"rch_close").split()
     return cmds
 def epson(sale,d,conf):
     if sale.kind=="probe":body='<printerCommand><queryPrinterStatus operator="1" statusType="1" /></printerCommand>'
     elif sale.kind=="test":body='<printerNonFiscal><beginNonFiscal operator="1" /><printNormal operator="1" font="1" data="PROVA DI COLLEGAMENTO TD BOOKING SUITE" /><printNormal operator="1" font="1" data="DOCUMENTO NON FISCALE" /><endNonFiscal operator="1" /></printerNonFiscal>'
+    elif sale.kind=="close":body='<printerFiscalReport><printZReport operator="1" /></printerFiscalReport>'
     elif sale.kind=="void":
         # the register finds the document by Z, number, day and its serial, then prints the annullo by itself
-        o=sale.voids;day=o.printed.astimezone(ZoneInfo(sale.tenant.timezone))
-        body=f'<printerFiscalReceipt><printRecMessage operator="1" messageType="4" message={quoteattr(f"VOID {int(o.z):04d} {int(o.number):04d} {day:%d%m%Y} {o.serial}")} /></printerFiscalReceipt>'
+        o=sale.voids;day=date.fromisoformat(d["day"]) if d.get("day") else o.printed.astimezone(ZoneInfo(sale.tenant.timezone)).date()
+        z,n,serial=(d.get("z") or o.z),(d.get("number") or o.number),(o.serial if o and o.serial else conf.get("serial",""))
+        body=f'<printerFiscalReceipt><printRecMessage operator="1" messageType="4" message={quoteattr(f"VOID {int(z):04d} {int(n):04d} {day:%d%m%Y} {serial}")} /></printerFiscalReceipt>'
     else:
         pay=conf["payments"]
         # shortcut: adjustmentType 0 (discount on the last sale) from the fpMate examples, to be confirmed on the register
@@ -334,6 +343,12 @@ def till_view(request,slug):
                 audit(t,request.user,"sale.sent",sale.pk,total=str(sale.total),booking=str(booking.pk) if booking else "")
                 messages.success(request,"Conto inviato alla cassa.")
                 return redirect(back)
+            if action=="close":
+                if loc.till["device"]=="rch" and not rch_cmd(loc.till,"rch_close"):raise ValueError("Su questa cassa la chiusura si fa dalla cassa.")
+                enqueue(t,loc,kind="close",actor=str(request.user.pk));audit(t,request.user,"sale.close",loc.pk)
+                messages.success(request,"Chiusura giornaliera inviata alla cassa.");return redirect(back)
+            if action=="void" and not request.POST.get("sale"):
+                void(request,t,loc,None);return redirect(back)
             sale=get_object_or_404(Sale,pk=request.POST.get("sale"),location=loc)
             if action=="retry" and sale.status in ("failed","unknown"):
                 # unknown: the operator has looked, nothing came out of the register
@@ -343,16 +358,7 @@ def till_view(request,slug):
             elif action=="printed" and sale.status=="unknown":
                 finish(t,sale,"done",{"number":re.sub(r"\D","",request.POST.get("number",""))[:20]})
                 audit(t,request.user,"sale.printed_by_hand",sale.pk)
-            elif action=="void" and sale.kind=="sale" and sale.status=="done":
-                if loc.till["device"]=="epson":
-                    if not (sale.number.isdigit() and sale.z.isdigit() and sale.serial):raise ValueError("Mancano numero, Z o matricola dello scontrino: fai l'annullo dalla cassa.")
-                    if sale.voided_by.exclude(status="failed").exists():raise ValueError("L'annullo è già stato inviato.")
-                    enqueue(t,loc,kind="void",voids=sale,total=sale.total,actor=str(request.user.pk))
-                    messages.success(request,"Annullo inviato alla cassa.")
-                else:
-                    # shortcut: RCH's annullo is not documented: the desk does it on the register and records it here
-                    sale.status="void";sale.save(update_fields=["status"]);messages.success(request,"Segnato come annullato.")
-                audit(t,request.user,"sale.void",sale.pk)
+            elif action=="void" and sale.kind=="sale" and sale.status=="done":void(request,t,loc,sale)
             elif action=="mail" and sale.status in ("done","void"):
                 messages.success(request,"Copia inviata per email." if send_copy(t,sale) else "Il cliente non ha chiesto la copia per email.")
             return redirect(back)
@@ -369,14 +375,30 @@ def till_view(request,slug):
         items+=[{"group":kinds.get(s.kind,""),"name":text(f"{s.name} {o.name}"),"price":str(o.price if o.price is not None else s.price or "").replace(".",","),"svc":str(s.pk)} for o in opts] or [{"group":kinds.get(s.kind,""),"name":text(s.name),"price":str(s.price or "").replace(".",","),"svc":str(s.pk)}]
     groups={}
     for i in items:groups.setdefault(i["group"],[]).append(i)
-    rows=Sale.objects.filter(location=loc,kind__in=("sale","void"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
+    rows=Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
     busy=any(s.status in ("queued","sending") for s in rows)
     who=booking.data if booking and can(request,"pii.read") else {}
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
-        "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,
+        "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(booking.contact.data) if booking and booking.contact_id and can(request,"pii.read") else ""})
 
+DOC=re.compile(r"\s*(\d{1,4})\s*-\s*(\d{1,4})\s*")
+def void(request,t,loc,sale):
+    """The annullo of a documento commerciale: of one in the list, or of any other written by hand (day and «Documento n.»,
+    closure and number as printed at its foot). On RCH with no annullo command the desk does it on the register and it is
+    only marked here."""
+    m=DOC.fullmatch(request.POST.get("doc","") or (f"{sale.z}-{sale.number}" if sale and sale.z and sale.number else ""))
+    try:day=date.fromisoformat(request.POST.get("day","")) if request.POST.get("day") else sale.printed.astimezone(ZoneInfo(t.timezone)).date()
+    except (ValueError,AttributeError):day=None
+    if loc.till["device"]=="rch" and not rch_cmd(loc.till,"rch_void"):
+        if not sale:raise ValueError("Su questa cassa l'annullo si fa dalla cassa.")
+        sale.status="void";sale.save(update_fields=["status"]);audit(t,request.user,"sale.void",sale.pk);messages.success(request,"Segnato come annullato.");return
+    if not (m and day) or day>timezone.now().astimezone(ZoneInfo(t.timezone)).date():raise ValueError("Scrivi la data e il «Documento n.» dello scontrino, come sono stampati in fondo: per esempio 2026-0012.")
+    if loc.till["device"]=="epson" and not (sale and sale.serial or loc.till.get("serial")):raise ValueError("Manca la matricola della cassa: scrivila in Registratore di cassa.")
+    if sale and sale.voided_by.exclude(status="failed").exists():raise ValueError("L'annullo è già stato inviato.")
+    v=enqueue(t,loc,kind="void",voids=sale,total=sale.total if sale else 0,actor=str(request.user.pk),data={"z":m[1],"number":m[2],"day":day.isoformat()})
+    audit(t,request.user,"sale.void",sale.pk if sale else v.pk);messages.success(request,"Annullo inviato alla cassa.")
 def allowed(request):
     return request.user.is_staff or request.tenant.till_self and getattr(request.member,"role","")=="owner"
 def settings_view(request,slug):
@@ -410,9 +432,11 @@ def settings_view(request,slug):
                         return int(v)
                     conf["default_dept"]=number("default_dept") or 1
                     if device=="rch":
-                        off=request.POST.get("rch_off","").strip()
-                        if off and not (re.fullmatch(r"=[\x21-\x7e]{1,38}",off) and "{importo}" in off and "(" not in off):raise ValueError("Comando dello sconto: comincia con =, contiene {importo}, senza spazi né parentesi. Vuoto: prezzi già scontati.")
-                        conf["rch_off"]=off
+                        for key,(default,need) in RCH_CMDS.items():
+                            v=" ".join(request.POST.get(key,default).split())
+                            if v and not (all(re.fullmatch(r"=[\x21-\x7e]{1,38}",c) and "(" not in c for c in v.split()) and need in v and len(v)<=80):
+                                raise ValueError(f"Comandi RCH: ognuno comincia con =, senza parentesi, separati da uno spazio{', e ci vuole '+need if need else ''}.")
+                            conf[key]=v
                     for s in Service.objects.filter(location=loc):
                         dept=number(f"dept_{s.pk}");vat=request.POST.get(f"vat_{s.pk}","").strip()[:8]
                         if dept or vat:conf["departments"][str(s.pk)]={"dept":dept or conf["default_dept"],"vat":vat}
@@ -441,7 +465,7 @@ def settings_view(request,slug):
         conf=l.till;deps=conf.get("departments",{})
         cards.append({"loc":l,"conf":conf,"pay":[(k,label,conf.get("payments",{}).get(k,"")) for k,label in PAYMENTS],
             "services":[(s,deps.get(str(s.pk),{})) for s in Service.objects.filter(location=l,active=True).order_by("name")],
-            "last":Sale.objects.filter(location=l,kind__in=("probe","test")).order_by("-created").first(),"token":token if token_for==l.pk else ""})
+            "last":Sale.objects.filter(location=l,kind__in=("probe","test")).order_by("-created").first(),"rch":{k:rch_cmd(conf,k) for k in RCH_CMDS},"token":token if token_for==l.pk else ""})
     ports=[]
     if settings.TILL_DIRECT:
         try:from serial.tools.list_ports import comports;ports=[p.device for p in comports()]
