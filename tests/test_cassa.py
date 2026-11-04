@@ -189,3 +189,23 @@ def test_settings_by_owner_when_allowed_and_receipts_on_booking(shop):
     r=c.get(f"/t/salone/bookings/{b.pk}/");assert b"Chiudi il conto" in r.content and b"n. 9" in r.content
     assert b"Scontrini" in c.get(f"/t/salone/contacts/{b.contact_id}/").content
     r=c.get(f"/t/salone/cassa/?prenotazione={b.pk}");assert b'value="25,00"' in r.content
+
+def test_row_discount_in_percent_or_euro_on_rch_and_epson(shop):
+    from django.http import QueryDict
+    t,loc,svc=shop
+    q=QueryDict(mutable=True)
+    for desc,qty,price,off in (("Cucitura extension","1","430","") ,("Piega glam lunghi","1","21","100%"),("Color care","2","40","10,00")):
+        q.appendlist("desc",desc);q.appendlist("qty",qty);q.appendlist("price",price);q.appendlist("svc","");q.appendlist("off",off)
+    d,total=cassa.bill(q,loc.till)
+    assert total==50000 and d["lines"][1]["off"]==2100 and d["lines"][1]["pct"]=="100" and d["lines"][2]["off"]==1000 and "off" not in d["lines"][0]
+    with scope(t):
+        s=Sale(tenant=t,location=loc)
+        cmds=cassa.rch(s,d,loc.till)
+        # the row's discount after its sale, split over the pieces; empty command: prices already discounted
+        assert cmds[1:7]==["=R1/$43000/(Cucitura extension)","=R1/$2100/(Piega glam lunghi)","=V-/$2100","=R1/$4000/(Color care)","=V-/$500","=R1/$4000/(Color care)"] and cmds[7]=="=V-/$500"
+        assert [c for c in cassa.rch(s,d,{**loc.till,"rch_off":""}) if c.startswith("=R")][1:]==["=R1/$0/(Piega glam lunghi)","=R1/$3500/(Color care)","=R1/$3500/(Color care)"]
+        xml=cassa.epson(Sale(tenant=t,location=loc,kind="sale"),d,{**loc.till,"payments":{"cash":0,"card":2,"other":5}})
+        assert '<printRecItemAdjustment operator="1" adjustmentType="0" description="SCONTO 100%" amount="21,00" department="1"' in xml
+    for bad in ("101%","50","abc%"):
+        q.setlist("off",["",bad,""])
+        with pytest.raises(ValueError):cassa.bill(q,loc.till)

@@ -495,7 +495,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
  const num=v=>parseFloat(String(v||"").replace(",","."))||0;
- const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{t+=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value);});t-=num(form.querySelector("[name=discount]").value);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
+ const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim();t+=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));});t-=num(form.querySelector("[name=discount]").value);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}

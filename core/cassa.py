@@ -61,15 +61,23 @@ def text(value,n=32):
     value=unicodedata.normalize("NFKD",str(value or "")).encode("ascii","ignore").decode()
     return " ".join(re.sub(r"[()\x00-\x1f\x7f]","",value).split())[:n]
 def money(c):return f"{c//100},{c%100:02d}"
-def units(d):
-    """RCH: one sale line a piece, the discount spread over them in proportion, the cents left on the dearest.
-    shortcut: no discount line on RCH (its command is not documented), the prices printed are already discounted"""
-    rows=[(l["desc"],l["dept"],l["cents"]) for l in d["lines"] for _ in range(l["qty"])]
+# shortcut: RCH's discount command is guessed (its manual needs an RCH login); the agency can change it in Registratore di cassa
+RCH_OFF="=V-/${importo}"
+def units(d,line=True):
+    """RCH: one sale line a piece, with the discount of its row split over its pieces (line=False: taken off the price);
+    the discount on the whole bill spread over the pieces in proportion, the cents left on the dearest.
+    shortcut: no subtotal discount on RCH (its command is not documented), the prices printed for it are already discounted"""
+    rows=[]
+    for l in d["lines"]:
+        o=l.get("off",0);q=l["qty"];cut=[o//q]*q;cut[-1]+=o-sum(cut)
+        rows+=[[l["desc"],l["dept"],l["cents"],x] for x in cut]
+    if not line:rows=[[a,b,c-x,0] for a,b,c,x in rows]
     off=d.get("discount") or 0
-    if not off:return rows
-    full=sum(r[2] for r in rows);cut=[r[2]*off//full for r in rows]
-    top=max(range(len(rows)),key=lambda i:rows[i][2]);cut[top]+=off-sum(cut)
-    return [(a,b,c-x) for (a,b,c),x in zip(rows,cut)]
+    if off:
+        net=[r[2]-r[3] for r in rows];full=sum(net);cut=[n*off//full for n in net]
+        top=max(range(len(rows)),key=lambda i:net[i]);cut[top]+=off-sum(cut)
+        for r,x in zip(rows,cut):r[2]-=x
+    return rows
 def rch(sale,d,conf):
     """The commands, one a line: in the XML of the web service, or a frame each through USB."""
     pay=conf["payments"]
@@ -77,7 +85,9 @@ def rch(sale,d,conf):
     if sale.kind=="sale":
         # shortcut: codice fiscale and lotteria before the lines, as in the forum's example; move them if the register refuses
         cmds+=([f'="/?C/({d["cf"]})'] if d.get("cf") else [])+([f'="/?L/$1/({d["lottery"]})'] if d.get("lottery") else [])
-        cmds+=[f"=R{dept}/${c}/({text(desc)})" for desc,dept,c in units(d)]+["=S"]+[f"=T{pay[k]}/${c}" for k,c in d["payments"]]
+        off=conf.get("rch_off",RCH_OFF)
+        for desc,dept,c,x in units(d,bool(off)):cmds+=[f"=R{dept}/${c}/({text(desc)})"]+([off.replace("{importo}",str(x))] if x else [])
+        cmds+=["=S"]+[f"=T{pay[k]}/${c}" for k,c in d["payments"]]
     return cmds
 def epson(sale,d,conf):
     if sale.kind=="probe":body='<printerCommand><queryPrinterStatus operator="1" statusType="1" /></printerCommand>'
@@ -88,13 +98,16 @@ def epson(sale,d,conf):
         body=f'<printerFiscalReceipt><printRecMessage operator="1" messageType="4" message={quoteattr(f"VOID {int(o.z):04d} {int(o.number):04d} {day:%d%m%Y} {o.serial}")} /></printerFiscalReceipt>'
     else:
         pay=conf["payments"]
-        rows="".join(f'<printRecItem operator="1" description={quoteattr(text(l["desc"],38))} quantity="{l["qty"]}" unitPrice="{money(l["cents"])}" department="{l["dept"]}" justification="1" />' for l in d["lines"])
+        # shortcut: adjustmentType 0 (discount on the last sale) from the fpMate examples, to be confirmed on the register
+        rows="".join(f'<printRecItem operator="1" description={quoteattr(text(l["desc"],38))} quantity="{l["qty"]}" unitPrice="{money(l["cents"])}" department="{l["dept"]}" justification="1" />'
+            +(f'<printRecItemAdjustment operator="1" adjustmentType="0" description="{off_label(l)}" amount="{money(l["off"])}" department="{l["dept"]}" justification="1" />' if l.get("off") else "") for l in d["lines"])
         if d.get("discount"):rows+=f'<printRecSubtotalAdjustment operator="1" adjustmentType="1" description="SCONTO" amount="{money(d["discount"])}" justification="1" />'
         if d.get("cf"):rows+=f'<printRecMessage operator="1" messageType="7" index="1" message={quoteattr(d["cf"])} />'
         if d.get("lottery"):rows+=f'<printRecLotteryID operator="1" code={quoteattr(d["lottery"])} />'
         rows+="".join(f'<printRecTotal operator="1" description={quoteattr(dict(PAYMENTS)[k].upper())} payment="{money(c)}" paymentType="{pay[k]}" index="1" justification="1" />' for k,c in d["payments"])
         body=f'<printerFiscalReceipt><beginFiscalReceipt operator="1" />{rows}<endFiscalReceipt operator="1" /></printerFiscalReceipt>'
     return '<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'+body+"</s:Body></s:Envelope>"
+def off_label(l):return f"SCONTO {l['pct']}%" if l.get("pct") else "SCONTO"
 def job(sale):
     """What the register gets, for deliver: a POST on the network, or the commands through the COM port."""
     conf=sale.location.till;out={"id":str(sale.pk),"attempt":attempt(sale)}
@@ -206,7 +219,10 @@ def enqueue(tenant,location,**fields):
 # ---------- the copy for the client
 def copy_lines(tenant,sale):
     d=sale.data;tz=ZoneInfo(tenant.timezone)
-    rows=[f"{l['qty']} x {l['desc']}  {euro(Decimal(l['qty']*l['cents'])/100)}" for l in d.get("lines",[])]
+    rows=[]
+    for l in d.get("lines",[]):
+        rows.append(f"{l['qty']} x {l['desc']}  {euro(Decimal(l['qty']*l['cents'])/100)}")
+        if l.get("off"):rows.append(f"{off_label(l).capitalize()}  -{euro(Decimal(l['off'])/100)}")
     if d.get("discount"):rows.append(f"Sconto  -{euro(Decimal(d['discount'])/100)}")
     rows.append(f"Totale  {euro(sale.total)}")
     rows+=[f"{dict(PAYMENTS).get(k,k)}  {euro(Decimal(c)/100)}" for k,c in d.get("payments",[])]
@@ -238,10 +254,23 @@ def cents(value):
     except InvalidOperation:raise ValueError("Importo non valido.")
     if not x.is_finite() or x<0 or x>Decimal("99999.99"):raise ValueError("Importo non valido.")
     return int((x*100).quantize(Decimal(1),ROUND_HALF_UP))
+def row_off(value,full,desc):
+    """The discount of a row: «100%» or «5,00» (euro); in cents, with the percent for the label of the receipt."""
+    v=re.sub(r"\s","",str(value or ""))
+    if not v:return 0,""
+    if v.endswith("%"):
+        try:p=Decimal(v[:-1].replace(",","."))
+        except InvalidOperation:p=Decimal(-1)
+        if not p.is_finite() or not 0<p<=100 or p!=p.quantize(Decimal("0.01")):raise ValueError(f"Sconto di «{desc}»: una percentuale da 0,01 a 100.")
+        return int((full*p/100).quantize(Decimal(1),ROUND_HALF_UP)),f"{p.normalize():f}".replace(".",",")
+    o=cents(v)
+    if o>full:raise ValueError(f"Lo sconto di «{desc}» supera il prezzo della riga.")
+    return o,""
 def bill(post,conf):
     """The lines, discount, payments, codice fiscale and lotteria of the form, in cents; the department from the service."""
     deps=conf.get("departments",{});default=int(conf.get("default_dept") or 1);lines=[]
-    for desc,qty,price,svc in zip(post.getlist("desc"),post.getlist("qty"),post.getlist("price"),post.getlist("svc")):
+    offs=post.getlist("off")
+    for i,(desc,qty,price,svc) in enumerate(zip(post.getlist("desc"),post.getlist("qty"),post.getlist("price"),post.getlist("svc"))):
         desc=text(desc)
         if not desc and not price.strip():continue  # a row left empty
         try:qty=int(qty)
@@ -249,10 +278,14 @@ def bill(post,conf):
         if not desc or not 1<=qty<=99:raise ValueError("Ogni riga vuole una descrizione e una quantità da 1 a 99.")
         c=cents(price)
         if not c:raise ValueError(f"Manca il prezzo di «{desc}».")
-        lines.append({"desc":desc,"qty":qty,"cents":c,"dept":int((deps.get(svc) or {}).get("dept") or default)})
+        line={"desc":desc,"qty":qty,"cents":c,"dept":int((deps.get(svc) or {}).get("dept") or default)}
+        o,pct=row_off(offs[i] if i<len(offs) else "",qty*c,desc)
+        if o:line.update(off=o,pct=pct)
+        lines.append(line)
     if not lines:raise ValueError("Aggiungi almeno una riga al conto.")
     if len(lines)>60:raise ValueError("Al massimo 60 righe per conto.")
-    gross=sum(l["qty"]*l["cents"] for l in lines);off=cents(post.get("discount"))
+    gross=sum(l["qty"]*l["cents"]-l.get("off",0) for l in lines);off=cents(post.get("discount"))
+    if gross<=0:raise ValueError("Con gli sconti il conto è a zero: togli uno sconto o una riga.")
     if off>=gross:raise ValueError("Lo sconto non può superare il conto.")
     total=gross-off
     split=[[k,cents(post.get("pay_"+k))] for k,_ in PAYMENTS];split=[x for x in split if x[1]]
@@ -376,6 +409,10 @@ def settings_view(request,slug):
                         if not v.isdigit() or not low<=int(v)<=99:raise ValueError("Reparti e pagamenti sono numeri da 1 a 99 (Epson: tipo di pagamento da 0).")
                         return int(v)
                     conf["default_dept"]=number("default_dept") or 1
+                    if device=="rch":
+                        off=request.POST.get("rch_off","").strip()
+                        if off and not (re.fullmatch(r"=[\x21-\x7e]{1,38}",off) and "{importo}" in off and "(" not in off):raise ValueError("Comando dello sconto: comincia con =, contiene {importo}, senza spazi né parentesi. Vuoto: prezzi già scontati.")
+                        conf["rch_off"]=off
                     for s in Service.objects.filter(location=loc):
                         dept=number(f"dept_{s.pk}");vat=request.POST.get(f"vat_{s.pk}","").strip()[:8]
                         if dept or vat:conf["departments"][str(s.pk)]={"dept":dept or conf["default_dept"],"vat":vat}
