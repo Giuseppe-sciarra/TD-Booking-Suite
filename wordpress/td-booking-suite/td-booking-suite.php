@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto.
- * Version: 2.19.0
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima.
+ * Version: 2.20.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.19.0';
+const TDBS_VERSION='2.20.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -269,15 +269,18 @@ function tdbs_pc_sync(WP_REST_Request $request) {
 
 /* ---------- 2.18.0 Il sito come archivio centrale: the PC pushes every change (bookings, client cards with fiscal data, client
    records, consent history, receipts' summary), each record sealed by the PC with the shared secret; the site keeps the last
-   state of each, an empty one for what is gone, and gives it all back to a new PC. On only with the switch here too. */
+   state of each, an empty one for what is gone, and gives it all back to a new PC. On only with the switch here too.
+   2.20.0: each record comes with v, the moment of its last change in microseconds since 1970 UTC (the same in every time
+   zone): the site keeps the higher v, on a tie the higher number; the rows saved before have v 0. */
 const TDBS_ARCHIVE_BODY=524288;
 function tdbs_archive_on() {$p=tdbs_pc();return !empty($p['archive']) && !empty($p['secret']);}
 function tdbs_archive_table() {
     global $wpdb;$table=$wpdb->prefix.'tdbs_archive';
-    if (get_option('tdbs_archive_db')!=='1') {
+    // 2.20.0: '2' adds the column v to the table of 2.18.0 (dbDelta adds what is missing, the rows get v 0)
+    if (get_option('tdbs_archive_db')!=='2') {
         require_once ABSPATH.'wp-admin/includes/upgrade.php';
-        dbDelta("CREATE TABLE $table (\n kind varchar(10) NOT NULL,\n ref char(36) NOT NULL,\n seq bigint(20) unsigned NOT NULL,\n day char(10) NOT NULL DEFAULT '',\n data longtext NOT NULL,\n PRIMARY KEY  (kind,ref),\n KEY day (kind,day)\n) ".$wpdb->get_charset_collate().';');
-        update_option('tdbs_archive_db','1');
+        dbDelta("CREATE TABLE $table (\n kind varchar(10) NOT NULL,\n ref char(36) NOT NULL,\n seq bigint(20) unsigned NOT NULL,\n v bigint(20) unsigned NOT NULL DEFAULT 0,\n day char(10) NOT NULL DEFAULT '',\n data longtext NOT NULL,\n PRIMARY KEY  (kind,ref),\n KEY day (kind,day)\n) ".$wpdb->get_charset_collate().';');
+        update_option('tdbs_archive_db','2');
     }
     return $table;
 }
@@ -291,18 +294,22 @@ function tdbs_archive_push(WP_REST_Request $request) {
     if ($data instanceof WP_REST_Response) return $data;
     if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
     $table=tdbs_archive_table();$acked=array();
+    // 2.20.0: the record changed last wins, by v (a PC before 2.20.0 sends none: 0, and the higher number wins as before);
+    // the condition is read before seq and v change, v last of all
+    $win='(VALUES(v)>v OR (VALUES(v)=v AND VALUES(seq)>seq))';
     foreach (array_slice((array)($data['ops']??array()),0,1000) as $op) {
         if (!is_array($op)) continue;
-        $kind=(string)($op['kind']??'');$ref=(string)($op['ref']??'');$seq=$op['seq']??null;$day=(string)($op['day']??'');$sealed=(string)($op['data']??'');
-        if (!in_array($kind,array('booking','contact','treatment','consent','sale'),true) || !preg_match('/^[a-f0-9-]{36}$/',$ref) || !is_int($seq) || $seq<1 || ($day!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$day)) || ($sealed!=='' && !preg_match('#^[A-Za-z0-9+/=]+$#',$sealed))) continue;
-        // a later state wins; what is gone stays as an empty row, so an older copy arriving late cannot bring it back
-        $done=$wpdb->query($wpdb->prepare("INSERT INTO $table (kind,ref,seq,day,data) VALUES (%s,%s,%d,%s,%s) ON DUPLICATE KEY UPDATE data=IF(VALUES(seq)>seq,VALUES(data),data),day=IF(VALUES(seq)>seq,VALUES(day),day),seq=GREATEST(seq,VALUES(seq))",$kind,$ref,$seq,$day,$sealed));
+        $kind=(string)($op['kind']??'');$ref=(string)($op['ref']??'');$seq=$op['seq']??null;$v=$op['v']??0;$day=(string)($op['day']??'');$sealed=(string)($op['data']??'');
+        if (!in_array($kind,array('booking','contact','treatment','consent','sale'),true) || !preg_match('/^[a-f0-9-]{36}$/',$ref) || !is_int($seq) || $seq<1 || !is_int($v) || $v<0 || ($day!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$day)) || ($sealed!=='' && !preg_match('#^[A-Za-z0-9+/=]+$#',$sealed))) continue;
+        // what is gone stays as an empty row with its v, so an older copy arriving late cannot bring it back; an older one is acked too, and kept out
+        $done=$wpdb->query($wpdb->prepare("INSERT INTO $table (kind,ref,seq,v,day,data) VALUES (%s,%s,%d,%d,%s,%s) ON DUPLICATE KEY UPDATE data=IF($win,VALUES(data),data),day=IF($win,VALUES(day),day),seq=IF($win,VALUES(seq),seq),v=GREATEST(v,VALUES(v))",$kind,$ref,$seq,$v,$day,$sealed));
         if ($done!==false) $acked[]=$seq;
     }
     update_option('tdbs_archive_at',time(),false);
     return tdbs_pc_reply(array('ok'=>true,'acked'=>$acked)+tdbs_archive_status());
 }
-/** A page of one kind for a new PC, in order of id, about 400 KB at a time; next is where the following page starts. */
+/** A page of one kind for a new PC, in order of id, about 400 KB at a time; next is where the following page starts.
+    2.20.0: each with its v, not sealed; with gone also the empty rows of what is gone (Sincronizza con il sito). */
 function tdbs_archive_pull(WP_REST_Request $request) {
     global $wpdb;
     $data=tdbs_pc_verify($request,TDBS_ARCHIVE_BODY);
@@ -310,9 +317,10 @@ function tdbs_archive_pull(WP_REST_Request $request) {
     if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
     $kind=in_array($data['kind']??'',array('booking','contact','treatment','consent','sale'),true)?$data['kind']:'contact';
     $after=preg_match('/^[a-f0-9-]{36}$/',(string)($data['after']??''))?(string)$data['after']:'';
-    $rows=(array)$wpdb->get_results($wpdb->prepare('SELECT ref,data FROM '.tdbs_archive_table()." WHERE kind=%s AND ref>%s AND data<>'' ORDER BY ref LIMIT 500",$kind,$after),ARRAY_A);
+    $gone=!empty($data['gone']);
+    $rows=(array)$wpdb->get_results($wpdb->prepare('SELECT ref,v,data FROM '.tdbs_archive_table()." WHERE kind=%s AND ref>%s".($gone?'':" AND data<>''")." ORDER BY ref LIMIT 500",$kind,$after),ARRAY_A);
     $out=array();$size=0;
-    foreach ($rows as $r) {$size+=strlen($r['data'])+60;if ($out && $size>400000) break;$out[]=$r;}
+    foreach ($rows as $r) {$size+=strlen($r['data'])+90;if ($out && $size>400000) break;$out[]=array('ref'=>$r['ref'],'v'=>(int)$r['v'],'data'=>$r['data']);}
     $more=$out && (count($out)<count($rows) || count($rows)===500);
     return tdbs_pc_reply(array('ok'=>true,'records'=>$out,'next'=>$more?end($out)['ref']:''));
 }
@@ -694,7 +702,7 @@ function tdbs_pc_settings($post) {
     // 2.18.0
     $st=!empty($p['secret'])?tdbs_archive_status():array('records'=>0,'size'=>0);$at=(int)get_option('tdbs_archive_at',0);
     echo '<tr><th>Archivio</th><td><label><input type="checkbox" name="archive" value="1"'.checked(!empty($p['archive']),true,false).(!empty($p['archive'])?' onchange="if(!this.checked&&!confirm(\'Spegnendo l\\u2019archivio, al salvataggio la copia nel sito viene cancellata. Per riaverla: riaccendilo e nel programma premi Carica tutto sul sito. Continuare?\'))this.checked=true"':'').'> Il sito come archivio centrale</label>'
-        .'<p class="description">Il sito tiene una copia cifrata di prenotazioni, clienti con i dati fiscali, schede di lavoro, consensi e riepilogo degli scontrini, aggiornata dal PC a ogni sincronizzazione: un PC nuovo riprende tutto da qui con <em>Ripristina dal sito</em>. Va acceso anche nel programma, nella card <em>Sito WordPress · modalità PC</em>. Con l’archivio, l’agenda riservata mostra anche i giorni passati. Spegnendolo, l’archivio nel sito viene cancellato: per riaverlo, riaccendilo e nel programma premi <em>Carica tutto sul sito</em>.</p>'
+        .'<p class="description">Il sito tiene una copia cifrata di prenotazioni, clienti con i dati fiscali, schede di lavoro, consensi e riepilogo degli scontrini, aggiornata dal PC a ogni sincronizzazione: un PC nuovo riprende tutto da qui con <em>Ripristina dal sito</em>. Di ogni record il sito tiene la versione modificata per ultima, qui o sul PC: se il sito è stato irraggiungibile, il PC manda le modifiche appena torna, e <em>Sincronizza con il sito</em> nel programma allinea le due parti. Va acceso anche nel programma, nella card <em>Sito WordPress · modalità PC</em>. Con l’archivio, l’agenda riservata mostra anche i giorni passati. Spegnendolo, l’archivio nel sito viene cancellato: per riaverlo, riaccendilo e nel programma premi <em>Carica tutto sul sito</em>.</p>'
         .'<p>'.($at?'Record: '.(int)$st['records'].', spazio: '.esc_html(size_format((int)$st['size'])).', ultimo invio dal PC: '.esc_html(wp_date('d/m/Y H:i',$at)):'Ancora nessun invio dal PC.').'</p></td></tr></table>';
     submit_button('Salva la modalità PC','secondary');echo '</form>';
     echo '<h3>Per il firewall del sito</h3><p>Il PC chiama solo questi indirizzi, sempre in <strong>POST</strong> con dati JSON, con le intestazioni <code>X-TDBS-Time</code> e <code>X-TDBS-Signature</code> e corpo fino a <strong>512 KB</strong> per l’archivio (gli orari liberi di <code>/sync</code> di solito molto meno; con tanti servizi e 90 giorni possono superare 1 MB: se il proxy risponde 413, alza il limite del corpo a 5 MB):</p><ul style="list-style:disc;padding-left:20px"><li><code>/wp-json/tdbs/v1/sync</code></li><li><code>/wp-json/tdbs/v1/archive/push</code> e <code>/wp-json/tdbs/v1/archive/pull</code>, sotto <code>/wp-json/tdbs/v1/archive/</code></li></ul>'

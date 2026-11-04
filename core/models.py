@@ -494,6 +494,7 @@ class Contact(Scoped):
     # 2.14.0: a card merged into another one stays, without data, for its consent history (append-only)
     merged_into=models.ForeignKey("self",null=True,blank=True,on_delete=models.PROTECT,related_name="merged")
     created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.20.0: the last change, its version for the site's archive (wpsync.ver); empty: created
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant","email_index"],name="contact_email_unique")]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"contact:"+str(self.pk))
@@ -528,6 +529,7 @@ class Booking(Scoped):
     request_key=models.CharField(max_length=64)
     request_fingerprint=models.CharField(max_length=64)
     created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.20.0: the last change, its version for the site's archive (wpsync.ver); empty: created
     class Meta:
         constraints=[models.UniqueConstraint(fields=["tenant","request_key"],name="booking_idempotency")]
         indexes=[models.Index(fields=["tenant","start","end"]),models.Index(fields=["resource","busy_start","busy_end"])]
@@ -565,6 +567,7 @@ class Treatment(Scoped):
     pii=models.TextField()
     author=models.CharField(max_length=36,blank=True)
     created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.20.0: the last change, its version for the site's archive (wpsync.ver); empty: created
     class Meta:indexes=[models.Index(fields=["tenant","contact","date"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"treatment:"+str(self.pk))
@@ -578,6 +581,7 @@ class ConsentEvent(Scoped):
     ref=models.CharField(max_length=64,blank=True)
     actor=models.CharField(max_length=36,blank=True)
     at=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.20.0: only the archive's version (erased with the card); the history itself never changes
     def save(self,*a,**kw):
         if not self._state.adding:raise ValueError("Lo storico dei consensi non si modifica.")
         super().save(*a,**kw)
@@ -658,6 +662,7 @@ class Sale(Scoped):
     actor=models.CharField(max_length=36,blank=True)
     pii=models.TextField()
     created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.20.0: the last change, its version for the site's archive (wpsync.ver); empty: created
     class Meta:
         constraints=[models.UniqueConstraint(fields=["tenant","key"],name="sale_key")]
         indexes=[models.Index(fields=["location","status","created"])]

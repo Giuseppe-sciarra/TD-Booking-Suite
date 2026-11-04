@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.19.0
+Stable tag: 2.20.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -44,6 +44,14 @@ a ogni sincronizzazione il PC manda le modifiche di prenotazioni, clienti con i 
 riepilogo degli scontrini, ogni record cifrato con la chiave condivisa (AES-256-GCM). Un cliente cancellato nel programma
 sparisce anche qui. Un PC nuovo riprende tutto con "Ripristina dal sito". [tdbs_agenda] legge allora dall'archivio, anche i
 giorni passati. Spento qui, l'archivio nel sito viene cancellato.
+
+Il sito e il PC si allineano sulla modifica più recente (2.20.0). Di ogni prenotazione, cliente e scheda il sito tiene la
+versione modificata per ultima: il PC manda con ogni record il momento esatto della modifica, contato in microsecondi dal
+1970 in tempo universale, lo stesso numero qualunque sia il fuso del PC o del server del sito. Una copia più vecchia che
+arriva dopo viene confermata al PC ma non sostituisce quella più nuova. Se il sito è giù, le modifiche fatte sul PC restano in
+coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sincronizza con il sito" confronta tutto e tiene
+la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
+L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
 
 Per il firewall del sito. Il PC chiama solo /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/push e /archive/pull, sempre
 in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 KB per l'archivio (/sync di solito

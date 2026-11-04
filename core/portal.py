@@ -236,6 +236,16 @@ def can_profile(request):
     """Type of business, locations and the WordPress code: the agency, in every edition (2.10.0)."""
     return request.user.is_staff
 
+def merged(request,r):
+    """2.20.0: what Sincronizza con il sito did, in words."""
+    text=(f"Sincronizzato con il sito. Presi dal sito: {r['added']} nuovi qui, {r['updated_here']} aggiornati perché sul sito erano più recenti. "
+        f"Mandati al sito: {r['sent']}, più recenti qui o non ancora sul sito. Già uguali: {r['same']}.")
+    if r["tombstones"]:text+=f" Cancellati sul sito ma tenuti qui: {r['tombstones']}; il programma non cancella niente da solo."
+    if r["missing"]:text+=" Nel catalogo mancano: "+", ".join(r["missing"][:20])+"."+(f" {r['lost']} non portati qui: crea i servizi con lo stesso nome e sincronizza di nuovo." if r["lost"] else "")
+    elif r["lost"]:text+=f" {r['lost']} non portati qui perché il loro cliente non c'è."
+    if r["error"]:text+=f" L'invio al sito non è riuscito ({r['error']}): quello che deve andare è in coda e parte con le prossime sincronizzazioni."
+    (messages.warning if r["missing"] or r["lost"] or r["error"] else messages.success)(request,text)
+
 def setup_action(request,slug):
     """2.6.0: the profile of the business in one go, and the code that connects the WordPress site."""
     from django.http import Http404
@@ -277,7 +287,7 @@ def setup_action(request,slug):
         request.session["wp_code"]=new_code(t,request.user)
         return redirect(reverse("setup",args=[slug])+"#wordpress")
     # 2.17.0: the site fed by this PC also when it is off (wpsync.py)
-    if action in ("wps_save","wps_secret","wps_now","wps_upload","wps_restore"):
+    if action in ("wps_save","wps_secret","wps_now","wps_upload","wps_restore","wps_merge"):
         from . import wpsync
         if action=="wps_secret":request.session["wps_secret"]=wpsync.new_secret(t,request.user)
         elif action=="wps_upload":  # 2.18.0: the site as the archive, everything again
@@ -293,14 +303,22 @@ def setup_action(request,slug):
                 text=f"Ripristinati dal sito {r['contacts']} clienti, {r['bookings']} prenotazioni, {r['treatments']} schede di lavoro e {r['consents']} eventi dei consensi"+(f"; {r['skipped']} già presenti" if r["skipped"] else "")+"."
                 if r["missing"]:text+=" Nel catalogo mancano: "+", ".join(r["missing"][:20])+"."+(f" {r['lost']} prenotazioni non ripristinate: crea i servizi con lo stesso nome e ripristina di nuovo." if r["lost"] else "")
                 (messages.warning if r["missing"] else messages.success)(request,text)
+        elif action=="wps_merge":  # 2.20.0: the newest of each record, on both sides
+            if not t.wp_archive:messages.error(request,"Accendi prima Sito come archivio centrale.")
+            else:
+                try:r=wpsync.merge(t,request.user)
+                except ValueError as ex:messages.error(request,"Sincronizzazione con il sito non riuscita: "+str(ex).rstrip(".")+". Non è cambiato niente: riprova quando il sito risponde.")
+                else:merged(request,r)
         elif action=="wps_now":
             n=wpsync.sync(t,full=True);err=(t.wp_state or {}).get("error")
             if not wpsync.conf(t).get("on"):messages.error(request,"Accendi prima la sincronizzazione.")
             elif err and not n:messages.error(request,"Sincronizzazione non riuscita: "+err+".")
             else:messages.success(request,f"Sincronizzato con il sito: {n} prenotazion{'e nuova' if n==1 else 'i nuove'}.")
         else:
-            try:wpsync.save(t,request.POST,request.user);messages.success(request,"Sito WordPress salvato.")
+            try:r=wpsync.save(t,request.POST,request.user);messages.success(request,"Sito WordPress salvato.")
             except ValueError as ex:messages.error(request,str(ex))
+            else:
+                if r:merged(request,r)  # 2.20.0: the archive just turned on, with the site answering
         return redirect(reverse("setup",args=[slug])+"#wordpress-pc")
     if action=="wp_remove":
         site=request.POST.get("site","")

@@ -1,6 +1,15 @@
-# TD Booking Suite 2.19.1 — registro modifiche
+# TD Booking Suite 2.20.0 — registro modifiche
 
-**4 novembre 2026 · versione 2.19.1**
+**4 novembre 2026 · versione 2.20.0**
+
+## 2.20.0 — il sito e il PC si allineano sulla modifica più recente
+
+- **La modifica più recente vince**, con il sito come archivio centrale: ogni prenotazione, cliente, scheda di lavoro, consenso e riepilogo di scontrino ricorda il momento esatto dell'ultima modifica, anche quando l'archivio è spento. Si confronta quel momento, contato in tempo universale, non l'ora scritta sull'orologio: un PC e un server con fusi orari diversi danno lo stesso risultato
+- **Sito irraggiungibile**: le prenotazioni e le modifiche fatte sul PC restano in coda finché il sito non conferma; appena torna partono, e con loro gli orari liberi e l'agenda, così il modulo del sito non offre orari già presi
+- **Sincronizza con il sito** (agenzia, card *Sito WordPress · modalità PC*, con l'archivio acceso): confronta ogni record con quello del sito. Se è solo sul sito arriva qui; se sul sito è più recente aggiorna quello qui; se è più recente qui o non è ancora sul sito lo manda. Quello cancellato sul sito resta qui, solo contato: il programma non cancella niente da solo. Alla fine un messaggio dice quanti presi, aggiornati, mandati e già uguali
+- **Accendere l'archivio su un PC già usato da solo** non sovrascrive niente: se il sito risponde il programma fa da solo *Sincronizza con il sito*; se non risponde mette tutto in coda come prima, e il sito tiene comunque la versione più recente. *Carica tutto sul sito* resta com'era, e anche lì il sito tiene la più recente
+- **Plugin WordPress 2.20.0**: l'archivio salva la versione di ogni record (colonna nuova, aggiunta da sola alla tabella esistente; i record di prima contano come i più vecchi) e tiene sempre la più alta; le cancellazioni hanno la loro versione. Indirizzi, metodo, intestazioni e 512 KB per il firewall non cambiano
+- **Guida**: *Il sito come archivio centrale* spiega sito giù, *Sincronizza con il sito* e l'orologio del PC
 
 ## 2.19.1 — importa il listino dei servizi
 

@@ -11,11 +11,16 @@ HMAC-SHA256 with the shared secret over "time.body", within 5 minutes; the site 
 in order to /archive/push, sealed, until the site acks it; the site keeps the last state of each record, an empty one for
 what is gone. A new PC gets it all back from /archive/pull (restore). The PC only ever POSTs JSON to /wp-json/tdbs/v1/sync
 and /wp-json/tdbs/v1/archive/..., with X-TDBS-Time and X-TDBS-Signature, each body under 512 KB but the free times of /sync.
+
+2.20.0, the newest wins: each record has a version, the exact moment of its last change in microseconds since 1970 UTC
+(ver), the same number whatever the clock's time zone on the PC or on the site's server. The site keeps the higher one
+(a late older copy never overwrites a newer one), and merge (Sincronizza con il sito, and the archive turned on) lines
+the PC and the site up record by record, keeping on both sides the one changed last.
 """
 import base64,hashlib,hmac,json,re,secrets,time,urllib.error,urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date,datetime,timedelta
+from datetime import date,datetime,timedelta,timezone as utc
 from zoneinfo import ZoneInfo
 from django.db.models import F,Q
 from django.db.models.functions import Greatest
@@ -60,10 +65,16 @@ def save(tenant,post,actor):
     if archive and not on:raise ValueError("Il sito fa da archivio solo con la sincronizzazione attiva.")
     c.update(url=url,days=days,on=on);store(tenant,c);state(tenant,sent="")  # the next call sends the free times again
     was=tenant.wp_archive;Tenant.objects.filter(pk=tenant.pk).update(wp_archive=archive);tenant.wp_archive=archive
-    if archive and not was:upload_all(tenant)  # the first time everything goes up
+    got=None
+    if archive and not was:
+        # 2.20.0: the first time the PC and the site line up, the newest of each record wins; with the site unreachable
+        # everything is queued as before, and the site still keeps what was changed there later
+        try:got=merge(tenant,actor)
+        except ValueError:upload_all(tenant)
     with scope(tenant):
         if was and not archive:SiteOutbox.objects.all().delete()
         audit(tenant,actor,"wpsync.saved",tenant.pk,site=url,on=on,archive=archive)
+    return got
 
 def snapshot(tenant,days):
     """What the site shows with the PC off: the appointment services of the public page, without private links or
@@ -162,11 +173,12 @@ def sync(tenant,full=False):
     try:
         with scope(tenant):
             mark=str(Audit.objects.exclude(action__startswith="wpsync.").order_by("-created").values_list("created","pk").first() or "")
-            due=full or mark!=old.get("mark") or not old.get("sent") or timezone.now()-datetime.fromisoformat(old["sent"])>FULL
+            # 2.20.0: right after a call that did not get through, the free times and the agenda again (the site may be a new one or restored)
+            due=full or old.get("down") or mark!=old.get("mark") or not old.get("sent") or timezone.now()-datetime.fromisoformat(old["sent"])>FULL
             body={"ack":old.get("ack",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30))),"agenda":agenda(tenant,c)} if due else {})}
         data=call(c,"/sync",body)
         new,ack,errors=take(tenant,data.get("bookings",[]) if isinstance(data,dict) else [])
-        state(tenant,running="",at=timezone.now().isoformat(),new=len(new),ids=new[:20],ack=ack,error="; ".join(errors)[:500],**({"sent":timezone.now().isoformat(),"mark":mark} if due else {}))
+        state(tenant,running="",at=timezone.now().isoformat(),new=len(new),ids=new[:20],ack=ack,error="; ".join(errors)[:500],down=False,**({"sent":timezone.now().isoformat(),"mark":mark} if due else {}))
         if new:
             with scope(tenant):audit(tenant,None,"wpsync.bookings",tenant.pk,n=len(new))
         if tenant.wp_archive:
@@ -174,7 +186,7 @@ def sync(tenant,full=False):
             except ValueError as ex:state(tenant,archive={**(tenant.wp_state or {}).get("archive",{}),"error":str(ex)[:500]})
         return len(new)
     except ValueError as ex:
-        state(tenant,running="",at=timezone.now().isoformat(),new=0,ids=[],error=str(ex)[:500])
+        state(tenant,running="",at=timezone.now().isoformat(),new=0,ids=[],error=str(ex)[:500],down=True)  # ack, sent and mark stay: again next time
         return 0
 
 def call(c,route,payload):
@@ -202,22 +214,37 @@ RELATED={"booking":("service","location","resource","option","secondary"),"conse
 CHUNK=400_000  # each body under 512 KB: under the 1 MB nginx allows by default, no proxy setting to change
 QUIET=ContextVar("wps_quiet",default=False)
 
-def touch(tenant_id,kind,refs):
+EPOCH=datetime(1970,1,1,tzinfo=utc.utc)
+def ver(obj):
+    """2.20.0: a record's version: the microseconds since 1970 UTC of its last change (of its creation, for the rows made
+    before 2.20.0). The same number in every time zone: wall-clock times are never compared."""
+    when=obj.updated or getattr(obj,"created",None) or obj.at
+    return (when-EPOCH)//timedelta(microseconds=1)
+def moment(v):return EPOCH+timedelta(microseconds=int(v))
+
+def touch(tenant_id,kind,refs,stamp=True):
     """Records of a kind changed or gone: in the outbox with numbers after every one given before, only with the archive on.
-    The numbers start from the clock, so a PC installed again goes on after the old one's."""
+    The numbers start from the clock, so a PC installed again goes on after the old one's.
+    2.20.0: and their version moved to now (updated), always, with the archive off too, so the day it is turned on the
+    newest still wins; stamp=False only queues them again with the version they have (Carica tutto, merge)."""
     refs=[str(r) for r in refs if r]
-    if not refs or QUIET.get():return
+    if not refs or QUIET.get():return None
+    when=None
+    if stamp:
+        when=timezone.now()
+        for i in range(0,len(refs),500):KINDS[kind].raw.filter(tenant_id=tenant_id,pk__in=refs[i:i+500]).update(updated=when)
     n=len(refs);now=time.time_ns()//1000
-    if not Tenant.objects.filter(pk=tenant_id,wp_archive=True).update(wp_seq=Greatest(F("wp_seq")+n,now+n)):return
+    if not Tenant.objects.filter(pk=tenant_id,wp_archive=True).update(wp_seq=Greatest(F("wp_seq")+n,now+n)):return when
     top=Tenant.objects.filter(pk=tenant_id).values_list("wp_seq",flat=True)[0]
     for i in range(0,n,500):
         part=refs[i:i+500]
         SiteOutbox.objects.filter(kind=kind,ref__in=part).delete()
         SiteOutbox.objects.bulk_create([SiteOutbox(tenant_id=tenant_id,kind=kind,ref=r,seq=top-n+1+i+j) for j,r in enumerate(part)])
+    return when
 def changed(sender,instance):
     """The models' save and delete (models._archived). An erased or merged card takes its consent history along."""
     kind=next(k for k,m in KINDS.items() if m is sender)
-    touch(instance.tenant_id,kind,[instance.pk])
+    if when:=touch(instance.tenant_id,kind,[instance.pk]):instance.updated=when  # a later save of this instance keeps it
     if kind=="contact" and instance.email_index.startswith(ERASED) and not QUIET.get():
         touch(instance.tenant_id,"consent",ConsentEvent.objects.filter(contact_id=instance.pk).values_list("pk",flat=True))
 
@@ -256,8 +283,9 @@ def push(tenant,c,calls=20):
             objs={k:{str(pk):o for pk,o in KINDS[k].objects.select_related("tenant",*RELATED.get(k,())).in_bulk([r.ref for r in rows if r.kind==k]).items()} for k in {r.kind for r in rows}}
             ops=[];size=0
             for r in rows:
-                rec=pack(r.kind,objs[r.kind].get(r.ref),tz)
-                op={"kind":r.kind,"ref":r.ref,"seq":r.seq,"day":rec["start"][:10] if rec and r.kind=="booking" else "","data":seal(c["secret"],rec) if rec else ""}
+                obj=objs[r.kind].get(r.ref);rec=pack(r.kind,obj,tz)
+                # 2.20.0: v, the version the site compares (a record gone: the moment it was queued, its number comes from the clock)
+                op={"kind":r.kind,"ref":r.ref,"seq":r.seq,"v":ver(obj) if obj else r.seq,"day":rec["start"][:10] if rec and r.kind=="booking" else "","data":seal(c["secret"],rec) if rec else ""}
                 size+=len(op["data"])+200
                 if ops and size>CHUNK:break
                 ops.append(op)
@@ -269,24 +297,44 @@ def push(tenant,c,calls=20):
         if len(acked)<len(ops):break  # the site took only part: the rest at the next sync
     return sent
 
+def kept():
+    """What the site must have of each kind (pack gives no empty record for these)."""
+    return (("contact",Contact.objects.exclude(email_index__startswith=ERASED)),("booking",Booking.objects.all()),("treatment",Treatment.objects.all()),
+        ("consent",ConsentEvent.objects.exclude(contact__email_index__startswith=ERASED,contact__merged_into__isnull=True)),("sale",Sale.objects.filter(kind__in=("sale","void"))))
 def upload_all(tenant):
-    """Carica tutto sul sito: every record in the outbox again; the next syncs send them. Returns how many."""
+    """Carica tutto sul sito: every record in the outbox again; the next syncs send them. Returns how many.
+    2.20.0: with the versions they have, so on the site a record changed there later stays."""
     with scope(tenant):
         SiteOutbox.objects.all().delete()
-        for kind,rows in (("contact",Contact.objects.exclude(email_index__startswith=ERASED)),("booking",Booking.objects.all()),("treatment",Treatment.objects.all()),
-                ("consent",ConsentEvent.objects.exclude(contact__email_index__startswith=ERASED,contact__merged_into__isnull=True)),("sale",Sale.objects.filter(kind__in=("sale","void")))):
-            touch(tenant.pk,kind,list(rows.values_list("pk",flat=True)))
+        for kind,rows in kept():
+            touch(tenant.pk,kind,list(rows.values_list("pk",flat=True)),stamp=False)
         return SiteOutbox.objects.count()
 
-def pull(c,kind):
-    """Every record of a kind in the site's archive, page after page."""
-    after="";out=[]
+def pages(c,kind,gone=False):
+    """The rows of a kind in the site's archive, page after page; 2.20.0 with gone also the empty ones of what is gone."""
+    after=""
     while True:
-        data=call(c,"/archive/pull",{"kind":kind,"after":after})
-        out+=[x for x in (unseal(c["secret"],r.get("data","")) for r in data.get("records",[]) if isinstance(r,dict)) if isinstance(x,dict)]
+        data=call(c,"/archive/pull",{"kind":kind,"after":after,**({"gone":True} if gone else {})})
+        yield from (r for r in data.get("records",[]) if isinstance(r,dict))
         nxt=str(data.get("next") or "")
-        if not nxt or nxt==after:return out
+        if not nxt or nxt==after:return
         after=nxt
+def pull(c,kind):
+    """Every record of a kind in the site's archive."""
+    return [x for x in (unseal(c["secret"],r.get("data","")) for r in pages(c,kind)) if isinstance(x,dict)]
+def stamped(rec):
+    """The version of a record from its own data, for the rows a plugin before 2.20.0 saved without one."""
+    try:return (datetime.fromisoformat(rec.get("updated") or rec.get("created") or rec["at"])-EPOCH)//timedelta(microseconds=1)
+    except (KeyError,TypeError,ValueError):return 0
+def versions(c,kind):
+    """2.20.0: ref → (version, record) of the whole archive of a kind, record None for what is gone there."""
+    out={}
+    for r in pages(c,kind,gone=True):
+        ref=str(r.get("ref") or "");v=r.get("v") if isinstance(r.get("v"),int) else 0
+        rec=unseal(c["secret"],r["data"]) if r.get("data") else None
+        if r.get("data") and not isinstance(rec,dict):continue  # does not open with this key: not ours to judge
+        out[ref]=(v or (stamped(rec) if rec else 0),rec)
+    return out
 
 def fill(obj,rec,skip=()):
     for f in obj._meta.concrete_fields:
@@ -300,6 +348,53 @@ def kept_times():
     try:yield
     finally:
         for f in fields:f.auto_now_add=True  # shortcut: process-wide while it runs, fine on the PC; a queue job if it ever runs on a busy server
+
+class Writer:
+    """The archive's records written here (restore and merge): cards sealed with this PC's business key, the catalogue of
+    this PC matched by name (sede, servizio, variante, operatore); cards maps the site's card ids to the cards here."""
+    def __init__(self,tenant,out,here=False):
+        self.tenant=tenant;self.out=out;self.cards={};self.services={};self.here=here
+        for s in Service.objects.select_related("location"):self.services[(s.location.name,s.name)]=s;self.services.setdefault(s.name,s)
+        self.people={r.name:r for r in Resource.objects.all()};self.options={(o.service_id,o.name):o for o in Option.objects.all()}
+    def card_key(self,rec):
+        """The key of the site's card here, and the card already here with it (the same person), if any."""
+        pk=str(rec.get("id"));d=rec.get("data") or {}
+        key=key_for(self.tenant,d) if d.get("email") or d.get("phone") else "restored:"+pk
+        hit=Contact.objects.filter(email_index=key).first()
+        if hit and not d.get("email") and not same_person(hit,d):key=key_for(self.tenant,d,shared=True);hit=Contact.objects.filter(email_index=key).first()
+        return key,hit
+    def contact(self,rec,x=None):
+        """A card made again (x None) or written over with the site's (x)."""
+        pk=str(rec.get("id"));d=rec.get("data") or {};key,hit=self.card_key(rec)
+        x=fill(x or Contact(tenant=self.tenant),rec)
+        if not hit or hit.pk==x.pk:x.email_index=key  # shortcut: an email that is now another card's here keeps the old key
+        x.consent_proof=encrypt(self.tenant,rec["proof"],"consent:"+pk) if rec.get("proof") else ""
+        seal_card(self.tenant,x,d);return x
+    def booking(self,rec,b=None):
+        """A booking made again or written over; None when its service is not here (counted as lost)."""
+        pk=str(rec.get("id"));n=rec.get("names") or {}
+        s=self.services.get((n.get("location"),n.get("service"))) or self.services.get(n.get("service"))
+        if not s:self.out["missing"].add("servizio "+str(n.get("service")));self.out["lost"]+=1;return None
+        # shortcut: event dates, tables and other cabins are not matched, the booking comes back without them
+        b=fill(b or Booking(tenant=self.tenant),rec,("more","tables"));b.service=s;b.location=s.location;b.option=self.options.get((s.pk,n.get("option")))
+        b.resource=self.people.get(n.get("resource"));b.secondary=self.people.get(n.get("secondary"));b.contact_id=self.card(rec.get("contact_id"),b.contact_id)
+        for k,label in (("resource","operatore"),("option","variante"),("secondary","risorsa")):
+            if n.get(k) and not getattr(b,k):self.out["missing"].add(f"{label} {n[k]}")
+        b.pii=encrypt(self.tenant,rec.get("data") or {},"booking:"+pk);b.request_fingerprint="";return b
+    def child(self,kind,rec,x=None):
+        """A client record or a consent event made again (or a client record written over); None without its card here."""
+        pk=str(rec.get("id"));card=self.card(rec.get("contact_id"),x and x.contact_id)
+        if not card:return None
+        x=fill(x or KINDS[kind](tenant=self.tenant),rec);x.contact_id=card
+        if kind=="treatment":
+            x.booking_id=rec.get("booking_id") if rec.get("booking_id") and Booking.objects.filter(pk=rec["booking_id"]).exists() else None
+            x.pii=encrypt(self.tenant,rec.get("data") or {},"treatment:"+pk)
+        return x
+    def card(self,site_id,had=None):
+        """The card here of the site's card id; for merge (here) also a card here with that id, else the one it had."""
+        got=self.cards.get(str(site_id))
+        if got or not self.here:return got
+        return str(site_id) if site_id and Contact.objects.filter(pk=site_id).exists() else had and str(had)
 
 def restore(tenant,actor,confirm=False):
     """Ripristina dal sito: the cards, bookings, client records and consent history of the archive made again here with this
@@ -317,44 +412,88 @@ def restore(tenant,actor,confirm=False):
     token=QUIET.set(True)  # already on the site: not sent back
     try:
         with scope(tenant),kept_times():
-            services={}
-            for s in Service.objects.select_related("location"):services[(s.location.name,s.name)]=s;services.setdefault(s.name,s)
-            people={r.name:r for r in Resource.objects.all()};options={(o.service_id,o.name):o for o in Option.objects.all()}
-            cards={}
+            w=Writer(tenant,out)
             for rec in got["contact"]:
-                pk=str(rec.get("id"));d=rec.get("data") or {}
-                if Contact.objects.filter(pk=pk).exists():cards[pk]=pk;out["skipped"]+=1;continue
-                key=key_for(tenant,d) if d.get("email") or d.get("phone") else "restored:"+pk
-                hit=Contact.objects.filter(email_index=key).first()
-                if hit and not d.get("email") and not same_person(hit,d):key=key_for(tenant,d,shared=True);hit=Contact.objects.filter(email_index=key).first()
-                if hit:cards[pk]=str(hit.pk);out["skipped"]+=1;continue  # the same person already here: the bookings go on that card
-                x=fill(Contact(tenant=tenant),rec);x.email_index=key
-                x.consent_proof=encrypt(tenant,rec["proof"],"consent:"+pk) if rec.get("proof") else ""
-                seal_card(tenant,x,d);x.save(force_insert=True);cards[pk]=pk;out["contacts"]+=1
+                pk=str(rec.get("id"))
+                if Contact.objects.filter(pk=pk).exists():w.cards[pk]=pk;out["skipped"]+=1;continue
+                key,hit=w.card_key(rec)
+                if hit:w.cards[pk]=str(hit.pk);out["skipped"]+=1;continue  # the same person already here: the bookings go on that card
+                w.contact(rec).save(force_insert=True);w.cards[pk]=pk;out["contacts"]+=1
             for rec in got["booking"]:
-                pk=str(rec.get("id"));n=rec.get("names") or {}
-                if Booking.objects.filter(Q(pk=pk)|Q(request_key=rec.get("request_key",""))).exists():out["skipped"]+=1;continue
-                s=services.get((n.get("location"),n.get("service"))) or services.get(n.get("service"))
-                if not s:out["missing"].add("servizio "+str(n.get("service")));out["lost"]+=1;continue
-                # shortcut: event dates, tables and other cabins are not matched, the booking comes back without them
-                b=fill(Booking(tenant=tenant),rec,("more","tables"));b.service=s;b.location=s.location;b.option=options.get((s.pk,n.get("option")))
-                b.resource=people.get(n.get("resource"));b.secondary=people.get(n.get("secondary"));b.contact_id=cards.get(str(rec.get("contact_id")))
-                for k,label in (("resource","operatore"),("option","variante"),("secondary","risorsa")):
-                    if n.get(k) and not getattr(b,k):out["missing"].add(f"{label} {n[k]}")
-                b.pii=encrypt(tenant,rec.get("data") or {},"booking:"+pk);b.request_fingerprint="";b.save(force_insert=True);out["bookings"]+=1
+                if Booking.objects.filter(Q(pk=str(rec.get("id")))|Q(request_key=rec.get("request_key",""))).exists():out["skipped"]+=1;continue
+                if b:=w.booking(rec):b.save(force_insert=True);out["bookings"]+=1
             for kind,model in (("treatment",Treatment),("consent",ConsentEvent)):
                 for rec in got[kind]:
-                    pk=str(rec.get("id"));card=cards.get(str(rec.get("contact_id")))
-                    if not card or model.objects.filter(pk=pk).exists():out["skipped"]+=1;continue
-                    x=fill(model(tenant=tenant),rec);x.contact_id=card
-                    if kind=="treatment":
-                        x.booking_id=rec.get("booking_id") if rec.get("booking_id") and Booking.objects.filter(pk=rec["booking_id"]).exists() else None
-                        x.pii=encrypt(tenant,rec.get("data") or {},"treatment:"+pk)
+                    x=None if model.objects.filter(pk=str(rec.get("id"))).exists() else w.child(kind,rec)
+                    if not x:out["skipped"]+=1;continue
                     x.save(force_insert=True);out[kind+"s"]+=1
             audit(tenant,actor,"archive.restored",tenant.pk,**{k:v for k,v in out.items() if k!="missing"})
     except IntegrityError:raise ValueError("questi dati sono già in un'altra attività di questo programma: il ripristino è per un PC nuovo")  # the ids are kept
     finally:QUIET.reset(token)
     out["missing"]=sorted(out["missing"])
+    return out
+
+def merge(tenant,actor):
+    """2.20.0 Sincronizza con il sito: every record of the archive against the one here, by id, and the newest wins on both
+    sides, by version (ver), never by the clocks' hours. Only on the site: made here (as restore does). Older here:
+    written over with the site's, keeping its version so it does not go back. Newer here, or not on the site: queued
+    and pushed. Gone on the site: kept here, only counted. The receipts' summary and the consent history (that never
+    changes) only go up. Returns the counts; error when the push did not get through (the queue goes at the next syncs)."""
+    c=conf(tenant)
+    if not (c.get("url") and c.get("secret")):raise ValueError("Prima scrivi l'indirizzo del sito e incolla la chiave nel plugin.")
+    if not tenant.wp_archive:raise ValueError("Accendi prima Sito come archivio centrale.")
+    site={k:versions(c,k) for k in KINDS}
+    out={"added":0,"updated_here":0,"sent":0,"same":0,"tombstones":0,"lost":0,"missing":set(),"error":""}
+    go={k:[] for k in KINDS}
+    from django.db import IntegrityError
+    token=QUIET.set(True)  # what comes from the site is not sent back
+    try:
+        with scope(tenant),kept_times():
+            w=Writer(tenant,out,here=True)
+            for kind,rows in kept():
+                model=KINDS[kind];stamp="at" if kind=="consent" else "created"
+                here={str(pk):(u or at) for pk,u,at in model.objects.values_list("pk","updated",stamp)}
+                ok={str(pk) for pk in rows.values_list("pk",flat=True)}  # without the erased cards and their history
+                for ref,(sv,rec) in site[kind].items():
+                    lv=(here[ref]-EPOCH)//timedelta(microseconds=1) if ref in here else None
+                    if kind=="contact" and ref in here and rec is not None:w.cards[ref]=ref
+                    if rec is None:  # gone on the site
+                        if ref in ok and lv>sv:go[kind].append(ref)
+                        elif ref in ok:out["tombstones"]+=1
+                        else:out["same"]+=1
+                    elif lv is None:  # only on the site
+                        if kind=="contact":
+                            key,hit=w.card_key(rec)
+                            if hit:w.cards[ref]=str(hit.pk);out["same"]+=1;continue
+                            x=w.contact(rec)
+                        elif kind=="booking":
+                            if Booking.objects.filter(request_key=rec.get("request_key","")).exists():out["same"]+=1;continue
+                            x=w.booking(rec)
+                        elif kind=="sale":continue  # shortcut: the receipts are the register's, on the PC; the site has only their summary
+                        else:x=w.child(kind,rec)
+                        if not x:
+                            if kind in ("treatment","consent"):out["lost"]+=1
+                            continue
+                        x.updated=moment(sv) if sv else None;x.save(force_insert=True);out["added"]+=1
+                        if kind=="contact":w.cards[ref]=ref
+                    elif lv>sv or ref not in ok:  # newer here, or erased here: what is here goes (never the site's data on an erased card)
+                        if lv>sv:go[kind].append(ref)
+                        else:out["same"]+=1
+                    elif lv<sv and kind in ("contact","booking","treatment"):  # newer on the site: written here
+                        x=model.objects.get(pk=ref)
+                        x=w.contact(rec,x) if kind=="contact" else w.booking(rec,x) if kind=="booking" else w.child(kind,rec,x)
+                        if not x:continue
+                        x.updated=moment(sv);x.save();out["updated_here"]+=1
+                    else:out["same"]+=1
+                go[kind]+=sorted(ok-set(site[kind]))  # not on the site yet
+            audit(tenant,actor,"archive.merged",tenant.pk,**{k:v for k,v in out.items() if k not in ("missing","error","sent")},sent=sum(map(len,go.values())))
+    except IntegrityError:raise ValueError("questi dati sono già in un'altra attività di questo programma")
+    finally:QUIET.reset(token)
+    with scope(tenant):
+        for kind,refs in go.items():touch(tenant.pk,kind,refs,stamp=False)
+    out["sent"]=sum(map(len,go.values()));out["missing"]=sorted(out["missing"])
+    try:push(tenant,c)
+    except ValueError as ex:out["error"]=str(ex)[:500];state(tenant,archive={**(tenant.wp_state or {}).get("archive",{}),"error":out["error"]})
     return out
 
 def run():
