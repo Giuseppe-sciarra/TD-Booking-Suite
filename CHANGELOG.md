@@ -1,6 +1,10 @@
-# TD Booking Suite 2.20.0 — registro modifiche
+# TD Booking Suite 2.20.1 — registro modifiche
 
-**4 novembre 2026 · versione 2.20.0**
+**4 novembre 2026 · versione 2.20.1**
+
+## 2.20.1 — cassa più leggibile
+
+- **Cassa**: nel conto descrizione, prezzo e sconto di ogni riga si leggono per intero (la colonna del conto è più larga); i tasti del pagamento tornano tondi e in fila; «Totale» staccato dall'importo
 
 ## 2.20.0 — il sito e il PC si allineano sulla modifica più recente
 
