@@ -230,3 +230,19 @@ def test_close_and_annullo_by_hand_from_the_page(shop):
     with scope(t):
         assert list(Sale.objects.order_by("created").values_list("kind",flat=True))==["close","void"]
         assert Sale.objects.get(kind="void").data=={"z":"2026","number":"0012","day":"2026-10-24"}
+
+def test_services_imported_from_the_old_price_list_once(shop):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from django.urls import reverse
+    t,loc,svc=shop
+    with scope(t):op=Resource.objects.create(tenant=t,location=loc,name="Cristina")
+    c,_=client_as(t,role="owner")
+    csv="Servizio;Prezzo;Durata in minuti;Gruppo\nCOLOR CARE;34,00;30;Tecnico\nTaglio donna;25;30;\nPiega glam lunghi;21;;\n;;;\nBalayage;abc;50;\n".encode()
+    for _ in range(2):
+        r=c.post(reverse("services_import",args=[t.slug]),{"location":loc.pk,"staff":"on","file":SimpleUploadedFile("listino.csv",csv)})
+        assert r.status_code==200
+    with scope(t):
+        made=Service.objects.filter(location=loc).exclude(pk=svc.pk).order_by("name")
+        assert [(s.name,s.price,s.duration,s.kind) for s in made]==[("Color Care",Decimal("34.00"),30,"resource"),("Piega glam lunghi",Decimal("21.00"),30,"resource")]
+        assert all(s.resource_links.filter(resource=op).exists() for s in made)
+    assert "con errori: 1" in r.content.decode() or "già presenti" in r.content.decode()

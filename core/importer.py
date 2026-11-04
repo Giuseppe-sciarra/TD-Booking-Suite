@@ -41,9 +41,9 @@ RECORD={"date","service","staff","details"}
 SINGLE={"first_name","last_name","full_name","code","date","service","staff","consent","company","tax_code","vat","address","zip","city","province","sdi","pec"}
 # column titles of the common programs and of hand-made sheets, without spaces and accents
 SKIP=("sesso","genere")
-EXTRA=("datanascita","datadinascita","nascita","compleanno","ultimavisita","dataultimavisita","primavisita","dataiscrizione","datainserimento","datacreazione","indirizzo","via","citta","comune","professione","tessera")
+EXTRA=("datanascita","datadinascita","nascita","compleanno","ultimavisita","dataultimavisita","primavisita","dataiscrizione","datainserimento","datacreazione","professione","tessera")
 GUESS=(("tax_code",("cf","codicefiscale","codfisc","codfiscale")),("vat",("partitaiva","piva")),("company",("ragionesociale",)),
-    ("pec",("pec","emailpec")),("sdi",("sdi","codicesdi","codicedestinatario","codiceunivoco")),("zip",("cap",)),("province",("provincia","prov")),
+    ("pec",("pec","emailpec")),("sdi",("sdi","codicesdi","codicedestinatario","codiceunivoco")),("zip",("cap",)),("address",("indirizzo","via","residenza")),("city",("comune","citta","localita","paese")),("province",("provincia","prov")),
     ("full_name",("nomecognome","cognomenome","nomeecognome","cognomeenome","nominativo","cliente","nomecliente","fullname","name")),
     ("first_name",("nome","firstname","givenname")),("last_name",("cognome","lastname","surname","familyname")),
     ("email",("email","mail","eposta","posta","emailaddress","indirizzoemail")),

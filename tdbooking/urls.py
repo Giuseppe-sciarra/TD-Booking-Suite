@@ -94,6 +94,7 @@ urlpatterns=[
  path("t/<slug:slug>/tavoli/siedi/",tables.seat_walkin,name="table_walkin"),
  path("t/<slug:slug>/tavoli/<str:what>/nuovo/",tables.edit,name="table_new"),
  path("t/<slug:slug>/tavoli/<str:what>/<uuid:item_id>/",tables.edit,name="table_edit"),
+ path("t/<slug:slug>/catalog/services/importa/",portal.services_import,name="services_import"),
  path("t/<slug:slug>/catalog/<str:kind>/",portal.catalog,name="catalog"),
  path("t/<slug:slug>/catalog/<str:kind>/new/",portal.catalog_edit,name="catalog_new"),
  path("t/<slug:slug>/catalog/<str:kind>/<uuid:item_id>/",portal.catalog_edit,name="catalog_edit"),

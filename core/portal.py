@@ -1026,6 +1026,48 @@ def catalog(request,slug,kind):
     return render(request,"catalog.html",{"kind":kind,"title":title,"help":help_text,"page":Paginator(rows.order_by(*order,"pk"),50).get_page(request.GET.get("page")),"catalog":{k:v for k,v in catalog_kinds(request.tenant).items() if catalog_allowed(request,k)},
         "presets":PRESETS if kind=="services" and request.user.is_staff else {},"many_locations":Location.objects.filter(active=True).count()>1,"removable":kind in REMOVABLE,
         "can_profile":can_profile(request),"business_label":(PRESETS.get(request.tenant.business_type) or {}).get("label","")})
+def services_import(request,slug):
+    """2.19.0: the price list of the old program (Excel or CSV): a service a row with its price and minutes, made in
+    one location, done by its operators when asked. A name already there is skipped, so loading it twice is harmless."""
+    from . import importer
+    require_role(request,schedule=True)
+    if not catalog_allowed(request,"services"):raise PermissionDenied
+    places=list(Location.objects.filter(active=True).order_by("name"));ctx={"places":places,"error":"","done":None}
+    if request.method=="POST":
+        try:
+            f=request.FILES.get("file")
+            if not f:raise BookingError("Scegli il file da importare.")
+            if f.size>importer.MAX_BYTES:raise BookingError("File troppo grande: al massimo 20 MB.")
+            loc=next((l for l in places if str(l.pk)==request.POST.get("location")),None)
+            if not loc:raise BookingError("Scegli la sede.")
+            head,rows=importer.read(f.read())
+            col={importer.plain(h):i for i,h in enumerate(head)}
+            pick=lambda *names:next((col[n] for n in names if n in col),None)
+            n,pr,du=pick("servizio","nome","descrizione","trattamento"),pick("prezzo","prezzovendita","importo"),pick("durata","duratainminuti","minuti","tempomedio","tempo")
+            if n is None:raise BookingError("Nel file manca la colonna Servizio (il nome).")
+            have={s.casefold() for s in Service.objects.filter(location=loc).values_list("name",flat=True)}
+            staff=list(Resource.objects.filter(location=loc,active=True)) if request.POST.get("staff")=="on" else []
+            done={"created":0,"same":0,"errors":[]}
+            with transaction.atomic():
+                for i,row in enumerate(rows,start=2):
+                    cell=lambda c:row[c].strip() if c is not None and c<len(row) else ""
+                    name=importer.name(cell(n))[:120]
+                    if not name:continue
+                    if name.casefold() in have:done["same"]+=1;continue
+                    try:
+                        from decimal import Decimal,InvalidOperation
+                        price=Decimal(cell(pr).replace("€","").replace(",",".").strip()).quantize(Decimal("0.01")) if cell(pr) else None
+                        minutes=int(float(cell(du).replace(",","."))) if cell(du) else 0
+                    except (ValueError,TypeError,InvalidOperation):done["errors"].append(f"riga {i}: prezzo o durata non validi");continue
+                    if price is not None and not (price.is_finite() and 0<=price<=99999):done["errors"].append(f"riga {i}: prezzo non valido");continue
+                    svc=Service.objects.create(tenant=request.tenant,location=loc,name=name,kind="resource",duration=minutes if 5<=minutes<=720 else 30,
+                        interval=15,price=price,resource_label="Operatore")
+                    for r in staff:ServiceResource.objects.create(tenant=request.tenant,service=svc,resource=r)
+                    have.add(name.casefold());done["created"]+=1
+                audit(request.tenant,request.user,"services.imported",loc.pk,created=done["created"],same=done["same"])
+            ctx["done"]=done
+        except BookingError as ex:ctx["error"]=str(ex)
+    return render(request,"services_import.html",ctx)
 def catalog_edit(request,slug,kind,item_id=None):
     if kind not in CATALOG:raise PermissionDenied
     require(request,"catalog.write")

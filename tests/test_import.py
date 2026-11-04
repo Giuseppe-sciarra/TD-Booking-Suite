@@ -86,7 +86,9 @@ def test_crafted_and_odd_files_end_in_a_message():
 
 def test_guess_from_titles():
     head=["Codice","Nominativo","Cellulare","Telefono casa","E-mail","Data di nascita","Data","Servizio","Operatrice","Formula colore","Consenso newsletter","Codice fiscale","Città"]
-    assert importer.guess(head,True,True)==["code","full_name","phone","phone","email","extra","date","service","staff","details","consent","tax_code","extra"]
+    assert importer.guess(head,True,True)==["code","full_name","phone","phone","email","extra","date","service","staff","details","consent","tax_code","city"]
+    # 2.19.1: address and town go to the fields of the card, not to the notes
+    assert importer.guess(["Indirizzo","Comune","Località"],False,False)==["address","city","extra"]
     # no client record (restaurants, hotels): the treatment columns go to the notes; no consent without the permission
     assert importer.guess(["Nome","Cognome","Data","Consenso marketing"],False,False)==["first_name","last_name","extra",""]
     # the privacy notice is not marketing consent; a card number is not a phone; 2.16.1: the fiscal data go to the card

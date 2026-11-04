@@ -1,6 +1,12 @@
-# TD Booking Suite 2.19.0 — registro modifiche
+# TD Booking Suite 2.19.1 — registro modifiche
 
-**4 novembre 2026 · versione 2.19.0**
+**4 novembre 2026 · versione 2.19.1**
+
+## 2.19.1 — importa il listino dei servizi
+
+- **Importa servizi** (*Servizi › Importa da Excel*): il listino del programma di prima, da Excel o CSV, con le colonne *Servizio*, *Prezzo* e *Durata in minuti*: un servizio su appuntamento per riga, nella sede scelta e, se spuntato, con tutti gli operatori della sede. I nomi già presenti si saltano, quindi ricaricare lo stesso file non crea doppioni
+- **Importa clienti**: le colonne *Indirizzo* e *Comune* (o *Città*) vanno nei campi della scheda, non più nelle note
+- **Guida**: *Listino dal programma di prima*, con l'ordine giusto: operatori, servizi, poi clienti e storico
 
 ## 2.19.0 — appuntamenti dall'agenda del sito, sconto di riga, chiusura e annullo dalla cassa
 
