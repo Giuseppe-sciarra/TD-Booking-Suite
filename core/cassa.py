@@ -409,7 +409,7 @@ def settings_view(request,slug):
     """Registratore di cassa: the register of each location, its departments and payments, and how it is reached."""
     if not allowed(request):raise PermissionDenied
     if request.GET.get("ponte"):return FileResponse(open(settings.BASE_DIR/"scripts"/"ponte_cassa.py","rb"),as_attachment=True,filename="ponte_cassa.py")
-    t=request.tenant;token="";token_for=None
+    t=request.tenant;token="";token_for=None;found=None;found_for=None
     locations=list(Location.objects.filter(active=True).order_by("name"))
     if request.method=="POST":
         loc=get_object_or_404(Location,pk=request.POST.get("location"));action=request.POST.get("action");anchor=f"#cassa-{loc.pk}"
@@ -450,6 +450,11 @@ def settings_view(request,slug):
                 Tenant.objects.filter(pk=t.pk).update(till_on=Location.objects.filter(active=True).exclude(till={}).exists())
                 audit(t,request.user,"till.settings",loc.pk,device=device)
                 messages.success(request,"Registratore salvato." if device else "Registratore tolto dalla sede.")
+            elif action=="discover":
+                # 2.20.3: only where this computer is in the shop (Windows); the bridge has --cerca
+                if not settings.TILL_DIRECT:raise ValueError("La ricerca si fa dal computer del negozio: lì lancia python ponte_cassa.py --cerca.")
+                found,ports=ponte().discover();found_for=loc.pk
+                audit(t,request.user,"till.discover",loc.pk,found=len(found))
             elif action in ("probe","test"):
                 if not loc.till.get("device"):raise ValueError("Prima salva il registratore.")
                 enqueue(t,loc,kind=action,actor=str(request.user.pk))
@@ -460,7 +465,7 @@ def settings_view(request,slug):
             elif action=="revoke":
                 loc.till_token="";loc.save(update_fields=["till_token"]);audit(t,request.user,"till.token_revoked",loc.pk)
                 messages.success(request,"Codice del ponte revocato.")
-            if not token:return redirect(reverse("till_settings",args=[slug])+anchor)
+            if not token and found_for is None:return redirect(reverse("till_settings",args=[slug])+anchor)
         except ValueError as ex:messages.error(request,str(ex))
         locations=list(Location.objects.filter(active=True).order_by("name"))
     cards=[]
@@ -468,7 +473,7 @@ def settings_view(request,slug):
         conf=l.till;deps=conf.get("departments",{})
         cards.append({"loc":l,"conf":conf,"pay":[(k,label,conf.get("payments",{}).get(k,"")) for k,label in PAYMENTS],
             "services":[(s,deps.get(str(s.pk),{})) for s in Service.objects.filter(location=l,active=True).order_by("name")],
-            "last":Sale.objects.filter(location=l,kind__in=("probe","test")).order_by("-created").first(),"rch":{k:rch_cmd(conf,k) for k in RCH_CMDS},"token":token if token_for==l.pk else ""})
+            "last":Sale.objects.filter(location=l,kind__in=("probe","test")).order_by("-created").first(),"rch":{k:rch_cmd(conf,k) for k in RCH_CMDS},"found":(found,ports) if found_for==l.pk else None,"token":token if token_for==l.pk else ""})
     ports=[]
     if settings.TILL_DIRECT:
         try:from serial.tools.list_ports import comports;ports=[p.device for p in comports()]

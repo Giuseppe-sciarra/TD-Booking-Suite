@@ -1,6 +1,11 @@
-# TD Booking Suite 2.20.2 — registro modifiche
+# TD Booking Suite 2.20.3 — registro modifiche
 
-**4 novembre 2026 · versione 2.20.2**
+**4 novembre 2026 · versione 2.20.3**
+
+## 2.20.3 — trova la cassa da solo
+
+- **Registratore di cassa: Cerca la cassa** (versione Windows, sul PC del negozio): cerca nella rete di questo computer le casse RCH Print!F (il loro servizio web risponde a una richiesta vuota, senza stampare né cancellare niente) ed Epson (lo stato della stampante), ed elenca le porte USB. *Usa questa* compila modello, collegamento e indirizzo o porta: si controlla e si salva
+- **Ponte cassa**: `python ponte_cassa.py --cerca` fa la stessa ricerca dal computer del negozio, per il Cloud
 
 ## 2.20.2 — correzione importante per il Cloud e cassa RCH più sicura
 

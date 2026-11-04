@@ -6,9 +6,11 @@ restituisce la risposta. Solo libreria standard di Python 3.9+; per la cassa via
 
     python ponte_cassa.py https://indirizzo/book/attivita/api/cassa/ tdcassa_IL-CODICE
     python ponte_cassa.py --porte          (elenca le porte COM, per la cassa via USB)
+    python ponte_cassa.py --cerca          (cerca le casse RCH ed Epson nella rete del negozio e sulle porte USB)
 
 Il programma usa le stesse funzioni (deliver) quando chiama la cassa da sé, sull'edizione Windows."""
-import ipaddress,json,sys,time,urllib.error,urllib.request
+import ipaddress,json,socket,sys,time,urllib.error,urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 TIMEOUT=20
@@ -30,6 +32,44 @@ def http_send(url,body):
     except urllib.error.HTTPError as ex:return {"status":ex.code,"body":ex.read(1<<20).decode("utf-8","replace")}
     except urllib.error.URLError:return {"error":"unreachable"}  # urllib wraps only the errors of connecting and sending
     except OSError:return {"error":"unknown"}
+
+# ---------- 2.20.3: where the register is
+EPSON_STATUS='<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><printerCommand><queryPrinterStatus operator="1" statusType="1" /></printerCommand></s:Body></s:Envelope>'
+def networks():
+    """The /24 of each private IPv4 address of this PC. shortcut: a /24 each, the shop networks seen so far; ask for the address by hand on a bigger one"""
+    found=set()
+    try:found.update(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:pass
+    try:
+        with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as u:u.connect(("10.255.255.255",1));found.add(u.getsockname()[0])  # no packet goes out
+    except OSError:pass
+    return sorted({ipaddress.ip_network(a+"/24",strict=False) for a in found if ipaddress.ip_address(a).is_private and not ipaddress.ip_address(a).is_loopback},key=str)
+def identify(host,port=80,wait=0.4):
+    """What answers at host:port: "rch" (its web service answers an empty request with its status, nothing printed or
+    cleared), "epson" (the status of fpmate) or None."""
+    try:
+        with socket.create_connection((host,port),timeout=wait):pass
+    except OSError:return None
+    def post(path,body):
+        try:
+            with OPENER.open(urllib.request.Request(f"http://{host}:{port}{path}",data=body.encode(),method="POST",headers={"Content-Type":"text/xml; charset=utf-8"}),timeout=3) as r:return r.read(1<<16).decode("utf-8","replace")
+        except urllib.error.HTTPError as ex:return ex.read(1<<16).decode("utf-8","replace")
+        except OSError:return ""
+    answer=post("/service.cgi",'<?xml version="1.0" encoding="UTF-8"?><Service></Service>')
+    if "<Service" in answer and "<errorCode" in answer:return "rch"
+    if 'success="' in post("/cgi-bin/fpmate.cgi?devid=local_printer&timeout=3000",EPSON_STATUS):return "epson"
+    return None
+def discover(hosts=None,port=80):
+    """[{"device","address"}] of the registers answering on the shop's network, and [{"port","description"}] of the COM ports."""
+    hosts=hosts if hosts is not None else [str(h) for n in networks() for h in n.hosts()]
+    with ThreadPoolExecutor(64) as pool:kinds=list(pool.map(lambda h:identify(h,port),hosts))
+    found=[{"device":k,"address":h if port==80 else f"{h}:{port}"} for h,k in zip(hosts,kinds) if k]
+    ports=[]
+    try:
+        from serial.tools.list_ports import comports
+        ports=[{"port":p.device,"description":p.description or ""} for p in comports()]
+    except ImportError:pass
+    return found,ports
 
 def frame(command,framing):
     data=command.encode("ascii","replace")
@@ -76,6 +116,13 @@ def main(argv):
         try:from serial.tools.list_ports import comports
         except ImportError:print("Serve pyserial: pip install pyserial");return 1
         for p in comports():print(p.device,"-",p.description)
+        return 0
+    if argv[1:]==["--cerca"]:
+        print("Cerco nella rete",", ".join(map(str,networks())) or "(nessuna rete trovata)","…")
+        found,ports=discover()
+        for f in found:print("Cassa",{"rch":"RCH Print!F","epson":"Epson"}[f["device"]],"in rete:",f["address"])
+        if not found:print("Nessuna cassa in rete: è accesa, con il cavo, nella stessa rete e con il web server acceso?")
+        for p in ports:print("Porta USB/seriale:",p["port"],"-",p["description"])
         return 0
     if len(argv)!=3 or not argv[2].startswith("tdcassa_"):print(__doc__);return 2
     server,token=argv[1],argv[2]

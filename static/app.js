@@ -517,3 +517,8 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 })();
 // 2.16.0: a page waiting for the register looks again by itself
 (()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();
+
+// 2.20.3: Registratore di cassa, Cerca la cassa: «Usa questa» fills the form of that location
+document.querySelectorAll("[data-till-use]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.target,set=(k,v)=>{const el=document.getElementById(k+"-"+id);if(el&&v!==undefined){el.value=v;el.dispatchEvent(new Event("change",{bubbles:true}));}};
+ set("dev",b.dataset.device);set("conn",b.dataset.connection);if(b.dataset.address)set("ip",b.dataset.address);if(b.dataset.port)set("port",b.dataset.port);
+ const f=document.getElementById("dev-"+id);if(f)f.closest("form").scrollIntoView({behavior:"smooth",block:"start"});}));

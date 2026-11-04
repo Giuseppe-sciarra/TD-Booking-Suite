@@ -247,3 +247,19 @@ def test_services_imported_from_the_old_price_list_once(shop):
         assert [(s.name,s.price,s.duration,s.kind) for s in made]==[("Color Care",Decimal("34.00"),30,"resource"),("Piega glam lunghi",Decimal("21.00"),30,"resource")]
         assert all(s.resource_links.filter(resource=op).exists() for s in made)
     assert "con errori: 1" in r.content.decode() or "già presenti" in r.content.decode()
+
+def test_discover_finds_the_register_and_fills_the_form(shop,register,settings,monkeypatch):
+    from django.urls import reverse
+    t,loc,svc=shop
+    Fake.answers=[RCH_OK]
+    assert ponte.identify("127.0.0.1",register)=="rch" and Fake.seen==['<?xml version="1.0" encoding="UTF-8"?><Service></Service>']  # an empty request: nothing printed or cleared
+    server=ThreadingHTTPServer(("127.0.0.1",0),BaseHTTPRequestHandler);threading.Thread(target=server.serve_forever,daemon=True).start()
+    try:assert ponte.identify("127.0.0.1",server.server_address[1]) is None and ponte.identify("127.0.0.1",1) is None  # another web server; nothing listening
+    finally:server.shutdown()
+    c,_=client_as(t,staff=True);url=reverse("till_settings",args=[t.slug])
+    settings.TILL_DIRECT=False
+    assert "ponte_cassa.py --cerca" in c.post(url,{"location":loc.pk,"action":"discover"},follow=True).content.decode()
+    settings.TILL_DIRECT=True
+    monkeypatch.setattr(cassa.ponte(),"discover",lambda:([{"device":"rch","address":"192.168.1.50"}],[{"port":"COM3","description":"USB Serial Device"}]))
+    page=c.post(url,{"location":loc.pk,"action":"discover"}).content.decode()
+    assert 'data-address="192.168.1.50"' in page and 'data-port="COM3"' in page and "RCH Print!F" in page
