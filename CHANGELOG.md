@@ -2,13 +2,16 @@
 
 **4 novembre 2026 · versione 2.19.0**
 
-## 2.19.0 — appuntamenti dall'agenda del sito
+## 2.19.0 — appuntamenti dall'agenda del sito, sconto di riga, chiusura e annullo dalla cassa
 
 - **Nuovo appuntamento nell'agenda riservata del sito** (`[tdbs_agenda]`, modalità PC): chi entra con la password dell'agenda aggiunge appuntamenti anche con il PC spento. Sceglie *Servizio*, *Prestazione* se ce n'è più di una, *Operatore* (solo chi fa quel servizio, più *Chiunque*), *Giorno* e uno degli orari liberi, oppure scrive *Altro orario*, che controlla il PC; poi *Nome*, *Cognome*, *Telefono*, *Email (facoltativa)* e *Note*, e preme **Salva l'appuntamento**. L'orario sparisce subito dal modulo pubblico e in agenda l'appuntamento è «Da sincronizzare» finché il PC non lo prende. Spostare e annullare restano del programma
 - **Nel programma** questi appuntamenti hanno l'origine nuova **Agenda del sito**: con orario e operatore ancora liberi diventano prenotazioni confermate, come al banco, e il cliente con l'email riceve la conferma del banco (mai «Richiesta ricevuta»); se nel frattempo l'orario è stato dato ad altri, o l'altro orario non va bene, finiscono tra le **Richieste da confermare**, senza email finché non vengono accettate. Il cliente si trova o si crea in rubrica come al banco, per email o per telefono. Registro attività e archivio del sito come per ogni prenotazione
 - **Agenda del sito sul telefono**: la riga degli operatori e le prenotazioni scorrono insieme, di lato, in un solo riquadro, nella vista giorno e nella vista settimana; gli operatori restano in alto e, nella settimana, i giorni a sinistra
 - **Plugin WordPress 2.19.0**: indirizzo nuovo `/wp-json/tdbs/v1/agenda/book` (POST, dal browser, con la sessione dell'agenda, nonce e limite di richieste); come `/slots` e `/book` resta sotto il firewall: la whitelist del PC non cambia (`/sync` e `/archive/`). I dati del cliente restano cifrati nel sito come le richieste dei visitatori, fino al PC
 - **Guida**: *Agenda riservata sul sito* spiega come aggiungere un appuntamento
+- **Cassa: sconto di riga**: accanto al prezzo di ogni riga del conto c'è *Sconto*, in euro (`5,00`) o in percentuale (`100%`); sullo scontrino esce come riga SCONTO sotto quel servizio (Epson: sconto sull'articolo; RCH: comando da provare, `=V-/$importo` di serie). Lo sconto generale diventa *Sconto sul totale*. Anche la copia per email mostra gli sconti di riga
+- **Cassa: chiusura giornaliera e annullo dal programma**: in *Chiusura e annulli* il tasto **Chiusura giornaliera** manda alla cassa la chiusura (Epson: rapporto Z; RCH: comandi da provare, `=C3 =C10 =C1` di serie). **Annulla** su uno scontrino di oggi manda l'annullo alla cassa con il suo «Documento n.»; *Annulla un altro scontrino* annulla uno scontrino di un altro giorno o fatto dalla cassa, con data e «Documento n.» (per esempio 2026-0012). Su RCH l'annullo di serie è `=k/&{data}/[{z}/]{numero}`, da provare
+- **Registratore di cassa**: per la RCH, *Comandi RCH da provare* con i comandi di sconto di riga, annullo e chiusura, da correggere senza aspettare una versione nuova; vuoti, sconto dentro il prezzo e annullo e chiusura dalla cassa come prima
 
 ## 2.18.0 — il sito come archivio centrale
 
