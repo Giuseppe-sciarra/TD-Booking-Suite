@@ -620,7 +620,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         if contact:contact.save()
         status="in_progress" if walkin else "pending" if late or not staff and needs_request(service,party,pii,contact) else "confirmed"
         booking=Booking(tenant=tenant,service=service,location=service.location,resource=resource,option=option,occurrence=event,contact=contact,start=start,end=end,busy_start=bs,busy_end=be,party=party,request_key=key,request_fingerprint=fingerprint,
-            status=status,origin=("walkin" if walkin else "import" if origin=="import" else "desk") if staff else origin,source="" if staff else source,series=series,visit=visit and visit[0],snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in (visit[2] if visit else service).fields},
+            status=status,origin=("walkin" if walkin else origin if origin in ("import","agenda") else "desk") if staff else origin,source="" if staff else source,series=series,visit=visit and visit[0],snapshot={"service":service.name,"location":service.location.name,"resource":resource.name if resource else "","option":option.name if option else "","field_labels":{x["key"]:x["label"] for x in (visit[2] if visit else service).fields},
             "policy":{"cancel_cutoff_minutes":service.cancel_cutoff_minutes,"min_days":service.min_days}})
         if not notices:booking.snapshot["notices"]=False
         if ch:booking.snapshot["channel"]=ch
@@ -639,7 +639,8 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
         from django.conf import settings
         from .client_mails import send
         # 2.14.0: the appointments imported from the old program were already agreed: no email, no notice to the staff
-        if not walkin and not series and not visit and booking.origin!="import":send(tenant,booking,"requested" if status=="pending" else "confirmed")
+        # 2.19.0: one written in the site's agenda by the staff and not free now: no "richiesta ricevuta", the client gets the yes when the desk accepts it
+        if not walkin and not series and not visit and booking.origin!="import" and not (booking.origin=="agenda" and status=="pending"):send(tenant,booking,"requested" if status=="pending" else "confirmed")
         if consent_requested:
             token=action_token(tenant,"consent",contact=contact,booking=booking,days=7)
             # 2.14.0: the words the client read, in the language of his page

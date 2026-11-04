@@ -4,7 +4,13 @@
 .tdbs-pc-updated{font-size:13px;opacity:.75}.tdbs-pc-done{font-weight:600}
 .tdbs-agenda-bar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}.tdbs-agenda-bar [aria-current=true]{outline:3px solid currentColor;outline-offset:1px;font-weight:700}.tdbs-agenda-bar form{display:inline}
 .tdbs-agenda-updated{font-size:13px;opacity:.75}.tdbs-agenda-body{animation:tdbs-in .25s ease-out}@keyframes tdbs-in{from{opacity:0;transform:translateY(4px)}}
-.tdbs-agenda-cols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(14em,1fr);gap:1em;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}.tdbs-agenda-col{scroll-snap-align:start;min-width:0}
+/* 2.19.0: one scroll for the operators' row and the bookings: the row stays on top, the days of the week on the left; the theme's colours, a tint and a blur under what stays */
+.tdbs-agenda-scroll{overflow:auto;max-height:80vh;max-height:80dvh;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.tdbs-agenda-table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;margin:0}.tdbs-agenda-table th,.tdbs-agenda-table td{width:14em;vertical-align:top;text-align:left;padding:6px 8px;border:0}
+.tdbs-agenda-table thead th{position:-webkit-sticky;position:sticky;top:0;z-index:2}.tdbs-agenda-table tbody th{position:-webkit-sticky;position:sticky;left:0;z-index:1;width:5.5em}.tdbs-agenda-table .tdbs-agenda-corner{left:0;z-index:3;width:5.5em}
+.tdbs-agenda-table thead th,.tdbs-agenda-table tbody th{background:color-mix(in srgb,currentColor 7%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}.tdbs-agenda-table.is-week tbody tr+tr>*{border-top:1px solid color-mix(in srgb,currentColor 15%,transparent)}
 .tdbs-agenda-booking{border:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:8px;padding:6px 10px;margin:0 0 8px}.tdbs-agenda-booking.is-pending{border-style:dashed}
 .tdbs-agenda-booking summary{cursor:pointer}.tdbs-agenda-booking dl{margin:8px 0 0}.tdbs-agenda-booking dt{font-size:13px;opacity:.75}.tdbs-agenda-booking dd{margin:0 0 6px}
 .tdbs-agenda-chip{font-size:12px;border:1px solid currentColor;border-radius:99px;padding:0 6px;white-space:nowrap}.tdbs-agenda-empty{opacity:.6;font-size:14px}
+.tdbs-agenda-new{margin:8px 0 16px}.tdbs-agenda-new>summary{display:inline-block;cursor:pointer;list-style:none}.tdbs-agenda-new>summary::-webkit-details-marker{display:none}
+.tdbs-agenda-form{max-width:720px;margin-top:12px}.tdbs-agenda-form select,.tdbs-agenda-form input:not([type=checkbox]),.tdbs-agenda-form textarea{width:100%;max-width:100%;box-sizing:border-box}.tdbs-agenda-status{font-weight:600}

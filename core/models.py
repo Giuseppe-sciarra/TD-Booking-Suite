@@ -516,7 +516,7 @@ class Booking(Scoped):
     party=models.PositiveIntegerField(default=1)
     status=models.CharField(max_length=15,default="confirmed",choices=[("pending","In attesa di conferma"),("confirmed","Confermata"),("arrived","Arrivato"),("in_progress","In corso"),("completed","Completata"),("cancelled","Annullata"),("no_show","Assente")])
     # 2.14.0: where it came from, and the tag of the link (?src=instagram); empty for the bookings made before
-    origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata")])
+    origin=models.CharField(max_length=10,blank=True,choices=[("public","Pagina pubblica"),("wordpress","Sito WordPress"),("desk","Banco"),("walkin","Senza appuntamento"),("import","Importata"),("agenda","Agenda del sito")])
     source=models.CharField(max_length=30,blank=True)
     series=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the dates repeated together from the desk (Ripeti)
     visit=models.UUIDField(null=True,blank=True,db_index=True)  # 2.14.0: the services of one visit, one after the other

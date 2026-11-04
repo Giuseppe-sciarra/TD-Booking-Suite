@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto.
- * Version: 2.18.0
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto.
+ * Version: 2.19.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.18.0';
+const TDBS_VERSION='2.19.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -220,6 +220,8 @@ add_action('rest_api_init',function(){
     register_rest_route('tdbs/v1','/sync',array('methods'=>'POST','callback'=>'tdbs_pc_sync','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/slots',array('methods'=>'GET','callback'=>'tdbs_pc_slots_api','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/book',array('methods'=>'POST','callback'=>'tdbs_pc_book','permission_callback'=>'__return_true'));
+    // 2.19.0: the private agenda's Nuovo appuntamento, from the browser with the agenda's session: a visitors' route, not the PC's
+    register_rest_route('tdbs/v1','/agenda/book',array('methods'=>'POST','callback'=>'tdbs_agenda_book','permission_callback'=>'__return_true'));
     // 2.18.0: the PC's archive; with /sync the only routes of the PC, under one prefix a firewall can allow (/slots and /book are the visitors')
     register_rest_route('tdbs/v1','/archive/push',array('methods'=>'POST','callback'=>'tdbs_archive_push','permission_callback'=>'__return_true'));
     register_rest_route('tdbs/v1','/archive/pull',array('methods'=>'POST','callback'=>'tdbs_archive_pull','permission_callback'=>'__return_true'));
@@ -367,12 +369,12 @@ function tdbs_pc_slots_api(WP_REST_Request $request) {
     $response->header('Cache-Control','no-store');
     return $response;
 }
-/** A few requests per address and per hour, and a ceiling for the whole site. */
-function tdbs_pc_throttle() {
-    $key='tdbs_rl_'.md5((string)($_SERVER['REMOTE_ADDR']??'').wp_salt('nonce'));
-    $one=(int)get_transient($key);$all=(int)get_transient('tdbs_rl_all');
-    if ($one>=10 || $all>=60) return false;
-    set_transient($key,$one+1,HOUR_IN_SECONDS);set_transient('tdbs_rl_all',$all+1,HOUR_IN_SECONDS);
+/** A few requests per address and per hour, and a ceiling for the whole site. 2.19.0: the agenda's own counters, higher. */
+function tdbs_pc_throttle($name='tdbs_rl',$max=10,$ceiling=60) {
+    $key=$name.'_'.md5((string)($_SERVER['REMOTE_ADDR']??'').wp_salt('nonce'));
+    $one=(int)get_transient($key);$all=(int)get_transient($name.'_all');
+    if ($one>=$max || $all>=$ceiling) return false;
+    set_transient($key,$one+1,HOUR_IN_SECONDS);set_transient($name.'_all',$all+1,HOUR_IN_SECONDS);
     return true;
 }
 function tdbs_pc_book(WP_REST_Request $request) {
@@ -500,7 +502,7 @@ add_filter('wp_robots',function($robots){
     $post=get_queried_object();
     return $post instanceof WP_Post && has_shortcode((string)$post->post_content,'tdbs_agenda') ? array_merge($robots,array('noindex'=>true,'nofollow'=>true)) : $robots;
 });
-/** The site's requests not yet taken by the PC, as the agenda shows them: "in attesa di conferma". */
+/** The site's requests not yet taken by the PC, as the agenda shows them: "in attesa di conferma"; 2.19.0 the agenda's own "da sincronizzare". */
 function tdbs_agenda_pending() {
     global $wpdb;$out=array();$snap=tdbs_pc_snapshot();
     foreach ((array)$wpdb->get_results('SELECT slot,data FROM '.tdbs_pc_table().' ORDER BY created',ARRAY_A) as $row) {
@@ -510,29 +512,125 @@ function tdbs_agenda_pending() {
         foreach ((array)($sv['options']??array()) as $o) if (($o['id']??'')===($slot['option']??'')) $name.=' · '.$o['name'];
         foreach ((array)($sv['resources']??array()) as $r) if (($r['id']??'')===($slot['resource']??'')) $who=(string)$r['name'];
         $out[]=array('start'=>$slot['date'].'T'.$slot['time'],'end'=>$slot['date'].'T'.$slot['end'],'service'=>$name,'resource'=>(string)$slot['resource'],'operator'=>$who,
-            'status'=>'In attesa di conferma · dal sito','pending'=>true,'client'=>trim($client['first_name'].' '.$client['last_name']),'phone'=>$client['phone'],'notes'=>$client['notes']);
+            'status'=>($slot['source']??'')==='agenda'?'Da sincronizzare'.(!empty($slot['free'])?' · altro orario, lo controlla il PC':''):'In attesa di conferma · dal sito','pending'=>true,'client'=>trim($client['first_name'].' '.$client['last_name']),'phone'=>$client['phone'],'notes'=>$client['notes']);
     }
     return $out;
 }
-function tdbs_agenda_day($a,$day) {
-    $cols=array();foreach ((array)$a['operators'] as $o) $cols[(string)$o['id']]=array('name'=>(string)$o['name'],'items'=>array());
-    $other=array('name'=>'Senza operatore','items'=>array());
-    foreach ((array)$a['bookings'] as $b) if (substr((string)$b['start'],0,10)===$day) {if (isset($cols[$b['resource']])) $cols[$b['resource']]['items'][]=$b; else $other['items'][]=$b;}
-    if ($other['items']) $cols[]=$other;
-    $html='<section class="tdbs-agenda-day"><h3>'.esc_html(wp_date('l j F',strtotime($day.' 12:00 UTC'),new DateTimeZone('UTC'))).'</h3><div class="tdbs-agenda-cols">';
-    foreach ($cols as $c) {
-        usort($c['items'],function($x,$y){return strcmp($x['start'],$y['start']);});
-        $html.='<div class="tdbs-agenda-col"><h4>'.esc_html($c['name']).'</h4>'.($c['items']?'':'<p class="tdbs-agenda-empty">Nessuna prenotazione</p>');
-        foreach ($c['items'] as $b) {
-            $when=substr($b['start'],11,5).'–'.substr($b['end'],11,5);$dl='';
-            foreach (array('Quando'=>$when,'Servizio'=>$b['service'],'Con'=>$b['operator'],'Cliente'=>$b['client'],'Telefono'=>$b['phone'],'Note'=>$b['notes'],'Stato'=>$b['status']) as $k=>$v) if ((string)$v!=='')
-                $dl.='<dt>'.$k.'</dt><dd>'.($k==='Telefono'?'<a href="tel:'.esc_attr(preg_replace('/[^0-9+]/','',(string)$v)).'">'.esc_html($v).'</a>':nl2br(esc_html($v))).'</dd>';
-            $html.='<details class="tdbs-agenda-booking'.(!empty($b['pending'])?' is-pending':'').'"><summary><strong>'.esc_html($when).'</strong> '.esc_html($b['service'].($b['client']?' · '.$b['client']:''))
-                .(!empty($b['pending'])?' <span class="tdbs-agenda-chip">'.esc_html($b['status']).'</span>':'').'</summary><dl>'.$dl.'</dl></details>';
-        }
-        $html.='</div>';
+/** 2.19.0: the day or the week in one table, the operators' row and the bookings in the same horizontal scroll, also on
+    the phone: the operators stay on top, the days of the week on the left. */
+function tdbs_agenda_table($a,$days) {
+    $cols=array();foreach ((array)$a['operators'] as $o) $cols[(string)$o['id']]=(string)$o['name'];
+    $cells=array();
+    foreach ((array)$a['bookings'] as $b) {
+        $d=substr((string)$b['start'],0,10);
+        if (in_array($d,$days,true)) $cells[$d][isset($cols[(string)$b['resource']])?(string)$b['resource']:'-'][]=$b;
     }
-    return $html.'</div></section>';
+    foreach ($cells as $x) if (isset($x['-'])) {$cols['-']='Senza operatore';break;}
+    if (!$cols) $cols['-']='Prenotazioni';
+    $week=count($days)>1;$name=function($d,$f){return wp_date($f,strtotime($d.' 12:00 UTC'),new DateTimeZone('UTC'));};
+    $html=($week?'':'<h3>'.esc_html($name($days[0],'l j F')).'</h3>').'<div class="tdbs-agenda-scroll" role="region" aria-label="Prenotazioni" tabindex="0"><table class="tdbs-agenda-table'.($week?' is-week':'').'"><thead><tr>'
+        .($week?'<th scope="col" class="tdbs-agenda-corner">Giorno</th>':'');
+    foreach ($cols as $c) $html.='<th scope="col">'.esc_html($c).'</th>';
+    $html.='</tr></thead><tbody>';
+    foreach ($days as $d) {
+        $html.='<tr>'.($week?'<th scope="row">'.esc_html($name($d,'D j M')).'</th>':'');
+        foreach (array_keys($cols) as $k) {
+            $items=$cells[$d][$k]??array();
+            usort($items,function($x,$y){return strcmp($x['start'],$y['start']);});
+            $html.='<td>'.($items?'':($week?'<span class="tdbs-agenda-empty" aria-hidden="true">—</span><span class="screen-reader-text">Nessuna prenotazione</span>':'<p class="tdbs-agenda-empty">Nessuna prenotazione</p>'));
+            foreach ($items as $b) {
+                $when=substr($b['start'],11,5).'–'.substr($b['end'],11,5);$dl='';
+                foreach (array('Quando'=>$when,'Servizio'=>$b['service'],'Con'=>$b['operator'],'Cliente'=>$b['client'],'Telefono'=>$b['phone'],'Note'=>$b['notes'],'Stato'=>$b['status']) as $key=>$v) if ((string)$v!=='')
+                    $dl.='<dt>'.$key.'</dt><dd>'.($key==='Telefono'?'<a href="tel:'.esc_attr(preg_replace('/[^0-9+]/','',(string)$v)).'">'.esc_html($v).'</a>':nl2br(esc_html($v))).'</dd>';
+                $html.='<details class="tdbs-agenda-booking'.(!empty($b['pending'])?' is-pending':'').'"><summary><strong>'.esc_html($when).'</strong> '.esc_html($b['service'].($b['client']?' · '.$b['client']:''))
+                    .(!empty($b['pending'])?' <span class="tdbs-agenda-chip">'.esc_html($b['status']).'</span>':'').'</summary><dl>'.$dl.'</dl></details>';
+            }
+            $html.='</td>';
+        }
+        $html.='</tr>';
+    }
+    return $html.'</tbody></table></div>';
+}
+/** 2.19.0: how long the service takes with that operator, from a free time the PC sent (of another operator if none), else 30 minutes. */
+function tdbs_pc_length($sv,$option,$rid) {
+    $all=(array)($sv['slots'][$option]??array());
+    foreach (array_merge(array((array)($all[$rid]??array())),array_values($all)) as $days) foreach ((array)$days as $ranges) foreach ((array)$ranges as $range)
+        if (preg_match('/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/',(string)$range,$m) && ($n=($m[3]*60+$m[4])-($m[1]*60+$m[2]))>0) return $n;
+    return 30;
+}
+/** 2.19.0 Nuovo appuntamento, from the agenda with its password: a free time of the PC's data, or with Altro orario any
+    time (the PC checks it); the client's data sealed in the same table of the visitors' requests, with source "agenda".
+    Its time is no longer free on the site at once; no email from here, the PC sends the confirmation. */
+function tdbs_agenda_book(WP_REST_Request $request) {
+    global $wpdb;
+    $p=$request->get_json_params();
+    if (!is_array($p)) return tdbs_pc_error('Richiesta non valida.');
+    if (!wp_verify_nonce((string)($p['nonce']??''),'tdbs_agenda_book')) return tdbs_pc_error('Pagina scaduta: ricaricala e riprova.',403);
+    if (!tdbs_agenda_session()) return tdbs_pc_error('Agenda chiusa: ricarica la pagina e scrivi la password.',403);
+    $snap=tdbs_pc_on()?tdbs_pc_fresh():null;
+    if (!$snap) return tdbs_pc_error('Il sito non ha dati recenti dal PC: accendilo e riprova.',404);
+    if (!tdbs_pc_throttle('tdbs_rla',30,120)) return tdbs_pc_error('Troppi appuntamenti in poco tempo: riprova tra un’ora.',429);
+    $sv=tdbs_pc_service($snap,(string)($p['service']??''));
+    if (!$sv) return tdbs_pc_error('Servizio non disponibile.');
+    $option=(string)($p['option']??'');$options=array_column((array)($sv['options']??array()),'id');
+    if ($options ? !in_array($option,$options,true) : $option!=='') return tdbs_pc_error('Scegli la prestazione.');
+    $resource=(string)($p['resource']??'');$any=$resource==='';$other=!empty($p['other']);
+    if (!$any && !in_array($resource,array_column((array)($sv['resources']??array()),'id'),true)) return tdbs_pc_error('Scegli l’operatore.');
+    if ($other && $any) return tdbs_pc_error('Con «Altro orario» scegli l’operatore.');
+    $date=(string)($p['date']??'');$time=(string)($p['time']??'');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/',$time)) return tdbs_pc_error('Scegli giorno e orario.');
+    try {$tz=new DateTimeZone((string)($snap['timezone']??'Europe/Rome'));} catch (Exception $e) {$tz=wp_timezone();}
+    $now=new DateTime('now',$tz);
+    if ($date.' '.$time<=$now->format('Y-m-d H:i')) return tdbs_pc_error('Questo orario è già passato.');
+    $client=array();
+    foreach (array('first_name','last_name','phone') as $k) {
+        $client[$k]=sanitize_text_field((string)($p[$k]??''));
+        if ($client[$k]==='' || strlen($client[$k])>100) return tdbs_pc_error('Scrivi nome, cognome e telefono del cliente.');
+    }
+    if (!preg_match('/^[0-9 +().\/-]{6,30}$/',$client['phone'])) return tdbs_pc_error('Numero di telefono non valido, per esempio 333 123 4567.');
+    $client['email']=strtolower(trim((string)($p['email']??'')));
+    if ($client['email']!=='' && (!is_email($client['email']) || strlen($client['email'])>254)) return tdbs_pc_error('Email non valida.');
+    $client['notes']=mb_substr(sanitize_textarea_field((string)($p['notes']??'')),0,4000);
+    $client['notices']=true;$client['marketing']=false;
+    $wpdb->get_var("SELECT GET_LOCK('tdbs_book',10)");
+    if ($other) {$m=min(1439,(int)substr($time,0,2)*60+(int)substr($time,3,2)+tdbs_pc_length($sv,$option,$resource));$hit=array($time.'-'.sprintf('%02d:%02d',intdiv($m,60),$m%60),$resource);}
+    else {
+        $hit=null;
+        foreach ((array)(tdbs_pc_free($snap,$sv,$option,$resource)[$date]??array()) as $x) if (substr($x[0],0,5)===$time) {$hit=$x;break;}
+        if (!$hit) {$wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");return tdbs_pc_error('Questo orario non è più libero: scegline un altro o usa «Altro orario».',409,array('reload'=>true));}
+    }
+    $saved=$wpdb->insert(tdbs_pc_table(),array('id'=>bin2hex(random_bytes(16)),'created'=>current_time('mysql',true),'slot'=>wp_json_encode(array('service'=>$sv['id'],'option'=>$option,'resource'=>$hit[1],'any'=>$any,'date'=>$date,'time'=>$time,'end'=>substr($hit[0],6,5),'source'=>'agenda','free'=>$other)),'data'=>tdbs_pc_seal($client)));
+    $wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");
+    if (!$saved) return tdbs_pc_error('Non è stato possibile salvare l’appuntamento: riprova.',500);
+    $response=new WP_REST_Response(array('ok'=>true),201);
+    $response->header('Cache-Control','no-store');
+    return $response;
+}
+/** 2.19.0: the Nuovo appuntamento form of the agenda, from the PC's data (agenda.js): the services of the booking form. */
+function tdbs_agenda_form() {
+    $snap=tdbs_pc_fresh();
+    if (!$snap) return '<p class="tdbs-agenda-status">Per aggiungere appuntamenti servono dati recenti dal PC: accendilo e attendi la sincronizzazione.</p>';
+    $services=array();
+    foreach ((array)$snap['services'] as $sv) if (is_array($sv)) $services[]=array('id'=>(string)$sv['id'],'name'=>(string)$sv['name'],
+        'options'=>array_map(function($o){return array('id'=>(string)$o['id'],'name'=>(string)$o['name']);},(array)($sv['options']??array())),
+        'resources'=>array_map(function($r){return array('id'=>(string)$r['id'],'name'=>(string)$r['name']);},(array)($sv['resources']??array())));
+    if (!$services) return '';
+    try {$tz=new DateTimeZone((string)($snap['timezone']??'Europe/Rome'));} catch (Exception $e) {$tz=wp_timezone();}
+    $today=(new DateTime('now',$tz))->format('Y-m-d');
+    wp_enqueue_script('tdbs-agenda',plugins_url('agenda.js',__FILE__),array(),TDBS_VERSION,true);
+    $config=array('rest'=>esc_url_raw(rest_url('tdbs/v1/')),'nonce'=>wp_create_nonce('tdbs_agenda_book'),'wp'=>wp_create_nonce('wp_rest'),'services'=>$services);
+    $field=function($name,$label,$type='text',$required=true){return '<p><label>'.esc_html($label).'<br><input name="'.$name.'" type="'.$type.'"'.($required?' required':'').' maxlength="'.($type==='email'?254:100).'" autocomplete="off"></label></p>';};
+    return '<details class="tdbs-agenda-new"><summary class="button">Nuovo appuntamento</summary><form class="tdbs-agenda-form" data-config="'.esc_attr(wp_json_encode($config)).'" novalidate>'
+        .'<p><label>Servizio<br><select name="service" required></select></label></p>'
+        .'<p class="tdbs-agenda-option" hidden><label>Prestazione<br><select name="option"></select></label></p>'
+        .'<p><label>Operatore<br><select name="resource"></select></label></p>'
+        .'<p><label>Giorno<br><input type="date" name="date" required min="'.esc_attr($today).'" value="'.esc_attr($today).'"></label></p>'
+        .'<div class="tdbs-pc-slots" role="group" aria-label="Orari liberi"></div>'
+        .'<p><label>Altro orario<br><input type="time" name="other" step="300"></label><br><small>Solo se serve un orario che non è tra quelli liberi. <strong>Lo controlla il PC</strong>: se è libero diventa una prenotazione confermata, altrimenti va tra le <strong>Richieste da confermare</strong>.</small></p>'
+        .'<p class="tdbs-pc-status" role="status" aria-live="polite"></p>'
+        .'<fieldset><legend>Cliente</legend>'.$field('first_name','Nome').$field('last_name','Cognome').$field('phone','Telefono','tel').$field('email','Email (facoltativa)','email',false).'</fieldset>'
+        .'<p><label>Note<br><textarea name="notes" rows="3" maxlength="4000"></textarea></label></p>'
+        .'<p><button type="submit">Salva l’appuntamento</button></p></form></details>';
 }
 function tdbs_agenda_shortcode() {
     wp_enqueue_style('tdbs-widget',plugins_url('widget.css',__FILE__),array(),TDBS_VERSION);
@@ -555,16 +653,17 @@ function tdbs_agenda_shortcode() {
     // 2.18.0: with the archive, the days chosen from all of it, also the past ones
     if (tdbs_archive_on()) {$first=$week?$shift($day,-((int)gmdate('N',strtotime($day.' 12:00 UTC'))-1)):$day;$a['bookings']=tdbs_archive_bookings($first,$week?$shift($first,6):$day,$a);}
     $a['bookings']=array_merge((array)($a['bookings']??array()),tdbs_agenda_pending());
-    $link=function($label,$args,$on=null){return '<a class="button" href="'.esc_url(add_query_arg($args)).'"'.($on===null?'':' aria-current="'.($on?'true':'false').'"').'>'.$label.'</a>';};
+    $link=function($label,$args,$on=null){return '<a class="button" href="'.esc_url(add_query_arg($args,remove_query_arg('nuovo'))).'"'.($on===null?'':' aria-current="'.($on?'true':'false').'"').'>'.$label.'</a>';};
     $step=$week?7:1;$v=$week?'settimana':'giorno';
     $bar='<nav class="tdbs-agenda-bar" aria-label="Agenda">'.$link('Giorno',array('vista'=>'giorno','giorno'=>$day),!$week).$link('Settimana',array('vista'=>'settimana','giorno'=>$day),$week)
         .$link('<span aria-hidden="true">‹</span><span class="screen-reader-text">Indietro</span>',array('vista'=>$v,'giorno'=>$shift($day,-$step))).$link('Oggi',array('vista'=>$v,'giorno'=>$today))
         .$link('<span aria-hidden="true">›</span><span class="screen-reader-text">Avanti</span>',array('vista'=>$v,'giorno'=>$shift($day,$step))).$out.'</nav>';
-    $body='';
-    if ($week) {$first=$shift($day,-((int)gmdate('N',strtotime($day.' 12:00 UTC'))-1));for ($i=0;$i<7;$i++) $body.=tdbs_agenda_day($a,$shift($first,$i));}
-    else $body=tdbs_agenda_day($a,$day);
+    $days=array($day);
+    if ($week) {$first=$shift($day,-((int)gmdate('N',strtotime($day.' 12:00 UTC'))-1));$days=array();for ($i=0;$i<7;$i++) $days[]=$shift($first,$i);}
     $at=(int)($stored['received']??0);
-    return '<div class="tdbs-agenda"><p class="tdbs-agenda-updated">Aggiornata alle '.esc_html(wp_date('H:i',$at)).' del '.esc_html(wp_date('d/m',$at)).'</p>'.$bar.'<div class="tdbs-agenda-body">'.$body.'</div></div>';
+    // 2.19.0: Nuovo appuntamento; once saved, the page opens again on its day with this line
+    $saved=($_GET['nuovo']??'')==='1'?'<p class="tdbs-agenda-status" role="status">Appuntamento salvato: qui sotto è «Da sincronizzare» finché il PC non lo prende, entro 2 minuti con il PC acceso.</p>':'';
+    return '<div class="tdbs-agenda"><p class="tdbs-agenda-updated">Aggiornata alle '.esc_html(wp_date('H:i',$at)).' del '.esc_html(wp_date('d/m',$at)).'</p>'.$saved.tdbs_agenda_form().$bar.'<div class="tdbs-agenda-body">'.tdbs_agenda_table($a,$days).'</div></div>';
 }
 add_action('init',function(){add_shortcode('tdbs_agenda','tdbs_agenda_shortcode');});
 
@@ -586,7 +685,7 @@ function tdbs_pc_settings($post) {
     echo '<tr><th><label for="tdbs-age">Dati validi per</label></th><td><input type="number" min="1" max="60" id="tdbs-age" name="max_age" value="'.esc_attr((string)($p['max_age']??7)).'"> giorni <p class="description">Se il PC non si fa sentire da più tempo, il modulo mostra “contattaci” invece degli orari.</p></td></tr>';
     echo '<tr><th><label for="tdbs-agenda-pw">Password dell’agenda</label></th><td><input type="password" class="regular-text" id="tdbs-agenda-pw" name="agenda" autocomplete="new-password" minlength="10" placeholder="'.(!empty($p['agenda'])?'Password salvata: lascia vuoto per tenerla':'Almeno 10 caratteri').'">'
         .(!empty($p['agenda'])?' <label><input type="checkbox" name="agenda_off" value="1"> Spegni l’agenda</label>':'')
-        .'<p class="description"><strong>Agenda riservata</strong>: il titolare e i collaboratori vedono le prenotazioni dei prossimi giorni anche a PC spento, per esempio dal telefono. Sola lettura. Senza password resta spenta.</p>'
+        .'<p class="description"><strong>Agenda riservata</strong>: il titolare e i collaboratori vedono le prenotazioni dei prossimi giorni anche a PC spento, per esempio dal telefono, e aggiungono appuntamenti con <strong>Nuovo appuntamento</strong>: servizio, operatore, giorno, orario e cliente. Il PC li prende alla sincronizzazione dopo e manda al cliente la conferma, se ha l’email. Per spostare o annullare serve il programma. Senza password resta spenta.</p>'
         .'<ol class="description"><li>Scrivi qui una password, almeno 10 caratteri, e premi <em>Salva la modalità PC</em>. Una password nuova chiude le sessioni aperte.</li>'
         .'<li>Crea una pagina, per esempio Agenda, con lo shortcode <code>[tdbs_agenda]</code>. Non metterla nel menu del sito; Google non la mostra.</li>'
         .'<li>Escludi quella pagina dalla cache del server, per esempio dalla FastCGI cache di aaPanel. I plugin di cache di WordPress la saltano da soli, la cache del server no: senza esclusione le prenotazioni potrebbero arrivare a chi non ha la password.</li>'
@@ -599,7 +698,7 @@ function tdbs_pc_settings($post) {
         .'<p>'.($at?'Record: '.(int)$st['records'].', spazio: '.esc_html(size_format((int)$st['size'])).', ultimo invio dal PC: '.esc_html(wp_date('d/m/Y H:i',$at)):'Ancora nessun invio dal PC.').'</p></td></tr></table>';
     submit_button('Salva la modalità PC','secondary');echo '</form>';
     echo '<h3>Per il firewall del sito</h3><p>Il PC chiama solo questi indirizzi, sempre in <strong>POST</strong> con dati JSON, con le intestazioni <code>X-TDBS-Time</code> e <code>X-TDBS-Signature</code> e corpo fino a <strong>512 KB</strong> per l’archivio (gli orari liberi di <code>/sync</code> di solito molto meno; con tanti servizi e 90 giorni possono superare 1 MB: se il proxy risponde 413, alza il limite del corpo a 5 MB):</p><ul style="list-style:disc;padding-left:20px"><li><code>/wp-json/tdbs/v1/sync</code></li><li><code>/wp-json/tdbs/v1/archive/push</code> e <code>/wp-json/tdbs/v1/archive/pull</code>, sotto <code>/wp-json/tdbs/v1/archive/</code></li></ul>'
-        .'<p>Nel WAF: <em>whitelist › tipo «path»</em>, aggiungi due voci con nota «TD Booking Suite – PC»: <code>/wp-json/tdbs/v1/sync</code> e <code>/wp-json/tdbs/v1/archive/</code>. Per limitarle a questo sito: <code>'.esc_html((string)wp_parse_url(home_url(),PHP_URL_HOST)).'|/wp-json/tdbs/v1/sync</code> (host esatto: il www vuole una voce sua). Non mettere in whitelist tutto <code>/wp-json/tdbs/v1/</code>: <code>/slots</code> (GET) e <code>/book</code> (POST) li usano i visitatori e devono restare sotto il firewall.</p></div>';
+        .'<p>Nel WAF: <em>whitelist › tipo «path»</em>, aggiungi due voci con nota «TD Booking Suite – PC»: <code>/wp-json/tdbs/v1/sync</code> e <code>/wp-json/tdbs/v1/archive/</code>. Per limitarle a questo sito: <code>'.esc_html((string)wp_parse_url(home_url(),PHP_URL_HOST)).'|/wp-json/tdbs/v1/sync</code> (host esatto: il www vuole una voce sua). Non mettere in whitelist tutto <code>/wp-json/tdbs/v1/</code>: <code>/slots</code> (GET), <code>/book</code> (POST) e <code>/agenda/book</code> (POST, il <strong>Nuovo appuntamento</strong> dell’agenda) li usa il browser di chi apre il sito e devono restare sotto il firewall.</p></div>';
 }
 add_action('admin_post_tdbs_pc_save',function(){
     global $wpdb;
