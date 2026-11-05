@@ -1524,3 +1524,18 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .floor-pick.picked{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}.floor-pick.dragging{z-index:3;position:relative;cursor:grabbing}
 
 @media (max-width:1180px){.till{grid-template-columns:1fr}}  /* 2.20.5: the bill needs its width: services above it on smaller windows */
+/* 2.20.5: Report as a dashboard: the figures, the bars of the months and of the operators */
+.report-years{flex-wrap:wrap;gap:6px}.report-dash{margin:0 0 18px}.report-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:14px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--r,14px);padding:16px 18px;display:flex;flex-direction:column;gap:6px}.kpi span{color:var(--muted);font-size:.9em}.kpi strong{font-size:1.7em;line-height:1.1}
+.report-charts{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px}.report-charts .card{margin:0}
+.bars-v{width:100%;height:180px;display:block}.bars-v rect{fill:var(--brand)}.bars-v rect:hover{opacity:.8}
+.bars-v-labels{display:flex;justify-content:space-around;font-size:.72em;color:var(--muted);margin-top:4px}.bars-v-labels span{flex:1;text-align:center;min-width:0;overflow:hidden}
+.bars-h{list-style:none;margin:0;padding:0;display:grid;gap:10px}.bars-h li{display:grid;grid-template-columns:110px minmax(0,1fr) 100px;align-items:center;gap:10px}
+.bars-h svg{width:100%;height:14px;display:block;background:var(--soft);border-radius:7px}.bars-h rect{fill:var(--brand)}.bars-h-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bars-h-money{text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:900px){.report-charts{grid-template-columns:1fr}}
+/* PDF of one table: the browser's print with only that card */
+@media print{body.print-one .sidebar,body.print-one .topbar,body.print-one .filters,body.print-one .report-years,body.print-one .notice,body.print-one footer,body.print-one .actions,body.print-one [data-print]{display:none!important}
+ body.print-one main>section:not(.printing),body.print-one main>.report-dash:not(.printing){display:none!important}body.print-one .shell{margin:0!important;padding:0!important}body.print-one .printing{break-inside:auto;box-shadow:none;border:0}}
+.report-actions{display:flex;gap:8px;align-items:center;flex:none}.report-actions .button,.report-dash .card-top .button{min-width:76px;justify-content:center;text-align:center;line-height:1.2;margin:0}
+.report-dash .card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+@media print{body.print-one .report-actions{display:none!important}}

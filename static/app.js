@@ -522,3 +522,23 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 document.querySelectorAll("[data-till-use]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.target,set=(k,v)=>{const el=document.getElementById(k+"-"+id);if(el&&v!==undefined){el.value=v;el.dispatchEvent(new Event("change",{bubbles:true}));}};
  set("dev",b.dataset.device);set("conn",b.dataset.connection);if(b.dataset.address)set("ip",b.dataset.address);if(b.dataset.port)set("port",b.dataset.port);
  const f=document.getElementById("dev-"+id);if(f)f.closest("form").scrollIntoView({behavior:"smooth",block:"start"});}));
+
+// 2.20.5: a filtered list (Clienti, Prenotazioni, Report…) comes back with its search when you return to it from a
+// link (the client card, the menu); «Mostra tutti» or opening it without a search starts again from the whole list
+(()=>{const key="tdbs-filters:";
+ try{
+  if(document.querySelector("form.filters[method=get],form[method=get].filters")){
+   if(location.search)sessionStorage.setItem(key+location.pathname,location.search);else sessionStorage.removeItem(key+location.pathname);
+  }
+  document.querySelectorAll("a[href]").forEach(a=>{
+   if(a.closest("form.filters"))return;
+   const u=new URL(a.href,location.href);if(u.origin!==location.origin||u.search||u.hash)return;
+   const kept=sessionStorage.getItem(key+u.pathname);if(kept)a.href=u.pathname+kept;
+  });
+ }catch{}
+})();
+
+// 2.20.5: Report, PDF of one table: the print of the browser (Salva come PDF) with only that card
+document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",()=>{const card=document.getElementById(b.dataset.print);if(!card)return;
+ document.querySelectorAll(".printing").forEach(x=>x.classList.remove("printing"));card.classList.add("printing");document.body.classList.add("print-one");
+ const done=()=>{document.body.classList.remove("print-one");card.classList.remove("printing");removeEventListener("afterprint",done);};addEventListener("afterprint",done);print();}));

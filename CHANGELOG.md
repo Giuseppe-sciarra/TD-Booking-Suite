@@ -4,6 +4,8 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
+- **Report come cruscotto**: in alto incassato, visite, media a visita e clienti del periodo, con le barre degli incassi per mese e per operatore; tabelle nuove Anno per anno con gli operatori, I servizi più fatti ed Elenco dei trattamenti; ogni tabella si scarica in **Excel** o si stampa in **PDF** (la stampa di Windows, Salva come PDF). Su più di tre mesi l'occupazione si calcola su richiesta: su un anno intero rallentava la pagina di secondi
+- **Le ricerche restano**: tornando a una lista (Clienti, Prenotazioni, Report…) dalla scheda o dal menu ritrovi la ricerca e i filtri di prima; «Mostra tutti» la azzera
 - **Report dallo storico dei clienti**: lavori e incassi per operatore, visite e incassi per mese, clienti con visite e speso; con i pulsanti Anno intero. Contano gli scontrini con il cliente (l'annullo li toglie) e lo storico importato. Gli incassi li vedono titolare e amministratore sede
 - **Import clienti: Importo e Importo per operatore** di ogni trattamento («Cristina: 22,00; Diana: 18,00»); reimportando lo stesso storico, i trattamenti già presenti prendono l'importo che non avevano, senza doppioni
 - **Edizione Windows: le pagine più lente di 3 secondi** lasciano una riga in TDBookingWeb.err.log, con l'indirizzo e la durata

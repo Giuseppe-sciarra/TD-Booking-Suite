@@ -112,6 +112,11 @@ def test_direct_sale_once_busy_then_done_with_copy(shop,register,settings,django
     owner,_=client_as(t);page=owner.get("/t/salone/report/").content.decode()
     assert "Lavori e incassi per operatore" in page and "<td>Cristina</td>" in page and "<td>55.00</td>" in page.replace(",",".")
     assert "Lavori e incassi per operatore" not in c.get("/t/salone/report/").content.decode()  # the reception does not see the takings
+    got=owner.get("/t/salone/report/?xlsx=lavori_operatore")
+    assert got["Content-Type"].startswith("application/vnd.openxmlformats") and got.content[:2]==b"PK"
+    import zipfile,io
+    sheet=zipfile.ZipFile(io.BytesIO(got.content)).read("xl/worksheets/sheet1.xml").decode()
+    assert "Cristina" in sheet and '<c t="n"><v>' in sheet
 
 def test_unknown_is_checked_before_sending_again(shop,settings,django_capture_on_commit_callbacks,monkeypatch):
     t,loc,svc=shop;settings.TILL_DIRECT=True

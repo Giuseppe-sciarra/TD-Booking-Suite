@@ -25,7 +25,7 @@ from .portal import csv_cell
 def minutes(spans):return int(sum((b-a).total_seconds() for a,b in spans)//60)
 def pct(n,d):return round(100*n/d) if d else 0
 
-def tables(request,a,b,first,last):
+def tables(request,a,b,first,last,occupancy=True):
     t=request.tenant;tz=ZoneInfo(t.timezone);out={}
     rows=list(visible_bookings(request,Booking.objects.filter(start__gte=a,start__lt=b)).select_related("service","resource"))
     held=[x for x in rows if x.status!="cancelled"]
@@ -38,7 +38,7 @@ def tables(request,a,b,first,last):
     for x in held:
         if x.resource_id:booked[x.resource_id]+=minutes([(x.start,min(x.end,b))])
     occ=[]
-    for r in resources:
+    for r in (resources if occupancy else []):
         place=SimpleNamespace(location_id=r.location_id,pk=None)  # the location's hours as well, not only the business's
         spans=[];d=first
         while d<=last:
@@ -92,35 +92,74 @@ def tables(request,a,b,first,last):
 def euro(c):return (Decimal(c)/100).quantize(Decimal("0.01"))
 def record_tables(request,first,last):
     """2.20.5: from the clients' records (receipts and the history of the old program): visits and money by operator,
-    month and client. Only for who may export (owner and location administrator), the clients with their names."""
-    if not can(request,"export.operational"):return {}
+    month, year, service and client, the figures on top and the bars of the dashboard. Only for who may export
+    (owner and location administrator); the clients with their names only with pii.read."""
+    if not can(request,"export.operational"):return {},{}
     from .models import Treatment
     by_staff=defaultdict(lambda:[0,0]);by_month=defaultdict(lambda:[0,0]);by_client=defaultdict(lambda:[0,0,None]);who_is={}
-    rows=Treatment.objects.filter(date__gte=first,date__lte=last).select_related("contact")
+    by_year=defaultdict(lambda:[0,0,Counter()]);by_service=Counter();listed=[]
+    names_ok=can(request,"pii.read")
+    from .crypto import open_seal
+    key=tenant_key(request.tenant);tid=str(request.tenant.pk)  # one key for all: t.data would read the business and unwrap its key every row
     # shortcut: a client record has no location; a location administrator sees the business's records, as on the client card
-    for t in rows:
-        d=t.data;cost=d.get("amount");split=d.get("by") or {}
+    for t in Treatment.objects.select_related("contact").order_by("date"):
+        d=open_seal(t.pii,key,f"{tid}:treatment:{t.pk}");cost=d.get("amount") or 0;split=dict(d.get("by") or {})
         names=[x.strip() for x in (d.get("staff") or "").split(",") if x.strip()]
-        if not split and names:split={n:(cost or 0)//len(names)+(((cost or 0)%len(names)) if i==0 else 0) for i,n in enumerate(names)}
-        if not split:split={"":cost or 0}
-        elif cost and sum(split.values())!=cost and d.get("by"):split={**split,"":split.get("",0)+cost-sum(split.values())}  # products and lines without an operator
+        if not split and names:split={n:cost//len(names)+((cost%len(names)) if i==0 else 0) for i,n in enumerate(names)}
+        if not split:split={"":cost}
+        elif cost and sum(split.values())!=cost and d.get("by"):split[""]=split.get("",0)+cost-sum(split.values())  # products and lines without an operator
+        y=by_year[t.date.year];y[0]+=1;y[1]+=cost
+        for who,c in split.items():y[2][who or "Senza operatore"]+=c
+        if not first<=t.date<=last:continue
         for who,c in split.items():
             v=by_staff[who or "Senza operatore"];v[0]+=1;v[1]+=c
-        v=by_month[t.date.strftime("%Y-%m")];v[0]+=1;v[1]+=cost or 0
-        v=by_client[t.contact_id];v[0]+=1;v[1]+=cost or 0;v[2]=max(v[2] or t.date,t.date);who_is[t.contact_id]=t.contact
+        v=by_month[t.date.strftime("%Y-%m")];v[0]+=1;v[1]+=cost
+        v=by_client[t.contact_id];v[0]+=1;v[1]+=cost;v[2]=max(v[2] or t.date,t.date);who_is[t.contact_id]=t.contact
+        for one in (d.get("service") or "").split(" + "):
+            if one.strip():by_service[one.strip()]+=1
+        listed.append((t,d,cost))
     out={}
     total=[sum(v[0] for v in by_month.values()),sum(v[1] for v in by_month.values())]
     out["lavori_operatore"]=(["Operatore","Lavori","Incassato (€)"],[[k,v[0],euro(v[1])] for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])])
     out["lavori_mese"]=(["Mese","Visite","Incassato (€)"],[[k[5:]+"/"+k[:4],v[0],euro(v[1])] for k,v in sorted(by_month.items())]+([["Totale",total[0],euro(total[1])]] if by_month else []))
-    if can(request,"pii.read"):
-        people=[]
+    team=[k for k,_ in sum((y[2] for y in by_year.values()),Counter()).most_common()]
+    out["lavori_anno"]=(["Anno","Visite","Incassato (€)",*team],[[k,v[0],euro(v[1]),*[euro(v[2][n]) for n in team]] for k,v in sorted(by_year.items())])
+    out["lavori_servizio"]=(["Servizio","Volte"],[[k,n] for k,n in by_service.most_common()])
+    people={}
+    if names_ok:
+        rows=[]
         for cid,v in by_client.items():
-            c=who_is[cid].data
-            people.append([" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente",v[0],euro(v[1]),v[2].strftime("%d/%m/%Y")])
-        out["lavori_cliente"]=(["Cliente","Visite","Speso (€)","Ultima visita"],sorted(people,key=lambda r:-r[2]))
-    return out
+            c=open_seal(who_is[cid].pii,key,f"{tid}:contact:{cid}");people[cid]=" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente"
+            rows.append([people[cid],v[0],euro(v[1]),v[2].strftime("%d/%m/%Y")])
+        out["lavori_cliente"]=(["Cliente","Visite","Speso (€)","Ultima visita"],sorted(rows,key=lambda r:-r[2]))
+        out["elenco"]=(["Data","Cliente","Trattamento","Operatore","Importo (€)"],[[t.date.strftime("%d/%m/%Y"),people.get(t.contact_id,""),d.get("service",""),d.get("staff",""),euro(c)] for t,d,c in reversed(listed)])
+    # the dashboard: the figures of the period and its bars, as widths of 0..100
+    top=max([v[1] for v in by_month.values()] or [0]) or 1;best=max([v[1] for v in by_staff.values()] or [0]) or 1
+    dash={"money":euro(total[1]),"visits":total[0],"average":euro(total[1]//total[0]) if total[0] else euro(0),"clients":len(by_client),"width":10*min(len(by_month),24),
+        "months":[{"label":k[5:]+"/"+k[2:4],"money":euro(v[1]),"x":10*i+2,"y":102-round(100*v[1]/top),"h":max(1,round(100*v[1]/top))} for i,(k,v) in enumerate(sorted(by_month.items())[-24:])],
+        "staff":[{"label":k,"money":euro(v[1]),"n":v[0],"w":round(100*v[1]/best)} for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])]} if total[0] else {}
+    return out,dash
 
-TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_cliente":"Clienti: visite e speso",
+def xlsx(head,rows,title):
+    """A one-sheet Excel file without libraries: inline strings, numbers as numbers."""
+    import zipfile
+    from xml.sax.saxutils import escape
+    def cell(v):
+        if isinstance(v,bool) or v is None:v="" if v is None else str(v)
+        if isinstance(v,(int,float,Decimal)):return f'<c t="n"><v>{v}</v></c>'
+        return f'<c t="inlineStr"><is><t xml:space="preserve">{escape(csv_cell(str(v),"sheet"))}</t></is></c>'
+    data="".join("<row>"+"".join(cell(v) for v in r)+"</row>" for r in [head,*rows])
+    buf=io.BytesIO()
+    with zipfile.ZipFile(buf,"w",zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml",'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
+        z.writestr("_rels/.rels",'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+        z.writestr("xl/_rels/workbook.xml.rels",'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
+        z.writestr("xl/workbook.xml",f'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="{escape(title[:31])}" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        z.writestr("xl/worksheets/sheet1.xml",f'<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>{data}</sheetData></worksheet>')
+    return buf.getvalue()
+
+TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_anno":"Anno per anno, con gli operatori",
+    "lavori_servizio":"I servizi più fatti","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
     "occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
     "origine":"Da dove arrivano le prenotazioni","valore":"Valore stimato"}
 def view(request,slug):
@@ -131,7 +170,17 @@ def view(request,slug):
         if not 0<=(last-first).days<=366:raise ValueError
     except ValueError:return render(request,"message.html",{"title":"Periodo non valido","text":"Scegli un periodo di al massimo un anno."},status=400)
     a=datetime.combine(first,time.min,tz);b=datetime.combine(last+timedelta(days=1),time.min,tz)
-    data={**record_tables(request,first,last),**tables(request,a,b,first,last)}
+    mine,dash=record_tables(request,first,last)
+    # 2.20.5: the occupancy reads the hours of every day of every operator: on a whole year it took seconds, so beyond
+    # three months it is worked out on request (or for its Excel)
+    heavy=(last-first).days>92 and not request.GET.get("occupazione") and request.GET.get("xlsx")!="occupazione" and request.GET.get("csv")!="occupazione"
+    data={**mine,**tables(request,a,b,first,last,occupancy=not heavy)}
+    name=request.GET.get("xlsx")
+    if name in data:
+        head,rows=data[name];audit(request.tenant,request.user,"export.report",name)
+        response=HttpResponse(xlsx(head,rows,TITLES[name]),content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"]=f'attachment; filename="report-{name}-{first}-{last}.xlsx"'
+        return response
     name=request.GET.get("csv")
     if name in data:
         head,rows=data[name];buf=io.StringIO(newline="");w=csv.writer(buf);w.writerow(head)
@@ -143,7 +192,7 @@ def view(request,slug):
     from .models import Treatment
     years=[d.year for d in Treatment.objects.dates("date","year")]
     years=sorted(set(years)|{today.year})
-    return render(request,"reports.html",{"first":first,"last":last,"years":years,"sections":[{"key":k,"title":TITLES[k],"head":h,"rows":r} for k,(h,r) in data.items()]})
+    return render(request,"reports.html",{"first":first,"last":last,"years":years,"dash":dash,"heavy":heavy,"sections":[{"key":k,"title":TITLES[k],"head":h,"rows":r[:200] if k in ("lavori_cliente","elenco") else r,"more":len(r)-200 if k in ("lavori_cliente","elenco") and len(r)>200 else 0} for k,(h,r) in data.items()]})
 
 # ---------- import of the future appointments
 FIELDS=[("","Non importare"),("date","Data"),("time","Ora di inizio"),("end","Ora di fine"),("minutes","Durata in minuti"),("end_date","Data di partenza (soggiorni)"),
