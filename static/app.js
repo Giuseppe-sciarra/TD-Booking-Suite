@@ -538,7 +538,16 @@ document.querySelectorAll("[data-till-use]").forEach(b=>b.addEventListener("clic
  }catch{}
 })();
 
-// 2.20.5: Report, PDF of one table: the print of the browser (Salva come PDF) with only that card
+// 2.20.5: Report, PDF of one table: the print of the browser (Salva come PDF) with only that card. 2.20.7: in the
+// Windows program its window makes the PDF itself, into Download, without the print dialog (after it the window took no more clicks)
 document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",()=>{const card=document.getElementById(b.dataset.print);if(!card)return;
  document.querySelectorAll(".printing").forEach(x=>x.classList.remove("printing"));card.classList.add("printing");document.body.classList.add("print-one");
- const done=()=>{document.body.classList.remove("print-one");card.classList.remove("printing");removeEventListener("afterprint",done);};addEventListener("afterprint",done);print();}));
+ const done=()=>{document.body.classList.remove("print-one");card.classList.remove("printing");removeEventListener("afterprint",done);b.disabled=false;};
+ const host=window.chrome&&window.chrome.webview;
+ if(host){
+  const from=document.getElementById("from")?.value||"",to=document.getElementById("to")?.value||"";
+  const name=[(card.querySelector("h2")?.textContent||"Report").trim(),from,to].filter(Boolean).join(" ");
+  const back=e=>{if(typeof e.data==="string"&&e.data.startsWith("tdwin-pdf-done:")){host.removeEventListener("message",back);done();}};
+  b.disabled=true;host.addEventListener("message",back);host.postMessage("tdwin-pdf:"+name);return;
+ }
+ addEventListener("afterprint",done);print();}));

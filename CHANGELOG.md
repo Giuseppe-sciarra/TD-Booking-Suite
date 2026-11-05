@@ -1,6 +1,10 @@
-# TD Booking Suite 2.20.6 — registro modifiche
+# TD Booking Suite 2.20.7 — registro modifiche
 
-**5 novembre 2026 · versione 2.20.6**
+**5 novembre 2026 · versione 2.20.7**
+
+## 2.20.7 — PDF dei report senza la stampa
+
+- **Edizione Windows: il PDF di un report lo fa il programma**, nella cartella Download, e lo apre: niente più finestra di stampa. Dopo quella finestra, passando a un'altra finestra di Windows, il programma non prendeva più i clic
 
 ## 2.20.6 — report a cruscotto
 
