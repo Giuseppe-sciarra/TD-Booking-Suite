@@ -1,6 +1,11 @@
-# TD Booking Suite 2.20.4 — registro modifiche
+# TD Booking Suite 2.20.5 — registro modifiche
 
-**5 novembre 2026 · versione 2.20.4**
+**5 novembre 2026 · versione 2.20.5**
+
+## 2.20.5 — certificato del PC server su un'altra rete
+
+- **Edizione Windows**: spostato su un'altra rete (un altro router), il PC server non rifà più da solo l'autorità dei certificati perché il nome completo del PC è cambiato: lo fa solo per gli indirizzi scelti all'installazione o in Rete e certificato. Prima tutte le postazioni dovevano confermare la nuova impronta, e la finestra sul PC server ripeteva l'avviso del certificato all'infinito
+- **Finestra sul PC server**: se il certificato del programma è cambiato, l'avviso dice di riparare l'installazione (Impostazioni → App → TD Booking Suite → Modifica → Ripara) invece di riaprirsi in loop
 
 ## 2.20.4 — certificati HTTPS su Windows
 
