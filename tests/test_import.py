@@ -23,7 +23,7 @@ def rows(today):
         ["1","MARIO","ROSSI","333 123 4567","Mario@Example.invalid",recent,"Colore","Anna","6.3","si","12/05/1980"],  # the client already there
         ["2","Giulia","Bianchi","338 765 4321","giulia@example.invalid",(today-timedelta(days=30)).isoformat(),"Taglio","","","no",""],
         ["2","","","","",(today-timedelta(days=30)).strftime("%d/%m/%Y"),"Taglio","","","",""],  # same treatment, by code
-        ["3","Luca","Verdi","","","01/01/2026","Piega","","","",""],
+        ["3","Luca","Verdi","","","01/01/2026","Piega","","","",""],  # 2.20.5: no phone or email, a card of its own by its code
         ["4","Sara","Neri","339 1111111 / 06 1234567","non-una-email",recent,"Colore","","","x",""],
         ["","Giulia","Bianchi","","","01/01/2015","Colore","","","",""],  # by name, older than the retention
         ["5","Anna","Futura","3401234567","",(today+timedelta(days=3)).strftime("%d/%m/%Y"),"Colore","","","",""],
@@ -106,13 +106,13 @@ def test_plan_matches_merges_and_never_overwrites(sample):
         assert mapping==["code","first_name","last_name","phone","email","date","service","staff","details","consent","extra"]
         p=importer.plan(t,HEAD,rows(today),mapping,True,True)
         r=p["report"]
-        assert (r["created"],r["updated"],r["treatments"],r["same_treatment"],r["too_old"],r["consents"])==(3,1,3,1,1,1)
+        assert (r["created"],r["updated"],r["treatments"],r["same_treatment"],r["too_old"],r["consents"])==(4,1,4,1,1,1)
         assert r["bad_email"]==1 and r["consent_no_email"]==1
-        assert dict(p["problems"])=={"cliente da creare senza telefono né email: il codice non è di un cliente già importato":[5]}
+        assert not p["problems"]
         assert dict(p["issues"])=={"data nel futuro":[8]}  # Anna Futura comes in, her treatment does not
         assert Contact.objects.count()==1 and not Treatment.objects.exists()  # the preview writes nothing
         done=importer.apply(t,p,None,batch="prova")
-        assert done["created"]==3
+        assert done["created"]==4
         mario.refresh_from_db();d=mario.data
         # the card already there keeps its data and gets what it lacked
         assert d["first_name"]=="Mario" and d["email"]=="mario@example.invalid" and d["import_code"]=="1" and "Compleanno: 12/05/1980" in d["staff_notes"]
@@ -120,11 +120,11 @@ def test_plan_matches_merges_and_never_overwrites(sample):
         sara=next(c for c in Contact.objects.all() if c.data["first_name"]=="Sara")
         assert sara.data["phone"]=="+393391111111" and "Altro telefono: +39061234567" in sara.data["staff_notes"] and sara.consent=="none"
         entries=[(x.contact_id,x.data["service"],x.data["details"]) for x in Treatment.objects.all()]
-        assert (mario.pk,"Colore","6.3") in entries and len(entries)==3 and "6.3" not in Treatment.objects.get(contact=mario).pii
+        assert (mario.pk,"Colore","6.3") in entries and len(entries)==4 and "6.3" not in Treatment.objects.get(contact=mario).pii
         # the same file again: nothing new, nothing doubled
         again=importer.plan(t,HEAD,rows(today),mapping,True,True)["report"]
         assert (again["created"],again["updated"],again["treatments"],again["consents"],again["consent_known"])==(0,0,0,0,1)
-        assert again["same_treatment"]==4
+        assert again["same_treatment"]==5
 
 def test_import_page_flow_permissions_and_consent_email(sample):
     t,o,s=sample
@@ -146,10 +146,10 @@ def test_import_page_flow_permissions_and_consent_email(sample):
     assert "controlla di nuovo" in page
     with scope(t):assert not Contact.objects.exists()
     r=owner.post(url,{**form,"action":"import","ask":"1","checked":checked},follow=True).content.decode()
-    assert "Importazione fatta: 4 clienti nuovi" in r and "1 email di conferma in coda" in r
+    assert "Importazione fatta: 5 clienti nuovi" in r and "1 email di conferma in coda" in r
     with scope(t):
-        assert Contact.objects.count()==4 and Treatment.objects.count()==3
-        assert Audit.objects.get(action="contacts.imported").detail["created"]==4
+        assert Contact.objects.count()==5 and Treatment.objects.count()==4
+        assert Audit.objects.get(action="contacts.imported").detail["created"]==5
         mario=next(c for c in Contact.objects.all() if c.data["first_name"]=="Mario")
         delivery=Delivery.objects.get(contact=mario)
         body=decrypt(t,delivery.payload,"delivery:"+str(delivery.pk))["body"]
@@ -165,7 +165,7 @@ def test_import_page_flow_permissions_and_consent_email(sample):
     checked=re.search(r'name="checked" value="([^"]*)"',page)[1]
     owner.post(url,{"action":"upload","file":SimpleUploadedFile("b.csv",csv_bytes(["Nome","Email","Visite"],[["Ugo","ugo@example.invalid","1"]]))})
     assert "controlla di nuovo" in owner.post(url,{"col0":"first_name","col1":"email","col2":"consent","action":"import","checked":checked}).content.decode()
-    with scope(t):assert not ConsentEvent.objects.filter(kind="imported",contact__in=[c for c in Contact.objects.all() if c.data["first_name"]=="Ugo"]).exists() and Contact.objects.count()==4
+    with scope(t):assert not ConsentEvent.objects.filter(kind="imported",contact__in=[c for c in Contact.objects.all() if c.data["first_name"]=="Ugo"]).exists() and Contact.objects.count()==5
     # reception imports clients but not consents; marketing does not import
     desk,_=member(t,"reception")
     desk.post(url,{"action":"upload","file":SimpleUploadedFile("c.csv",csv_bytes(HEAD,rows(today)))})
@@ -216,10 +216,10 @@ def test_who_is_who_erasure_codes_family_phones_and_second_emails(sample):
         # a second email in the cell finds the card it belongs to
         p=importer.plan(t,head,[["","Maria","Verdi","","lavoro@example.invalid; maria@example.invalid","","",""]],mapping,True,True)
         assert p["report"]["created"]==0 and p["changed"][0].pk==mother.contact_id and "Altra email: lavoro@example.invalid" in p["changed"][0].d["staff_notes"]
-        # a code that does not match is not rescued by the name: two people with one name stay two
+        # a code that does not match is not rescued by the name: two people with one name stay two (2.20.5: the other one gets a card of its own)
         importer.apply(t,importer.plan(t,head,[["57","Mario","Rossi","3330000003","","","",""]],mapping,True,True,lock=True),None)
         p=importer.plan(t,head,[["102","Mario","Rossi","","",recent,"Colore",""]],mapping,True,True)
-        assert not p["treatments"] and "il codice non è di un cliente" in p["problems"][0][0]
+        assert [c.d["import_code"] for c in p["created"]]==["102"] and p["treatments"][0][0] is p["created"][0] and not p["problems"]
         p=importer.plan(t,head,[["57","","","","",recent,"Colore",""]],mapping,True,True)
         assert p["treatments"][0][0].d["first_name"]=="Mario"
 

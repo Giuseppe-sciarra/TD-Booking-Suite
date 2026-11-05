@@ -198,6 +198,11 @@ def finish(tenant,sale,state,info,attempt_id=None):
     if state=="done" and sale.kind=="void":
         from .wpsync import touch
         Sale.objects.filter(pk=sale.voids_id).update(status="void");touch(tenant.pk,"sale",[sale.voids_id])
+        old=sale.voids
+        if old and old.contact_id:record(tenant,old,f"Annullo dello scontrino n. {old.z+'-' if old.z else ''}{old.number}".strip(),[f"Annullato il {timezone.now().astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}"])
+    if state=="done" and sale.kind=="sale" and sale.contact_id:
+        d=sale.data;head,rows=copy_lines(tenant,sale)
+        record(tenant,sale," + ".join(dict.fromkeys(l["desc"] for l in d.get("lines",[]))),rows+head)
     if state=="done" and sale.kind=="sale":
         from .booking import change_status,BookingError
         if sale.booking_id:
@@ -208,6 +213,12 @@ def finish(tenant,sale,state,info,attempt_id=None):
                     except BookingError:pass  # not started yet: the desk completes it later
         send_copy(tenant,sale)
     return sale
+def record(tenant,sale,what,rows):
+    """2.20.5: an emitted receipt (or its annullo) with a client goes in the client's record: the day, what, by whom, lines and prices."""
+    from .clients import save_treatment
+    staff=sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else ""
+    day=(sale.printed or timezone.now()).astimezone(ZoneInfo(tenant.timezone)).date()
+    save_treatment(tenant,sale.contact,{"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000]},None,booking=sale.booking)
 def send_now(tenant_id,location_id):
     """Direct: after the request is committed, the sale's own transaction each step, the register called in between."""
     tenant=Tenant.objects.get(pk=tenant_id)

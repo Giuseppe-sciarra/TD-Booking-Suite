@@ -6,6 +6,7 @@ from decimal import Decimal
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import pytest
+from zoneinfo import ZoneInfo
 from django.utils import timezone
 from core.models import *
 from core.tenancy import scope
@@ -101,6 +102,10 @@ def test_direct_sale_once_busy_then_done_with_copy(shop,register,settings,django
         ev=ConsentEvent.objects.get(purpose="receipt_copy");assert ev.ref==str(s.pk) and ev.channel=="desk"
         assert Contact.objects.get(pk=b.contact_id).consent=="none"  # not the marketing one
         assert Delivery.objects.filter(contact_id=b.contact_id).count()>=1
+        # 2.20.5: the receipt goes in the client's record, with the day, the lines and their prices
+        tr=Treatment.objects.get(contact_id=b.contact_id);info=tr.data
+        assert tr.date==s.printed.astimezone(ZoneInfo(t.timezone)).date() and tr.booking_id==b.pk and info["service"]=="Taglio donna + Shampoo"
+        assert "2 x Taglio donna  50,00 €" in info["details"] and "Totale  55,00 €" in info["details"]
     assert c.get(f"/t/salone/cassa/?copia={s.pk}").status_code==200
 
 def test_unknown_is_checked_before_sending_again(shop,settings,django_capture_on_commit_callbacks,monkeypatch):

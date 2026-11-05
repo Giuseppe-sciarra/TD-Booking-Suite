@@ -19,7 +19,7 @@ from django.core.validators import validate_email
 from django.utils import timezone
 from .booking import BookingError,normalize_phone,action_token,queue
 from .clients import ERASED,FISCAL,clean_fiscal,key_for
-from .crypto import seal,open_seal,tenant_key
+from .crypto import seal,open_seal,tenant_key,index
 from .models import Contact,Treatment,ConsentEvent,ActionToken
 
 MAX_BYTES=20*1024*1024
@@ -349,20 +349,21 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
         if not card and code:
             c=codes.get(code)
             card=c if c and not differs(c) else None
-        if not card and not email and not phone:
+        if not card and not email and not phone and not (code and first):
             if code:problem(problems,n,"cliente da creare senza telefono né email: il codice non è di un cliente già importato");continue
             same=[c for name_ in row_names for c in names.get(name_,[])]
             same=list(dict.fromkeys(same))
             if len(same)>1:problem(problems,n,"più clienti con questo nome e nessun telefono, email o codice per distinguerli");continue
             card=same[0] if same else None
         if not card:
-            if not email and not phone:
+            if not email and not phone and not code:
                 problem(problems,n,"cliente da creare senza telefono né email" if first else "riga senza nome, telefono, email o codice");continue
             if not first:problem(problems,n,"cliente da creare senza nome");continue
             if forgotten&({keys.email(e) for e in found_emails}|{keys.phone(p) for p in found_phones}):
                 problem(problems,n,"cliente che ha chiesto di cancellare i suoi dati: non si reimporta");continue
-            key=keys.email(email) if email else keys.phone(phone)
-            if key in taken and not email:key=key_for(tenant,{"phone":phone,"first_name":first,"last_name":last},shared=True)  # the phone of another person's card
+            # 2.20.5: a card of the old program without phone or email (they are in its archive too) is told apart by its code
+            key=keys.email(email) if email else keys.phone(phone) if phone else index("import:"+code,tenant_key(tenant),"email")
+            if key in taken and not email and phone:key=key_for(tenant,{"phone":phone,"first_name":first,"last_name":last},shared=True)  # the phone of another person's card
             if key in taken:problem(problems,n,"telefono o email già usati da un altro cliente");continue
             card=Contact(tenant=tenant,email_index=key);taken.add(key)
             card.d={"first_name":first,"last_name":last,"email":email,"phone":phone};card.new=True;card.wanted=False
