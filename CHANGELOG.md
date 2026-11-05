@@ -1,6 +1,11 @@
-# TD Booking Suite 2.20.3 — registro modifiche
+# TD Booking Suite 2.20.4 — registro modifiche
 
-**4 novembre 2026 · versione 2.20.3**
+**5 novembre 2026 · versione 2.20.4**
+
+## 2.20.4 — certificati HTTPS su Windows
+
+- **Edizione Windows**: le connessioni HTTPS del programma (controllo degli aggiornamenti su GitHub, sito WordPress, calendari Google e Outlook, email) si fidano dei certificati di Windows e anche di un elenco aggiornato incluso nel programma. Prima, su un Windows a cui mancava il certificato radice di un sito, il programma diceva che il sito non rispondeva anche con Internet funzionante, perché Windows scarica i certificati mancanti solo per i browser
+- **TD Licenze**: stessa correzione verso GitHub; se GitHub non risponde il messaggio dice il motivo vero
 
 ## 2.20.3 — trova la cassa da solo
 
