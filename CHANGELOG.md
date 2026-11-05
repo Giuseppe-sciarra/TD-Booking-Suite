@@ -4,6 +4,7 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
+- **Correzione: import clienti, telefono di famiglia**: una persona con lo stesso numero di un'altra già importata ma con un altro nome (madre e figlia) finiva sulla scheda dell'altra, con le sue visite. Ora, come allo sportello, un altro nome sullo stesso numero è un'altra persona con la sua scheda
 - **Correzione: Registratore di cassa non si salvava** con molti servizi (reparto e IVA di ogni servizio superavano i 100 campi accettati da un modulo): il programma rifiutava la richiesta senza un messaggio e la versione Windows mostrava «Avvio». Ora un modulo accetta fino a 2000 campi; il limite di 128 KB per richiesta resta
 - **Edizione Windows**: spostato su un'altra rete (un altro router), il PC server non rifà più da solo l'autorità dei certificati perché il nome completo del PC è cambiato: lo fa solo per gli indirizzi scelti all'installazione o in Rete e certificato. Prima tutte le postazioni dovevano confermare la nuova impronta, e la finestra sul PC server ripeteva l'avviso del certificato all'infinito
 - **Finestra sul PC server**: se il certificato del programma è cambiato, l'avviso dice di riparare l'installazione (Impostazioni → App → TD Booking Suite → Modifica → Ripara) invece di riaprirsi in loop

@@ -197,12 +197,22 @@ def test_who_is_who_erasure_codes_family_phones_and_second_emails(sample):
         anna=Contact.objects.get();erase_contact(t,anna,None)
         p=importer.plan(t,head,[["","Anna","Neri","333 0000001","","","","si"]],mapping,True,True)
         assert p["report"]["created"]==0 and "cancellare i suoi dati" in p["problems"][0][0]
-        # a family phone: the name says whose treatment it is; without a matching name the row waits
+        # a family phone: the name says whose treatment it is; another name is another person, as at the desk (2.20.5)
         mother,_=create_booking(t,payload(s,first_name="Maria",last_name="Verdi",email="maria@example.invalid",phone="+393330000002"))
         daughter,_=create_booking(t,payload(s,hour=11,first_name="Sofia",last_name="Verdi",email="sofia@example.invalid",phone="+393330000002"))
         rows=[["","Sofia","Verdi","333 0000002","",recent,"Taglio",""],["","Luca","Verdi","333 0000002","",recent,"Barba",""]]
         p=importer.plan(t,head,rows,mapping,True,True)
-        assert [c.pk for c,_ in p["treatments"]]==[daughter.contact_id] and dict(p["problems"])=={"telefono di più clienti e nome che non basta a dire di chi è":[3]}
+        assert [c.pk for c,_ in p["treatments"]][0]==daughter.contact_id and not p["problems"]
+        assert [c.d["first_name"] for c in p["created"]]==["Luca"] and p["treatments"][1][0] is p["created"][0]
+        # only the mother's card on the phone yet: her daughter's rows make a card of her own, they do not go on the mother's
+        fam=[["","Rita","Bianchi","3330000009","",recent,"Piega",""],["","Giulia","Bianchi","333 0000009","",recent,"Colore",""],["","Rita","Bianchi","3330000009","",recent,"Taglio",""]]
+        p=importer.plan(t,head,fam,mapping,True,True)
+        assert [c.d["first_name"] for c in p["created"]]==["Rita","Giulia"] and [c.d["first_name"] for c,_ in p["treatments"]]==["Rita","Giulia","Rita"]
+        importer.apply(t,importer.plan(t,head,fam,mapping,True,True,lock=True),None)
+        from core.clients import find_or_create,key_for
+        giulia={"first_name":"Giulia","last_name":"Bianchi","phone":"+393330000009","email":""}
+        found,made=find_or_create(t,giulia)
+        assert not made and found.email_index==key_for(t,giulia,shared=True)  # the desk finds her own card, not her mother's
         # a second email in the cell finds the card it belongs to
         p=importer.plan(t,head,[["","Maria","Verdi","","lavoro@example.invalid; maria@example.invalid","","",""]],mapping,True,True)
         assert p["report"]["created"]==0 and p["changed"][0].pk==mother.contact_id and "Altra email: lavoro@example.invalid" in p["changed"][0].d["staff_notes"]

@@ -18,7 +18,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 from .booking import BookingError,normalize_phone,action_token,queue
-from .clients import ERASED,FISCAL,clean_fiscal
+from .clients import ERASED,FISCAL,clean_fiscal,key_for
 from .crypto import seal,open_seal,tenant_key
 from .models import Contact,Treatment,ConsentEvent,ActionToken
 
@@ -338,6 +338,8 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
             ambiguous=False
             for p in found_phones:
                 same=[c for c in phones.get(p,[]) if not differs(c)]
+                # 2.20.5: as at the desk, another name on a known phone is another person (a mother and her daughter)
+                if row_names:same=[c for c in same if not fulls(c.d) or alike(c.d,first,last)]
                 if len(same)>1:
                     named=[c for c in same if row_names&set(fulls(c.d))]
                     if len(named)!=1:ambiguous=True;continue
@@ -360,6 +362,7 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
             if forgotten&({keys.email(e) for e in found_emails}|{keys.phone(p) for p in found_phones}):
                 problem(problems,n,"cliente che ha chiesto di cancellare i suoi dati: non si reimporta");continue
             key=keys.email(email) if email else keys.phone(phone)
+            if key in taken and not email:key=key_for(tenant,{"phone":phone,"first_name":first,"last_name":last},shared=True)  # the phone of another person's card
             if key in taken:problem(problems,n,"telefono o email già usati da un altro cliente");continue
             card=Contact(tenant=tenant,email_index=key);taken.add(key)
             card.d={"first_name":first,"last_name":last,"email":email,"phone":phone};card.new=True;card.wanted=False
@@ -418,6 +421,11 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
         problems=sum(len(v) for v in problems.values()),issues=sum(len(v) for v in issues.values()),rows=len(rows))
     return {"created":created,"changed":list(changed.values()),"treatments":treatments,"consents":consents,"keys":keys,
         "report":report,"problems":list(problems.items()),"issues":list(issues.items()),"sample":sample,"since":since}
+
+def alike(d,first,last):
+    """One name holds the other ("Maria" and "Maria Rossi"): the same person, as clients.same_person."""
+    short,long=sorted((f"{d.get('first_name','')} {d.get('last_name','')}".casefold().split(),f"{first} {last}".casefold().split()),key=len)
+    return all(w in long for w in short)
 
 def fulls(d):
     first,last=d.get("first_name",""),d.get("last_name","")
