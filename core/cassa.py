@@ -9,7 +9,7 @@ POSTed to /cgi-bin/fpmate.cgi, network only). The Windows edition, on the shop's
 with the location's token, sends them and gives back the answer, read here. Both send with the bridge's own deliver.
 A request is marked "sending" and committed before it leaves: an answer lost on the way leaves it "unknown", and the
 operator checks the register before sending it again, so a bill is never printed twice."""
-import importlib.util,ipaddress,json,re,secrets,time,unicodedata
+import importlib.util,ipaddress,json,re,secrets,threading,time,unicodedata
 from datetime import datetime,timedelta,date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from xml.etree import ElementTree as ET
@@ -233,11 +233,22 @@ def send_now(tenant_id,location_id):
             time.sleep(1)
         else:state,info="failed",{"error":"La cassa è occupata: riprova tra poco."}
         with scope(tenant):finish(tenant,sale,state,info,attempt(sale))
+LINES={}  # one sender a location at a time: the register takes one request at a time
+def kick(tenant_id,location_id):
+    """2.20.5: the register is called after the page has answered, in a thread of its own: the page no longer waits
+    for the register (it waited up to 20 seconds when the register kept the connection open after printing)."""
+    if settings.TESTING:return send_now(tenant_id,location_id)
+    def run():
+        from django.db import connection
+        try:
+            with LINES.setdefault(location_id,threading.Lock()):send_now(tenant_id,location_id)
+        finally:connection.close()
+    threading.Thread(target=run,daemon=True).start()
 def enqueue(tenant,location,**fields):
     sale=Sale(tenant=tenant,location=location,key=fields.pop("key",None) or secrets.token_urlsafe(24),**{k:v for k,v in fields.items() if k!="data"})
     sale.pii=encrypt(tenant,fields.get("data",{}),"sale:"+str(sale.pk));sale.save()
     if location.till.get("link")=="direct" and settings.TILL_DIRECT:
-        transaction.on_commit(lambda:send_now(tenant.pk,location.pk))
+        transaction.on_commit(lambda:kick(tenant.pk,location.pk))
     return sale
 
 # ---------- the copy for the client
@@ -368,7 +379,7 @@ def till_view(request,slug):
             if action=="retry" and sale.status in ("failed","unknown"):
                 # unknown: the operator has looked, nothing came out of the register
                 sale.status="queued";sale.error="";sale.claimed=None;sale.save(update_fields=["status","error","claimed"])
-                if loc.till.get("link")=="direct" and settings.TILL_DIRECT:transaction.on_commit(lambda:send_now(t.pk,loc.pk))
+                if loc.till.get("link")=="direct" and settings.TILL_DIRECT:transaction.on_commit(lambda:kick(t.pk,loc.pk))
                 audit(t,request.user,"sale.retry",sale.pk)
             elif action=="printed" and sale.status=="unknown":
                 finish(t,sale,"done",{"number":re.sub(r"\D","",request.POST.get("number",""))[:20]})

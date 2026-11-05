@@ -4,6 +4,8 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
+- **Cassa più svelta (collegata da questo computer)**: lo scontrino parte verso la cassa dopo che la pagina ha risposto, in un thread suo, una cassa alla volta: la pagina non aspetta più la cassa, che a volte teneva la connessione aperta dopo aver stampato
+- **Edizione Windows**: il controllo del certificato, una volta al minuto, non ferma più le pagine: legge il nome completo del PC, e su alcuni router quella richiesta al DNS dura secondi
 - **Cassa: lo scontrino va nello storico del cliente**: quando la cassa emette uno scontrino con il cliente scelto, nella sua scheda compare la visita del giorno con le righe, i prezzi, gli sconti, il totale e il pagamento; un annullo aggiunge la sua riga
 - **Import clienti: anche le schede senza telefono né email**, quando la riga ha nome e codice cliente del vecchio programma: il codice le distingue e le ritrova agli import successivi
 - **Correzione: import clienti, telefono di famiglia**: una persona con lo stesso numero di un'altra già importata ma con un altro nome (madre e figlia) finiva sulla scheda dell'altra, con le sue visite. Ora, come allo sportello, un altro nome sullo stesso numero è un'altra persona con la sua scheda
