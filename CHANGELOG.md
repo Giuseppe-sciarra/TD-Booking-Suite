@@ -4,6 +4,7 @@
 
 ## 2.20.7 — PDF dei report senza la stampa
 
+- **Edizione Windows: la prima volta di ogni azione non aspetta più**: all'avvio il programma legge tutti i suoi moduli e le pagine. Prima, la prima volta che si collegava la cassa, si provava la stampa o si apriva un report, Windows controllava i file aperti per la prima volta e la finestra restava ferma, anche per minuti; ora quell'attesa capita all'accensione
 - **Edizione Windows: il PDF di un report lo fa il programma**, nella cartella Download, e lo apre: niente più finestra di stampa. Dopo quella finestra, passando a un'altra finestra di Windows, il programma non prendeva più i clic
 
 ## 2.20.6 — report a cruscotto
