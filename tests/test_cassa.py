@@ -263,3 +263,15 @@ def test_discover_finds_the_register_and_fills_the_form(shop,register,settings,m
     monkeypatch.setattr(cassa.ponte(),"discover",lambda:([{"device":"rch","address":"192.168.1.50"}],[{"port":"COM3","description":"USB Serial Device"}]))
     page=c.post(url,{"location":loc.pk,"action":"discover"}).content.decode()
     assert 'data-address="192.168.1.50"' in page and 'data-port="COM3"' in page and "RCH Print!F" in page
+
+def test_till_settings_save_with_a_big_catalog(shop):
+    # 2.20.5: reparto and IVA of every service in one form: a salon with 80 services went over the 100 fields allowed
+    from django.urls import reverse
+    t,loc,svc=shop
+    with scope(t):extra=[Service.objects.create(tenant=t,location=loc,name=f"Servizio {i}",kind="capacity",capacity=1,max_party=1,lead_minutes=0,price=Decimal("10")) for i in range(80)]
+    c,_=client_as(t,staff=True);url=reverse("till_settings",args=[t.slug])
+    data={"location":loc.pk,"action":"save","device":"rch","connection":"net","address":"192.168.1.155","link":"direct","default_dept":"1"}
+    for s in [svc,*extra]:data[f"dept_{s.pk}"]="";data[f"vat_{s.pk}"]=""
+    assert c.post(url,data).status_code==302
+    with scope(t):loc.refresh_from_db()
+    assert loc.till["device"]=="rch" and loc.till["address"]=="192.168.1.155"

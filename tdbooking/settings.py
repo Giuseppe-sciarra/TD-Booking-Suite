@@ -89,7 +89,7 @@ TRUST_PROXY=os.environ.get("TRUST_PROXY")=="1"
 FORMS_URLFIELD_ASSUME_HTTPS=True
 SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https") if os.environ.get("TRUST_PROXY")=="1" else None
 DATA_UPLOAD_MAX_MEMORY_SIZE=131072
-DATA_UPLOAD_MAX_NUMBER_FIELDS=100
+DATA_UPLOAD_MAX_NUMBER_FIELDS=2000  # 2.20.5: Registratore di cassa sends reparto and IVA of every service; the 128 KB body cap stays the real limit
 FILE_UPLOAD_MAX_MEMORY_SIZE=131072
 LOGIN_URL="/login/"
 EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
