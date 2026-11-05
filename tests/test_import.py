@@ -256,3 +256,21 @@ def test_a_card_saved_during_the_import_neither_deadlocks_nor_loses_its_notes():
         first.result(timeout=30);done=second.result(timeout=30)
     with scope(t):notes=Contact.objects.get(pk=c.pk).data["staff_notes"]
     assert done["updated"]==1 and notes=="allergica al nichel\npreferisce il sabato"
+
+def test_amounts_of_the_history_also_on_treatments_already_imported(sample):
+    # 2.20.5: what each visit cost, in all and by operator, for the reports; a file imported before without it gets it now
+    t,o,s=sample
+    t.business_type="parrucchiere";t.save()
+    recent=(timezone.now().astimezone(ZoneInfo(t.timezone)).date()-timedelta(days=10)).strftime("%d/%m/%Y")
+    head=["Codice cliente","Nome","Cognome","Telefono","Data del trattamento","Trattamento fatto","Operatore","Dettagli del trattamento"]
+    row=["9","Rita","Neri","3330000123",recent,"Colore + Piega","Cristina, Diana","Totale 40,00 €"]
+    with scope(t):
+        importer.apply(t,importer.plan(t,head,[row],importer.guess(head,True,False),True,False,lock=True),None)
+        more=head+["Importo","Importo per operatore"]
+        m=importer.guess(more,True,False);assert m[-2:]==["amount","amount_by"]
+        p=importer.plan(t,more,[row+["40,00","Cristina: 22,00; Diana: 18,00"]],m,True,False,lock=True)
+        assert p["report"]["same_treatment"]==1 and p["report"]["amounts"]==1 and not p["treatments"]
+        importer.apply(t,p,None)
+        d=Treatment.objects.get().data
+        assert d["amount"]==4000 and d["by"]=={"Cristina":2200,"Diana":1800} and d["details"]=="Totale 40,00 €"
+        assert importer.amount("1.234,50")==123450 and importer.amount("€ 25")==2500 and importer.amount("venti") is None

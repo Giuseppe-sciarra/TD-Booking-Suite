@@ -4,6 +4,9 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
+- **Report dallo storico dei clienti**: lavori e incassi per operatore, visite e incassi per mese, clienti con visite e speso; con i pulsanti Anno intero. Contano gli scontrini con il cliente (l'annullo li toglie) e lo storico importato. Gli incassi li vedono titolare e amministratore sede
+- **Import clienti: Importo e Importo per operatore** di ogni trattamento («Cristina: 22,00; Diana: 18,00»); reimportando lo stesso storico, i trattamenti già presenti prendono l'importo che non avevano, senza doppioni
+- **Edizione Windows: le pagine più lente di 3 secondi** lasciano una riga in TDBookingWeb.err.log, con l'indirizzo e la durata
 - **Cassa: l'operatore di ogni servizio**: sotto ogni descrizione si sceglie l'operatore, già scelto con quello della prenotazione; non va sullo scontrino né sulla copia, va nello storico del cliente accanto a ogni voce
 - **Cassa: sconto sul totale anche in %** (per esempio 10%), come lo sconto di ogni riga in € o %
 - **Cassa: cliente sopra le voci del conto**, con i risultati della ricerca in un elenco con i bordi, facile da cliccare; sotto i 1180 pixel di larghezza servizi e conto vanno uno sopra l'altro, senza righe che escono

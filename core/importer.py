@@ -9,6 +9,7 @@ for their data to be erased is not brought back.
 import csv,hashlib,hmac,io,os,re,secrets,tempfile,time,unicodedata,zipfile
 from collections import Counter
 from datetime import date,timedelta
+from decimal import Decimal
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 from cryptography.hazmat.primitives import hashes
@@ -33,12 +34,12 @@ KEEP_SECONDS=7200     # the sealed copy between the steps
 FIELDS=[("","Non importare"),("first_name","Nome"),("last_name","Cognome"),("full_name","Nome e cognome insieme"),
     ("phone","Telefono"),("email","Email"),("code","Codice cliente del vecchio programma"),("notes","Note"),
     ("extra","Nelle note, con il titolo della colonna"),("date","Data del trattamento"),("service","Trattamento fatto"),
-    ("staff","Operatore"),("details","Dettagli del trattamento"),("consent","Consenso marketing"),
+    ("staff","Operatore"),("details","Dettagli del trattamento"),("amount","Importo del trattamento"),("amount_by","Importo per operatore"),("consent","Consenso marketing"),
     # 2.16.1: the fiscal data of the card
     ("company","Ragione sociale"),("tax_code","Codice fiscale"),("vat","Partita IVA"),("address","Indirizzo"),("zip","CAP"),("city","Comune"),
     ("province","Provincia"),("sdi","Codice destinatario SDI"),("pec","PEC")]
-RECORD={"date","service","staff","details"}
-SINGLE={"first_name","last_name","full_name","code","date","service","staff","consent","company","tax_code","vat","address","zip","city","province","sdi","pec"}
+RECORD={"date","service","staff","details","amount","amount_by"}
+SINGLE={"first_name","last_name","full_name","code","date","service","staff","amount","amount_by","consent","company","tax_code","vat","address","zip","city","province","sdi","pec"}
 # column titles of the common programs and of hand-made sheets, without spaces and accents
 SKIP=("sesso","genere")
 EXTRA=("datanascita","datadinascita","nascita","compleanno","ultimavisita","dataultimavisita","primavisita","dataiscrizione","datainserimento","datacreazione","professione","tessera")
@@ -53,6 +54,8 @@ GUESS=(("tax_code",("cf","codicefiscale","codfisc","codfiscale")),("vat",("parti
     ("date",("data","datatrattamento","datavisita","dataappuntamento","dataservizio","giorno","date","quando")),
     ("service",("trattamento","servizio","servizi","prestazione","service","treatment","lavoro","seduta")),
     ("staff",("operatore","operatrice","collaboratore","collaboratrice","staff","dipendente","eseguitoda","artista")),
+    # 2.20.5: what the visit cost, in all and for each operator ("Cristina: 22,00; Diana: 18,00"), for the reports
+    ("amount_by",("importoperoperatore","incassoperoperatore","importioperatori")),("amount",("importo","importotrattamento","speso","incassato","totalepagato","pagato")),
     ("details",("dettagli","notetecniche","notetrattamento","notecolore","notelavoro","formula","colore","descrizione","prodotti","details","ricetta")),
     # only these exact titles: "Consenso privacy" is the notice the client signed, not a yes to marketing
     ("consent",("consensomarketing","marketing","newsletter","privacymarketing","promozioni","consensonewsletter","consensopromozioni","consensocommerciale")))
@@ -296,10 +299,10 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
         c.new=False;c.wanted=False;learn(c);cards.append(c)
     taken={c.email_index for c in cards}
     record=record and bool(RECORD&set(mapping))
-    known=set()
+    known={};refill={}
     if record:
         for t in Treatment.objects.all():
-            d=keys.open(t,"treatment");known.add((t.contact_id,t.date,d.get("service","").casefold(),d.get("staff","").casefold(),d.get("details","")))
+            d=keys.open(t,"treatment");t.d=d;known[(t.contact_id,t.date,d.get("service","").casefold(),d.get("staff","").casefold(),d.get("details",""))]=t
     report=Counter();problems={};issues={};sample=[];created=[];changed={};treatments=[]
     for n,row in enumerate(rows,start=2):
         got={}
@@ -407,8 +410,18 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
             elif when<since:report["too_old"]+=1
             else:
                 k=(card.pk,when,service.casefold(),staff.casefold(),details)
-                if k in known:report["same_treatment"]+=1
-                else:known.add(k);treatments.append((card,{"date":when,"service":service,"staff":staff,"details":details}));entry=f"{when:%d/%m/%Y} · {service}"
+                money={}
+                if one("amount").strip():
+                    c_=amount(one("amount"))
+                    if c_ is None:problem(issues,n,"importo non valido, per esempio 25,00")
+                    else:money["amount"]=c_
+                if one("amount_by").strip():money["by"]=amounts(one("amount_by"))
+                if k in known:
+                    report["same_treatment"]+=1
+                    old=known[k]
+                    # 2.20.5: the same treatment imported before without its amount gets it now; nothing else changes
+                    if old is not None and money and not any(x in old.d for x in money):old.d.update(money);refill[old.pk]=old;report["amounts"]+=1
+                else:known[k]=None;treatments.append((card,{"date":when,"service":service,"staff":staff,"details":details,**money}));entry=f"{when:%d/%m/%Y} · {service}"
         if len(sample)<8:sample.append({"line":n,"name":f"{card.d.get('first_name','')} {card.d.get('last_name','')}".strip(),"phone":card.d.get("phone",""),"email":card.d.get("email",""),"status":status,"entry":entry})
     imported=set(ConsentEvent.objects.filter(kind="imported").values_list("contact_id",flat=True))
     consents=[]
@@ -420,8 +433,26 @@ def plan(tenant,head,rows,mapping,record=True,consent=False,lock=False):
         else:consents.append(c)
     report=dict(report,created=len(created),updated=len(changed),treatments=len(treatments),consents=len(consents),
         problems=sum(len(v) for v in problems.values()),issues=sum(len(v) for v in issues.values()),rows=len(rows))
-    return {"created":created,"changed":list(changed.values()),"treatments":treatments,"consents":consents,"keys":keys,
+    return {"created":created,"changed":list(changed.values()),"treatments":treatments,"refill":refill,"consents":consents,"keys":keys,
         "report":report,"problems":list(problems.items()),"issues":list(issues.items()),"sample":sample,"since":since}
+
+def amount(v):
+    """Cents of «25,00», «1.234,50», «25.5» or «€ 25»; None when it is not an amount."""
+    v=re.sub(r"[€\s]","",str(v or ""))
+    if re.fullmatch(r"-?\d{1,3}(\.\d{3})+(,\d{1,2})?",v):v=v.replace(".","")
+    v=v.replace(",",".")
+    try:d=Decimal(v)
+    except ArithmeticError:return None
+    return int((d*100).quantize(Decimal(1))) if d.is_finite() and abs(d)<10**7 else None
+
+def amounts(v):
+    """{operator: cents} of «Cristina: 22,00; Diana: 18,00»; the parts that are not an amount are left out."""
+    out={}
+    for part in re.split(r"[;\n]",str(v or "")):
+        name,_,money=part.rpartition(":")
+        c=amount(money) if name.strip() else None
+        if c is not None:out[" ".join(name.split())[:100]]=out.get(" ".join(name.split())[:100],0)+c
+    return out
 
 def alike(d,first,last):
     """One name holds the other ("Maria" and "Maria Rossi"): the same person, as clients.same_person."""
@@ -445,12 +476,15 @@ def apply(tenant,p,actor,ask=False,batch=""):
     rows=[]
     for c,d in p["treatments"]:
         t=Treatment(tenant=tenant,contact=c,date=d["date"],author=who)
-        t.pii=keys.seal({k:d[k] for k in ("service","staff","details")},"treatment",t.pk);rows.append(t)
+        t.pii=keys.seal({k:d[k] for k in ("service","staff","details","amount","by") if k in d},"treatment",t.pk);rows.append(t)
     Treatment.objects.bulk_create(rows,batch_size=500)
+    filled=list(p.get("refill",{}).values())
+    for t in filled:t.pii=keys.seal(t.d,"treatment",t.pk)
+    Treatment.objects.bulk_update(filled,["pii"],batch_size=500)
     events=ConsentEvent.objects.bulk_create([ConsentEvent(tenant=tenant,contact=c,kind="imported",channel="import",actor=who,ref=batch) for c in p["consents"]],batch_size=500)
     Contact.objects.filter(pk__in=[c.pk for c in p["consents"]],consent="none",suppressed=False).update(consent="pending")
     from .wpsync import touch  # 2.18.0: written in bulk, without the models' signals: the site's archive gets them too
-    touch(tenant.pk,"contact",[c.pk for c in p["created"]+p["changed"]]);touch(tenant.pk,"treatment",[t.pk for t in rows])
+    touch(tenant.pk,"contact",[c.pk for c in p["created"]+p["changed"]]);touch(tenant.pk,"treatment",[t.pk for t in rows+filled])
     touch(tenant.pk,"consent",[e.pk for e in events])
     sent=0
     if ask:
@@ -469,5 +503,6 @@ def apply(tenant,p,actor,ask=False,batch=""):
 def summary(r):
     parts=[f"{r['created']} clienti nuovi",f"{r['updated']} schede completate"]
     if r.get("treatments"):parts.append(f"{r['treatments']} trattamenti")
+    if r.get("amounts"):parts.append(f"{r['amounts']} importi aggiunti a trattamenti già presenti")
     if r.get("consents"):parts.append(f"{r['consents']} consensi da confermare"+(f", {r['requested']} email di conferma in coda" if r.get("requested") else ""))
     return "Importazione fatta: "+", ".join(parts)+"."

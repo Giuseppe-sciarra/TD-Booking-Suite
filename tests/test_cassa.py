@@ -108,6 +108,10 @@ def test_direct_sale_once_busy_then_done_with_copy(shop,register,settings,django
         assert "2 x Taglio donna  50,00 € · Cristina" in info["details"] and "Totale  55,00 €" in info["details"] and info["staff"]=="Cristina"
         assert "Cristina" not in Fake.seen[0] and not any("Cristina" in r for r in cassa.copy_lines(t,s)[1])  # never on the receipt nor on its copy
     assert c.get(f"/t/salone/cassa/?copia={s.pk}").status_code==200
+    # 2.20.5: the reports read it back from the client's record: who did what and what it cost
+    owner,_=client_as(t);page=owner.get("/t/salone/report/").content.decode()
+    assert "Lavori e incassi per operatore" in page and "<td>Cristina</td>" in page and "<td>55.00</td>" in page.replace(",",".")
+    assert "Lavori e incassi per operatore" not in c.get("/t/salone/report/").content.decode()  # the reception does not see the takings
 
 def test_unknown_is_checked_before_sending_again(shop,settings,django_capture_on_commit_callbacks,monkeypatch):
     t,loc,svc=shop;settings.TILL_DIRECT=True

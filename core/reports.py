@@ -89,7 +89,39 @@ def tables(request,a,b,first,last):
     out["valore"]=(["Servizio","Prenotazioni","Valore stimato da listino (€)"],[[k,v[0],v[1]] for k,v in sorted(value.items())]+([["Totale",*total]] if value else []))
     return out
 
-TITLES={"occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
+def euro(c):return (Decimal(c)/100).quantize(Decimal("0.01"))
+def record_tables(request,first,last):
+    """2.20.5: from the clients' records (receipts and the history of the old program): visits and money by operator,
+    month and client. Only for who may export (owner and location administrator), the clients with their names."""
+    if not can(request,"export.operational"):return {}
+    from .models import Treatment
+    by_staff=defaultdict(lambda:[0,0]);by_month=defaultdict(lambda:[0,0]);by_client=defaultdict(lambda:[0,0,None]);who_is={}
+    rows=Treatment.objects.filter(date__gte=first,date__lte=last).select_related("contact")
+    # shortcut: a client record has no location; a location administrator sees the business's records, as on the client card
+    for t in rows:
+        d=t.data;cost=d.get("amount");split=d.get("by") or {}
+        names=[x.strip() for x in (d.get("staff") or "").split(",") if x.strip()]
+        if not split and names:split={n:(cost or 0)//len(names)+(((cost or 0)%len(names)) if i==0 else 0) for i,n in enumerate(names)}
+        if not split:split={"":cost or 0}
+        elif cost and sum(split.values())!=cost and d.get("by"):split={**split,"":split.get("",0)+cost-sum(split.values())}  # products and lines without an operator
+        for who,c in split.items():
+            v=by_staff[who or "Senza operatore"];v[0]+=1;v[1]+=c
+        v=by_month[t.date.strftime("%Y-%m")];v[0]+=1;v[1]+=cost or 0
+        v=by_client[t.contact_id];v[0]+=1;v[1]+=cost or 0;v[2]=max(v[2] or t.date,t.date);who_is[t.contact_id]=t.contact
+    out={}
+    total=[sum(v[0] for v in by_month.values()),sum(v[1] for v in by_month.values())]
+    out["lavori_operatore"]=(["Operatore","Lavori","Incassato (€)"],[[k,v[0],euro(v[1])] for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])])
+    out["lavori_mese"]=(["Mese","Visite","Incassato (€)"],[[k[5:]+"/"+k[:4],v[0],euro(v[1])] for k,v in sorted(by_month.items())]+([["Totale",total[0],euro(total[1])]] if by_month else []))
+    if can(request,"pii.read"):
+        people=[]
+        for cid,v in by_client.items():
+            c=who_is[cid].data
+            people.append([" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente",v[0],euro(v[1]),v[2].strftime("%d/%m/%Y")])
+        out["lavori_cliente"]=(["Cliente","Visite","Speso (€)","Ultima visita"],sorted(people,key=lambda r:-r[2]))
+    return out
+
+TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_cliente":"Clienti: visite e speso",
+    "occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
     "origine":"Da dove arrivano le prenotazioni","valore":"Valore stimato"}
 def view(request,slug):
     require(request,"booking.read")
@@ -99,7 +131,7 @@ def view(request,slug):
         if not 0<=(last-first).days<=366:raise ValueError
     except ValueError:return render(request,"message.html",{"title":"Periodo non valido","text":"Scegli un periodo di al massimo un anno."},status=400)
     a=datetime.combine(first,time.min,tz);b=datetime.combine(last+timedelta(days=1),time.min,tz)
-    data=tables(request,a,b,first,last)
+    data={**record_tables(request,first,last),**tables(request,a,b,first,last)}
     name=request.GET.get("csv")
     if name in data:
         head,rows=data[name];buf=io.StringIO(newline="");w=csv.writer(buf);w.writerow(head)
@@ -108,7 +140,10 @@ def view(request,slug):
         response=HttpResponse("﻿"+buf.getvalue(),content_type="text/csv; charset=utf-8")
         response["Content-Disposition"]=f'attachment; filename="report-{name}-{first}-{last}.csv"'
         return response
-    return render(request,"reports.html",{"first":first,"last":last,"sections":[{"key":k,"title":TITLES[k],"head":h,"rows":r} for k,(h,r) in data.items()]})
+    from .models import Treatment
+    years=[d.year for d in Treatment.objects.dates("date","year")]
+    years=sorted(set(years)|{today.year})
+    return render(request,"reports.html",{"first":first,"last":last,"years":years,"sections":[{"key":k,"title":TITLES[k],"head":h,"rows":r} for k,(h,r) in data.items()]})
 
 # ---------- import of the future appointments
 FIELDS=[("","Non importare"),("date","Data"),("time","Ora di inizio"),("end","Ora di fine"),("minutes","Durata in minuti"),("end_date","Data di partenza (soggiorni)"),
