@@ -16,6 +16,7 @@ from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape,quoteattr
 from zoneinfo import ZoneInfo
 from django.conf import settings
+from django.db import models
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -325,6 +326,7 @@ def bill(post,conf):
         c=cents(price)
         if not c:raise ValueError(f"Manca il prezzo di «{desc}».")
         line={"desc":desc,"qty":qty,"cents":c,"dept":int((deps.get(svc) or {}).get("dept") or default)}
+        if svc:line["svc"]=svc[:36]  # 2.20.8: which service, for the ones most used on top of the Cassa
         who=text(staff[i] if i<len(staff) else "")[:100]
         if who:line["staff"]=who  # 2.20.5: who did it, for the client's record only: never on the receipt
         o,pct=row_off(offs[i] if i<len(offs) else "",qty*c,desc)
@@ -415,16 +417,32 @@ def till_view(request,slug):
         items+=[{"group":kinds.get(s.kind,""),"name":text(f"{s.name} {o.name}"),"price":str(o.price if o.price is not None else s.price or "").replace(".",","),"svc":str(s.pk)} for o in opts] or [{"group":kinds.get(s.kind,""),"name":text(s.name),"price":str(s.price or "").replace(".",","),"svc":str(s.pk)}]
     groups={}
     for i in items:groups.setdefault(i["group"],[]).append(i)
+    top=favourites(t,loc,items)
     rows=Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
     busy=any(s.status in ("queued","sending") for s in rows)
     who=booking.data if booking and can(request,"pii.read") else {}
     names=list(Resource.objects.filter(location=loc,active=True).order_by("name").values_list("name",flat=True))
-    return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
+    return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"top":top,"count":len(items),"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
         "staff_names":names,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(booking.contact.data) if booking and booking.contact_id and can(request,"pii.read") else ""})
 
+def favourites(t,loc,items,n=12):
+    """2.20.8: the services this location uses most, from the last receipts and the bookings of the last months,
+    so the bill is there without scrolling; with no history yet, the first ones of the list."""
+    from collections import Counter
+    from .crypto import open_seal,tenant_key
+    used=Counter();key=tenant_key(t)
+    for sale in Sale.objects.filter(location=loc,kind="sale").order_by("-created")[:300]:
+        try:lines=open_seal(sale.pii,key,f"{t.pk}:sale:{sale.pk}").get("lines",[])
+        except Exception:continue
+        for l in lines:used[(l.get("svc") or "",l.get("desc",""))]+=l.get("qty",1)
+    since=timezone.now()-timedelta(days=120)
+    for svc,k in Booking.objects.filter(location=loc,start__gte=since).exclude(status="cancelled").values_list("service_id").annotate(k=models.Count("pk")):used[(str(svc),"")]+=k
+    score=lambda i:used.get((i["svc"],i["name"]),0)+used.get((i["svc"],""),0)
+    ranked=sorted((i for i in items if score(i)),key=lambda i:-score(i))
+    return (ranked+[i for i in items if not score(i)])[:n]  # the used ones first, then the list fills the rest
 DOC=re.compile(r"\s*(\d{1,4})\s*-\s*(\d{1,4})\s*")
 def void(request,t,loc,sale):
     """The annullo of a documento commerciale: of one in the list, or of any other written by hand (day and «Documento n.»,

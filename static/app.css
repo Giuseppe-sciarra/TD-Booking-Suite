@@ -1539,3 +1539,8 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .report-actions{display:flex;gap:8px;align-items:center;flex:none}.report-actions .button,.report-dash .card-top .button{min-width:76px;justify-content:center;text-align:center;line-height:1.2;margin:0}
 .report-dash .card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 @media print{body.print-one .report-actions{display:none!important}}
+/* 2.20.8: Cassa, the most used services on top, all the others one click away */
+.till-all{margin-top:14px}.till-all>summary{cursor:pointer;font-weight:600;padding:10px 0;color:var(--brand)}
+/* 2.20.8: the PDF of a report table fits the page: nothing cut on the sides */
+@media print{@page{size:A4;margin:12mm}body.print-one .table-scroll{overflow:visible!important}body.print-one .printing table{width:100%;table-layout:auto;font-size:9pt}
+ body.print-one .printing th,body.print-one .printing td{padding:4px 6px;white-space:normal;word-break:break-word}body.print-one .report-charts{grid-template-columns:1fr 1fr}}

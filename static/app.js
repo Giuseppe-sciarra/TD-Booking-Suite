@@ -506,7 +506,10 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
   if(x)x.closest("tr").remove();sum();});
  form.addEventListener("input",sum);sum();
  const search=document.querySelector("[data-till-search]");
- search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();document.querySelectorAll(".till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
+ search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();
+  // 2.20.8: a search looks in all the services: the list opens, the most used step aside meanwhile
+  const top=document.querySelector("[data-till-top]"),all=document.querySelector("[data-till-all]");if(top)top.hidden=!!q;if(all&&q)all.open=true;
+  document.querySelectorAll("[data-till-all] .till-item,.till-items>.till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
  const who=form.querySelector("[data-till-client]"),id=form.querySelector("[data-till-contact]"),found=form.querySelector("[data-till-found]");let timer;
  who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}

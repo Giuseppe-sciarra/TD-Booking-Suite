@@ -4,6 +4,9 @@
 
 ## 2.20.8 — Stato del programma
 
+- **Cassa: i servizi più usati in alto**, dagli ultimi scontrini e dalle prenotazioni della sede; tutti gli altri in **Tutti i servizi**, che si apre da solo quando cerchi. Il conto si vede subito, senza scorrere
+- **Menu riordinato**: Ogni giorno con Dashboard, Agenda e prenotazioni, Clienti e Cassa; La tua attività con Lista d'attesa, Report e Configura l'attività; Richiami sotto Comunicazioni, con Notifiche
+- **PDF dei report**: la tabella sta nella pagina A4 con i margini, senza colonne tagliate ai lati
 - **Edizione Windows: Stato del programma**, nel menu dell'amministratore: le pagine che hanno fatto aspettare, scritte dal programma da solo, senza il terminale. «Programma»: ha risposto dopo più di 3 secondi; «Finestra»: la finestra l'ha aspettata più di 5 secondi (la prima volta di un'azione, l'antivirus). Con un avviso in alto se nelle ultime 24 ore ce n'è stata una, e il pulsante **Scarica i log per l'assistenza**, un file zip con tutti i log
 
 ## 2.20.7 — PDF dei report senza la stampa
