@@ -26,7 +26,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from .clients import receipt_code
 from .crypto import encrypt,token_hash
-from .models import Booking,ConsentEvent,Contact,Location,Option,Sale,Service,Tenant,audit
+from .models import Booking,ConsentEvent,Contact,Location,Option,Resource,Sale,Service,Tenant,audit
 from .permissions import can,require,visible_bookings
 from .prices import euro
 from .tenancy import scope
@@ -201,7 +201,7 @@ def finish(tenant,sale,state,info,attempt_id=None):
         old=sale.voids
         if old and old.contact_id:record(tenant,old,f"Annullo dello scontrino n. {old.z+'-' if old.z else ''}{old.number}".strip(),[f"Annullato il {timezone.now().astimezone(ZoneInfo(tenant.timezone)):%d/%m/%Y %H:%M}"])
     if state=="done" and sale.kind=="sale" and sale.contact_id:
-        d=sale.data;head,rows=copy_lines(tenant,sale)
+        d=sale.data;head,rows=copy_lines(tenant,sale,who=True)
         record(tenant,sale," + ".join(dict.fromkeys(l["desc"] for l in d.get("lines",[]))),rows+head)
     if state=="done" and sale.kind=="sale":
         from .booking import change_status,BookingError
@@ -216,7 +216,8 @@ def finish(tenant,sale,state,info,attempt_id=None):
 def record(tenant,sale,what,rows):
     """2.20.5: an emitted receipt (or its annullo) with a client goes in the client's record: the day, what, by whom, lines and prices."""
     from .clients import save_treatment
-    staff=sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else ""
+    lines=sale.data.get("lines",[]) if sale.kind=="sale" else []
+    staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff"))) or (sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else "")
     day=(sale.printed or timezone.now()).astimezone(ZoneInfo(tenant.timezone)).date()
     save_treatment(tenant,sale.contact,{"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000]},None,booking=sale.booking)
 def send_now(tenant_id,location_id):
@@ -252,11 +253,12 @@ def enqueue(tenant,location,**fields):
     return sale
 
 # ---------- the copy for the client
-def copy_lines(tenant,sale):
+def copy_lines(tenant,sale,who=False):
+    """The lines of the copy for the client; who=True, for the client's record, with who did each line."""
     d=sale.data;tz=ZoneInfo(tenant.timezone)
     rows=[]
     for l in d.get("lines",[]):
-        rows.append(f"{l['qty']} x {l['desc']}  {euro(Decimal(l['qty']*l['cents'])/100)}")
+        rows.append(f"{l['qty']} x {l['desc']}  {euro(Decimal(l['qty']*l['cents'])/100)}"+(f" · {l['staff']}" if who and l.get("staff") else ""))
         if l.get("off"):rows.append(f"{off_label(l).capitalize()}  -{euro(Decimal(l['off'])/100)}")
     if d.get("discount"):rows.append(f"Sconto  -{euro(Decimal(d['discount'])/100)}")
     rows.append(f"Totale  {euro(sale.total)}")
@@ -304,7 +306,7 @@ def row_off(value,full,desc):
 def bill(post,conf):
     """The lines, discount, payments, codice fiscale and lotteria of the form, in cents; the department from the service."""
     deps=conf.get("departments",{});default=int(conf.get("default_dept") or 1);lines=[]
-    offs=post.getlist("off")
+    offs=post.getlist("off");staff=post.getlist("staff")
     for i,(desc,qty,price,svc) in enumerate(zip(post.getlist("desc"),post.getlist("qty"),post.getlist("price"),post.getlist("svc"))):
         desc=text(desc)
         if not desc and not price.strip():continue  # a row left empty
@@ -314,6 +316,8 @@ def bill(post,conf):
         c=cents(price)
         if not c:raise ValueError(f"Manca il prezzo di «{desc}».")
         line={"desc":desc,"qty":qty,"cents":c,"dept":int((deps.get(svc) or {}).get("dept") or default)}
+        who=text(staff[i] if i<len(staff) else "")[:100]
+        if who:line["staff"]=who  # 2.20.5: who did it, for the client's record only: never on the receipt
         o,pct=row_off(offs[i] if i<len(offs) else "",qty*c,desc)
         if o:line.update(off=o,pct=pct)
         lines.append(line)
@@ -334,7 +338,7 @@ def prefill(booking):
     """The booking's service or variant at the price written on it, with the others of its visit."""
     rows=[booking]+(list(Booking.objects.filter(visit=booking.visit).exclude(pk=booking.pk).exclude(status="cancelled").order_by("start")) if booking.visit else [])
     return [{"desc":text(" ".join(x for x in (b.snapshot.get("service") or b.service.name,b.snapshot.get("option","")) if x)),"qty":1,
-        "price":(b.snapshot.get("total") or "").replace(".",","),"svc":str(b.service_id)} for b in rows]
+        "price":(b.snapshot.get("total") or "").replace(".",","),"svc":str(b.service_id),"staff":b.resource.name if b.resource_id else ""} for b in rows]
 
 # ---------- the pages
 def places():return [l for l in Location.objects.filter(active=True).order_by("name") if l.till.get("device")]
@@ -404,7 +408,9 @@ def till_view(request,slug):
     rows=Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
     busy=any(s.status in ("queued","sending") for s in rows)
     who=booking.data if booking and can(request,"pii.read") else {}
+    names=list(Resource.objects.filter(location=loc,active=True).order_by("name").values_list("name",flat=True))
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
+        "staff_names":names,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(booking.contact.data) if booking and booking.contact_id and can(request,"pii.read") else ""})

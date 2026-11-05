@@ -90,7 +90,7 @@ def test_direct_sale_once_busy_then_done_with_copy(shop,register,settings,django
     c,_=client_as(t,role="reception")
     Fake.answers=[RCH_BUSY,RCH_OK]
     key=secrets.token_urlsafe(24)
-    with django_capture_on_commit_callbacks(execute=True):r=sell(c,loc,b,key=key,svc=str(svc.pk),copy="on")
+    with django_capture_on_commit_callbacks(execute=True):r=sell(c,loc,b,key=key,svc=str(svc.pk),copy="on",staff=["Cristina",""])
     assert r.status_code==302
     with django_capture_on_commit_callbacks(execute=True):sell(c,loc,b,key=key)  # pressed twice: sent once
     assert len(Fake.seen)==2 and Fake.seen[0]==Fake.seen[1] and "=R2/$" in Fake.seen[0]
@@ -105,7 +105,8 @@ def test_direct_sale_once_busy_then_done_with_copy(shop,register,settings,django
         # 2.20.5: the receipt goes in the client's record, with the day, the lines and their prices
         tr=Treatment.objects.get(contact_id=b.contact_id);info=tr.data
         assert tr.date==s.printed.astimezone(ZoneInfo(t.timezone)).date() and tr.booking_id==b.pk and info["service"]=="Taglio donna + Shampoo"
-        assert "2 x Taglio donna  50,00 €" in info["details"] and "Totale  55,00 €" in info["details"]
+        assert "2 x Taglio donna  50,00 € · Cristina" in info["details"] and "Totale  55,00 €" in info["details"] and info["staff"]=="Cristina"
+        assert "Cristina" not in Fake.seen[0] and not any("Cristina" in r for r in cassa.copy_lines(t,s)[1])  # never on the receipt nor on its copy
     assert c.get(f"/t/salone/cassa/?copia={s.pk}").status_code==200
 
 def test_unknown_is_checked_before_sending_again(shop,settings,django_capture_on_commit_callbacks,monkeypatch):

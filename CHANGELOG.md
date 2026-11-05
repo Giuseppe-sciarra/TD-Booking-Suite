@@ -4,6 +4,7 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
+- **Cassa: chi ha fatto ogni servizio**: su ogni riga c'è la colonna Chi, già scelta con l'operatrice della prenotazione; non va sullo scontrino né sulla copia, va nello storico del cliente accanto a ogni voce
 - **Cassa più svelta (collegata da questo computer)**: lo scontrino parte verso la cassa dopo che la pagina ha risposto, in un thread suo, una cassa alla volta: la pagina non aspetta più la cassa, che a volte teneva la connessione aperta dopo aver stampato
 - **Edizione Windows**: il controllo del certificato, una volta al minuto, non ferma più le pagine: legge il nome completo del PC, e su alcuni router quella richiesta al DNS dura secondi
 - **Cassa: lo scontrino va nello storico del cliente**: quando la cassa emette uno scontrino con il cliente scelto, nella sua scheda compare la visita del giorno con le righe, i prezzi, gli sconti, il totale e il pagamento; un annullo aggiunge la sua riga
