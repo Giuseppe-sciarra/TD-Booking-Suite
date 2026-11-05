@@ -551,3 +551,10 @@ document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",
   b.disabled=true;host.addEventListener("message",back);host.postMessage("tdwin-pdf:"+name);return;
  }
  addEventListener("afterprint",done);print();}));
+
+// 2.20.8: Windows edition, Stato del programma: a page the window waited for more than 5 seconds is told to the program
+// (only its path and how long), also when the program had answered in time: the first time of an action, the antivirus
+(()=>{const url=document.body.dataset.slowLog;if(!url)return;
+ addEventListener("load",()=>setTimeout(()=>{try{const n=performance.getEntriesByType("navigation")[0];
+  if(n&&n.duration>5000)fetch(url,{method:"POST",credentials:"same-origin",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({p:location.pathname,ms:Math.round(n.duration)})});}catch{}},0));
+})();

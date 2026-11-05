@@ -1,6 +1,10 @@
-# TD Booking Suite 2.20.7 — registro modifiche
+# TD Booking Suite 2.20.8 — registro modifiche
 
-**5 novembre 2026 · versione 2.20.7**
+**5 novembre 2026 · versione 2.20.8**
+
+## 2.20.8 — Stato del programma
+
+- **Edizione Windows: Stato del programma**, nel menu dell'amministratore: le pagine che hanno fatto aspettare, scritte dal programma da solo, senza il terminale. «Programma»: ha risposto dopo più di 3 secondi; «Finestra»: la finestra l'ha aspettata più di 5 secondi (la prima volta di un'azione, l'antivirus). Con un avviso in alto se nelle ultime 24 ore ce n'è stata una, e il pulsante **Scarica i log per l'assistenza**, un file zip con tutti i log
 
 ## 2.20.7 — PDF dei report senza la stampa
 
