@@ -323,8 +323,9 @@ def bill(post,conf):
         lines.append(line)
     if not lines:raise ValueError("Aggiungi almeno una riga al conto.")
     if len(lines)>60:raise ValueError("Al massimo 60 righe per conto.")
-    gross=sum(l["qty"]*l["cents"]-l.get("off",0) for l in lines);off=cents(post.get("discount"))
+    gross=sum(l["qty"]*l["cents"]-l.get("off",0) for l in lines)
     if gross<=0:raise ValueError("Con gli sconti il conto è a zero: togli uno sconto o una riga.")
+    off,_=row_off(post.get("discount"),gross,"Sconto sul totale") if str(post.get("discount") or "").strip().endswith("%") else (cents(post.get("discount")),"")  # 2.20.5: in euro or with the %
     if off>=gross:raise ValueError("Lo sconto non può superare il conto.")
     total=gross-off
     split=[[k,cents(post.get("pay_"+k))] for k,_ in PAYMENTS];split=[x for x in split if x[1]]

@@ -495,7 +495,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
  const num=v=>parseFloat(String(v||"").replace(",","."))||0;
- const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim();t+=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));});t-=num(form.querySelector("[name=discount]").value);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
+ const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim();t+=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));});const d=form.querySelector("[name=discount]").value.trim();t-=d.endsWith("%")?t*num(d.slice(0,-1))/100:num(d);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
@@ -511,7 +511,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  const who=form.querySelector("[data-till-client]"),id=form.querySelector("[data-till-contact]"),found=form.querySelector("[data-till-found]");let timer;
  who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
   timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
-   found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="ghost small";
+   found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="till-pick";
     b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();
      const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}});li.append(b);return li;}));}catch{}},250);});
 })();

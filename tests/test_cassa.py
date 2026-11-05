@@ -281,3 +281,13 @@ def test_till_settings_save_with_a_big_catalog(shop):
     assert c.post(url,data).status_code==302
     with scope(t):loc.refresh_from_db()
     assert loc.till["device"]=="rch" and loc.till["address"]=="192.168.1.155"
+
+def test_discount_on_the_total_in_euro_or_percent():
+    # 2.20.5: «10%» or «5,00» on the total, as on each line
+    from django.http import QueryDict
+    def bill(off):
+        q=QueryDict(mutable=True);q.setlist("desc",["Taglio","Piega"]);q.setlist("qty",["1","1"]);q.setlist("price",["30","20"]);q.setlist("svc",["",""]);q.setlist("off",["10%",""]);q["discount"]=off
+        return cassa.bill(q,{})
+    d,total=bill("10%");assert (d["discount"],total)==(470,4230)  # 30-3+20=47,00, then 10%
+    d,total=bill("5,00");assert (d["discount"],total)==(500,4200)
+    with pytest.raises(ValueError):bill("120%")

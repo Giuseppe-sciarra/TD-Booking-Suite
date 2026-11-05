@@ -4,7 +4,10 @@
 
 ## 2.20.5 — certificato del PC server su un'altra rete
 
-- **Cassa: chi ha fatto ogni servizio**: su ogni riga c'è la colonna Chi, già scelta con l'operatrice della prenotazione; non va sullo scontrino né sulla copia, va nello storico del cliente accanto a ogni voce
+- **Cassa: l'operatore di ogni servizio**: sotto ogni descrizione si sceglie l'operatore, già scelto con quello della prenotazione; non va sullo scontrino né sulla copia, va nello storico del cliente accanto a ogni voce
+- **Cassa: sconto sul totale anche in %** (per esempio 10%), come lo sconto di ogni riga in € o %
+- **Cassa: cliente sopra le voci del conto**, con i risultati della ricerca in un elenco con i bordi, facile da cliccare; sotto i 1180 pixel di larghezza servizi e conto vanno uno sopra l'altro, senza righe che escono
+- **Edizione Windows: niente più avviso «Proteggi il tuo account»**, collegata al sito o no; Authenticator e passkey restano in Account e sicurezza per chi li vuole
 - **Cassa più svelta (collegata da questo computer)**: lo scontrino parte verso la cassa dopo che la pagina ha risposto, in un thread suo, una cassa alla volta: la pagina non aspetta più la cassa, che a volte teneva la connessione aperta dopo aver stampato
 - **Edizione Windows**: il controllo del certificato, una volta al minuto, non ferma più le pagine: legge il nome completo del PC, e su alcuni router quella richiesta al DNS dura secondi
 - **Cassa: lo scontrino va nello storico del cliente**: quando la cassa emette uno scontrino con il cliente scelto, nella sua scheda compare la visita del giorno con le righe, i prezzi, gli sconti, il totale e il pagamento; un annullo aggiunge la sua riga
