@@ -99,6 +99,8 @@ class Tenant(models.Model):
     client_mails=models.JSONField(default=dict,blank=True)
     # 2.14.0: the text of the WhatsApp button on a booking and on the client card (client_mails.whatsapp); empty = standard
     whatsapp_text=models.TextField(blank=True)
+    whatsapp_reminder=models.TextField(blank=True)  # 2.22.0: the text of Promemoria WhatsApp, the day before
+    wa_when=models.CharField(max_length=4,blank=True)  # 2.22.0: when the banner asks to remind on WhatsApp (client_mails.WA_WHEN); empty: never
     # 2.14.0: the retention the worker runs once a day (privacy.run_retention): when it last went through, and why not
     retention_at=models.DateTimeField(null=True,blank=True)
     retention_error=models.CharField(max_length=200,blank=True)
@@ -672,6 +674,60 @@ class Sale(Scoped):
         indexes=[models.Index(fields=["location","status","created"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"sale:"+str(self.pk))
+class Product(Scoped):
+    """2.22.0: what the shop sells besides its services (a shampoo, a brush): sold at the Cassa, written in the quotes."""
+    name=models.CharField(max_length=80)
+    price=models.DecimalField(max_digits=8,decimal_places=2,null=True,blank=True)
+    active=models.BooleanField(default=True)
+    created=models.DateTimeField(auto_now_add=True)
+    def __str__(self):return self.name
+class GiftCard(Scoped):
+    """2.22.0: a prepaid credit in a client's name, sold at the Cassa (pending until the register emits that receipt),
+    spent on the next bills; balance in euro, every spend and give-back in moves."""
+    code=models.CharField(max_length=12)
+    contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="gift_cards")
+    sale=models.ForeignKey(Sale,null=True,blank=True,on_delete=models.SET_NULL,related_name="gift_cards")
+    amount=models.DecimalField(max_digits=8,decimal_places=2)
+    balance=models.DecimalField(max_digits=8,decimal_places=2)
+    expires=models.DateField(null=True,blank=True)
+    status=models.CharField(max_length=8,default="pending",choices=[("pending","Da emettere"),("active","Attiva"),("void","Annullata")])
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:constraints=[models.UniqueConstraint(fields=["tenant","code"],name="giftcard_code")]
+class GiftMove(Scoped):
+    card=models.ForeignKey(GiftCard,on_delete=models.CASCADE,related_name="moves")
+    sale=models.ForeignKey(Sale,null=True,blank=True,on_delete=models.SET_NULL,related_name="gift_moves")
+    cents=models.IntegerField()  # less than 0: spent on that receipt; more than 0: given back (receipt not emitted or voided)
+    created=models.DateTimeField(auto_now_add=True)
+class Parked(Scoped):
+    """2.22.0: Preventivo pagamenti cassa: lines of a bill left out of the receipt (done, paid another day), on the
+    client's card until they go in a bill. Lines and note sealed in pii."""
+    location=models.ForeignKey(Location,on_delete=models.PROTECT)
+    contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="parked")
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="parked")
+    total=models.DecimalField(max_digits=9,decimal_places=2,default=0)
+    key=models.CharField(max_length=66,blank=True)  # the bill's key: the same form sent twice parks once
+    actor=models.CharField(max_length=36,blank=True)
+    pii=models.TextField()
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:constraints=[models.UniqueConstraint(fields=["tenant","key"],name="parked_key")]
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"parked:"+str(self.pk))
+class Quote(Scoped):
+    """2.22.0: a quote for a client: who, lines of services, products or free text, notes, sealed in pii."""
+    year=models.PositiveSmallIntegerField()
+    number=models.PositiveIntegerField()
+    contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="quotes")
+    total=models.DecimalField(max_digits=9,decimal_places=2,default=0)
+    valid_until=models.DateField(null=True,blank=True)
+    actor=models.CharField(max_length=36,blank=True)
+    pii=models.TextField()
+    created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(auto_now=True)
+    class Meta:constraints=[models.UniqueConstraint(fields=["tenant","year","number"],name="quote_number")]
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"quote:"+str(self.pk))
+    @property
+    def ref(self):return f"{self.year}-{self.number:04d}"
 class Audit(Scoped):
     actor=models.CharField(max_length=36,blank=True)
     action=models.CharField(max_length=80)

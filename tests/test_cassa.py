@@ -313,7 +313,7 @@ def test_the_most_used_services_come_first(shop):
         top=cassa.favourites(t,loc,items)
     assert top[0]["name"]=="Servizio 09" and len(top)==12
     c,_=client_as(t);page=c.get("/t/salone/cassa/").content.decode()
-    assert "Più usati" in page and "Tutti i servizi (15)" in page
+    assert "Più usati" in page and "Tutti i servizi e prodotti (15)" in page
 
 def test_da_pagare_open_then_paid_in_the_reports(shop):
     """2.20.9: «Da pagare» goes to the register as non riscosso (a register saved before has no code for it), needs the

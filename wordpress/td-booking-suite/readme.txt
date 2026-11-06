@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.21.0
+Stable tag: 2.22.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -52,6 +52,11 @@ arriva dopo viene confermata al PC ma non sostituisce quella più nuova. Se il s
 coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sincronizza con il sito" confronta tutto e tiene
 la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
 L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
+
+Più servizi nella stessa visita (2.22.0). Nel modulo, con "Aggiungi un altro servizio", il cliente mette altri servizi della
+stessa sede, uno dopo l'altro: il sito mostra solo gli orari in cui ci stanno tutti, con lo stesso operatore o divisi come
+deciso nel programma (Sedi), li tiene occupati finché il PC non li prende e scrive un'email sola con tutti i servizi. Il PC
+li riceve come una visita, come al banco. Serve il programma 2.22.0, che manda anche gli orari liberi senza variante.
 
 Il sito gestisce prenotazioni ed email (2.21.0). Si accende dal programma, in Sito WordPress · modalità PC, con "Sito come
 archivio centrale" e "Il sito gestisce prenotazioni ed email". Da allora chi prenota dal sito è confermato subito (o riceve

@@ -498,16 +498,41 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
  const num=v=>parseFloat(String(v||"").replace(",","."))||0;
- const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim();t+=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));});const d=form.querySelector("[name=discount]").value.trim();t-=d.endsWith("%")?t*num(d.slice(0,-1))/100:num(d);total.textContent=Math.max(0,t).toFixed(2).replace(".",",")+" €";};
+ const eur=v=>Math.max(0,v).toFixed(2).replace(".",",")+" €";let credit=0;
+ // 2.22.0: the rows «In sospeso» stay out of the total (they go in Preventivo pagamenti cassa), a gift card takes its credit off
+ const sum=()=>{let t=0,later=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim(),net=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));if(r.querySelector("[name=park]").value==="1")later+=net;else t+=net;});const d=form.querySelector("[name=discount]").value.trim();t-=d.endsWith("%")?t*num(d.slice(0,-1))/100:num(d);t=Math.max(0,t);
+  const want=form.querySelector("[data-till-gift-take]").value.trim(),use=Math.min(t,want?Math.min(credit,num(want)):credit),g=form.querySelector("[data-till-gift-total]");
+  total.textContent=eur(t-use);g.hidden=!use;g.textContent=use?"Gift card −"+eur(use)+" su "+eur(t):"";
+  const p=form.querySelector("[data-till-parked]");p.hidden=!later;p.textContent=later?"In sospeso, non nello scontrino: "+eur(later):"";};
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
   else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
   sum();}));
- body.addEventListener("click",e=>{const q=e.target.closest("[data-till-qty]"),x=e.target.closest("[data-till-remove]");
+ body.addEventListener("click",e=>{const q=e.target.closest("[data-till-qty]"),x=e.target.closest("[data-till-remove]"),k=e.target.closest("[data-till-park]");
   if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
+  if(k){const r=k.closest("tr"),f=r.querySelector("[name=park]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));r.classList.toggle("is-parked",on);}
   if(x)x.closest("tr").remove();sum();});
  form.addEventListener("input",sum);sum();
+ // 2.22.0: sell a gift card: an amount (preset or free) and the expiry, as a row of the bill
+ const box=document.querySelector("[data-till-gift]"),opener=document.querySelector("[data-till-gift-open]");
+ if(box){const value=box.querySelector("[data-till-gift-value]"),err=box.querySelector("[data-till-gift-error]"),show=on=>{box.hidden=!on;opener.setAttribute("aria-expanded",String(on));if(on)value.focus();};
+  opener.addEventListener("click",()=>show(box.hidden));box.querySelector("[data-till-gift-close]").addEventListener("click",()=>show(false));
+  box.querySelectorAll("[data-till-gift-amount]").forEach(b=>b.addEventListener("click",()=>{value.value=b.dataset.tillGiftAmount;err.hidden=true;}));
+  box.querySelector("[data-till-gift-add]").addEventListener("click",()=>{const v=num(value.value);
+   if(!(v>=1&&v<=9999)){err.textContent="Scrivi un importo da 1 a 9.999 €.";err.hidden=false;value.focus();return;}
+   const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value="GIFT CARD";r.querySelector("[name=desc]").readOnly=true;r.querySelector("[name=price]").value=v.toFixed(2).replace(".",",");
+   r.querySelector("[name=svc]").value="gift:"+(box.querySelector("[data-till-gift-expires]").value||"");r.querySelector("[name=qty]").readOnly=true;r.querySelectorAll("[data-till-qty],[data-till-park]").forEach(b=>b.hidden=true);r.querySelector("[name=off]").readOnly=true;
+   body.append(r);value.value="";err.hidden=true;show(false);sum();});}
+ // the code of a gift card that pays: its credit asked to the program, the total shown net of it
+ const code=form.querySelector("[data-till-gift-code]"),info=form.querySelector("[data-till-gift-info]");let ask;
+ const check=async()=>{const v=code.value.trim();credit=0;info.textContent="";info.classList.remove("danger-text");sum();if(v.length<4)return;const mine=ask=v;
+  try{const r=await fetch(code.dataset.url+"?code="+encodeURIComponent(v),{credentials:"same-origin"});const d=await r.json();if(mine!==ask)return;
+   if(d.error){info.textContent=d.error;info.classList.add("danger-text");}else{credit=num(d.balance);info.textContent="Credito "+d.balance+" €"+(d.who?" · "+d.who:"")+(d.expires?" · scade il "+d.expires:"");}sum();}catch{}};
+ code?.addEventListener("input",()=>{clearTimeout(code.t);code.t=setTimeout(check,300);});
+ const use=c=>{code.value=c;code.closest("details").open=true;check();};
+ document.querySelectorAll("[data-till-gift-use]").forEach(b=>b.addEventListener("click",()=>use(b.dataset.tillGiftUse)));
+ if(code?.value)check();
  const search=document.querySelector("[data-till-search]");
  search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();
   // 2.20.8: a search looks in all the services: the list opens, the most used step aside meanwhile
@@ -516,10 +541,64 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
  const who=form.querySelector("[data-till-client]"),id=form.querySelector("[data-till-contact]"),found=form.querySelector("[data-till-found]");let timer;
  who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
-  timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
+  timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?cassa=1&q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
    found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="till-pick";
     b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();
-     const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}});li.append(b);return li;}));}catch{}},250);});
+     const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}
+     // 2.22.0: his gift cards with credit, and what he has in Preventivo pagamenti cassa
+     const extra=form.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
+      (c.gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small";x.textContent="Usa gift card "+g.code+" · "+g.balance+" €";x.addEventListener("click",()=>use(g.code));extra.append(x);});
+      (c.parked||[]).forEach(p=>{const a=document.createElement("a");a.className="button secondary small";const q=new URLSearchParams(location.search);q.append("sospeso",p.id);a.href="?"+q.toString();a.textContent="In sospeso "+p.total+" € del "+p.day+": aggiungi al conto";extra.append(a);});
+      extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
+})();
+// 2.22.0: a client chosen by typing (gift card, quote): the id in the hidden field, «client-picked» for who wants the rest
+document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.closest(".field")||who.parentElement,id=box.querySelector("[data-client-id]"),found=box.querySelector("[data-client-found]");let timer,ask="";
+ who.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
+  timer=setTimeout(async()=>{ask=q;try{const r=await fetch(who.dataset.clientSearch+"?q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();if(ask!==q)return;
+   found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="till-pick";
+    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.phone?" · "+c.phone:c.email?" · "+c.email:"");
+    b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();who.dispatchEvent(new CustomEvent("client-picked",{bubbles:true,detail:c}));});li.append(b);return li;}));}catch{}},250);});});
+// 2.22.0: Preventivi: lines from the price list or by hand, the amounts as they are typed, the client from the list
+(()=>{const form=document.querySelector("form[data-quote]");if(!form)return;
+ const body=form.querySelector("[data-quote-lines]"),tpl=document.querySelector("#quote-row"),num=v=>parseFloat(String(v||"").replace(",","."))||0,eur=v=>v.toFixed(2).replace(".",",")+" €";
+ const sum=()=>{let t=0;body.querySelectorAll("tr").forEach(r=>{const a=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value);t+=a;r.querySelector("[data-quote-amount]").textContent=eur(a);});form.querySelector("[data-quote-total]").textContent=eur(t);};
+ const add=(desc,price,ref,focus=true)=>{const same=ref&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=ref]").value===ref&&r.querySelector("[name=desc]").value===desc);
+  if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);sum();return;}
+  const r=tpl.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=desc;r.querySelector("[name=price]").value=price;r.querySelector("[name=ref]").value=ref;r.querySelector("[data-quote-save]").hidden=!!ref;body.append(r);if(!desc&&focus)r.querySelector("[name=desc]").focus();sum();};
+ const pick=form.querySelector("[data-quote-add]");pick.addEventListener("change",()=>{const o=pick.selectedOptions[0];if(o&&o.value)add(o.dataset.name,o.dataset.price,o.value);pick.value="";});
+ form.querySelector("[data-quote-free]").addEventListener("click",()=>add("","",""));
+ body.addEventListener("click",e=>{const x=e.target.closest("[data-quote-remove]"),k=e.target.closest("[data-quote-save]");
+  if(k){const f=k.closest("tr").querySelector("[name=save]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));}
+  if(x)x.closest("tr").remove();sum();});
+ form.addEventListener("input",sum);sum();if(!body.children.length)add("","","",false);
+ form.addEventListener("client-picked",e=>{const c=e.detail;form.querySelectorAll("[data-q]").forEach(i=>{i.value=c[i.dataset.q]||"";});const n=form.querySelector("[data-q-new]");if(n)n.hidden=true;});
+ form.querySelector("[data-client-search]")?.addEventListener("input",()=>{const n=form.querySelector("[data-q-new]");if(n)n.hidden=false;});
+})();
+// 2.22.0: an appointment tapped in the agenda opens its summary beside it (who, services, what to pay, Pagamento);
+// Ctrl or the middle button still open the booking's page, and a drag does not open anything (its click is swallowed)
+(()=>{if(!document.querySelector("[data-agenda],.week-list"))return;let box=null;
+ const close=()=>{if(box?.open)box.close();};
+ document.addEventListener("click",async e=>{const a=e.target.closest(".agenda-item[href],.week-col li a[href]");
+  if(!a||e.defaultPrevented||e.button||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+  e.preventDefault();
+  if(!box){box=document.createElement("dialog");box.className="peek-dialog";box.setAttribute("aria-label","Appuntamento");document.body.append(box);
+   box.addEventListener("click",ev=>{if(ev.target===box||ev.target.closest("[data-peek-close]"))close();});}
+  let r;try{r=await fetch(a.getAttribute("href")+"riepilogo/",{credentials:"same-origin"});}catch{r=null;}
+  if(!r||!r.ok||r.redirected){location.href=a.href;return;}
+  box.innerHTML=await r.text();if(!box.open)box.showModal();box.querySelector(".peek-actions a")?.focus();});
+})();
+// 2.22.0: Promemoria WhatsApp: the chat opened is marked as sent (the desk presses Invio in WhatsApp); undone by hand
+(()=>{const list=document.querySelector(".wa-list");if(!list)return;const csrf=document.querySelector("#wa-mark [name=csrfmiddlewaretoken]")?.value||"";
+ const todo=document.querySelector("[data-wa-todo]"),count=()=>{const n=list.querySelectorAll("li:not(.is-sent)").length;if(todo)todo.textContent=n?"Da avvisare: "+n:"Tutti avvisati";};
+ const mark=async(li,on)=>{const body=new URLSearchParams({booking:li.dataset.waRow,sent:on?"1":"0"});
+  try{const r=await fetch(location.pathname,{method:"POST",credentials:"same-origin",headers:{"X-CSRFToken":csrf},body});const d=await r.json();if(!d.ok)return;
+   li.classList.toggle("is-sent",on);li.querySelector("[data-wa-state]").textContent=on?"Avvisato alle "+d.at:"Da avvisare";
+   const open=li.querySelector("[data-wa-open]");if(open){open.classList.toggle("primary",!on);open.classList.toggle("secondary",on);}
+   const undo=li.querySelector("[data-wa-undo]"),done=li.querySelector("[data-wa-done]");if(undo)undo.hidden=!on;if(done)done.hidden=on;count();}catch{}};
+ list.addEventListener("click",e=>{const li=e.target.closest("li");if(!li)return;
+  if(e.target.closest("[data-wa-open]")&&!li.classList.contains("is-sent")&&li.querySelector("[data-wa-undo]"))mark(li,true);
+  if(e.target.closest("[data-wa-done]"))mark(li,true);
+  if(e.target.closest("[data-wa-undo]"))mark(li,false);});
 })();
 // 2.16.0: a page waiting for the register looks again by itself
 (()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();

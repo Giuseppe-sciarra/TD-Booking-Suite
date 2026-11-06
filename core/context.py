@@ -1,5 +1,6 @@
 from django.conf import settings
 from .wpsync import banner as wp_banner
+from .portal import wa_due
 def presentation(request):
  from .models import Tenant
  brand=getattr(request,"tenant",None) or (Tenant.objects.first() if settings.EDITION=="private" else None)
@@ -29,4 +30,6 @@ def presentation(request):
          # how the platform staff are called: the agency here, the program's administrator in an installed edition
          "agency":settings.AGENCY_NAMES,
          # warnings an edition puts on top of the pages: [{"title","text","url","action"}]
-         "extra_notices":getattr(request,"extra_notices",()) if mfa_ok else ()}
+         "extra_notices":getattr(request,"extra_notices",()) if mfa_ok else (),
+         # 2.22.0: the clients to remind on WhatsApp, on top of every page until it is done
+         "wa_due":wa_due(request) if mfa_ok and user and user.is_authenticated and getattr(request,"tenant",None) and "/promemoria-whatsapp/" not in request.path else 0}

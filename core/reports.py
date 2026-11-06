@@ -144,12 +144,23 @@ def record_tables(request,first,last):
             c=open_seal(s.contact.pii,key,f"{tid}:contact:{s.contact_id}");people[s.contact_id]=" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente"
     out["da_incassare"]=(["Cliente","Scontrino del","Numero","Da pagare (€)","Da giorni"],[[people.get(s.contact_id,"Cliente"),s.printed.astimezone(ZoneInfo(request.tenant.timezone)).strftime("%d/%m/%Y"),
         f"{s.z}-{s.number}" if s.z else s.number,s.due,(today-s.printed.astimezone(ZoneInfo(request.tenant.timezone)).date()).days] for s in open_])
+    # 2.22.0: Preventivo pagamenti cassa, to this day: done and not paid, with no receipt yet
+    from .models import Parked,GiftCard
+    name=lambda c:(people.setdefault(c.pk," ".join(x for x in (open_seal(c.pii,key,f"{tid}:contact:{c.pk}").get(k,"") for k in ("first_name","last_name")) if x) or "Cliente") if names_ok else "Cliente") if c else ""
+    parked=list(Parked.objects.select_related("contact").order_by("created"));tz=ZoneInfo(request.tenant.timezone)
+    rows=[]
+    for x in parked:
+        for l in x.data.get("lines",[]):rows.append([name(x.contact),x.created.astimezone(tz).strftime("%d/%m/%Y"),(f"{l['qty']} x " if l["qty"]>1 else "")+l["desc"],l.get("staff",""),euro(l["qty"]*l["cents"]-l.get("off",0))])
+    out["sospesi"]=(["Cliente","Del","Cosa","Operatore","Importo (€)"],rows)
+    # gift cards sold in the period, and the credit left on each
+    cards=list(GiftCard.objects.filter(created__date__gte=first,created__date__lte=last).exclude(status="pending").select_related("contact").order_by("created"))
+    out["gift_card"]=(["Codice","Intestata a","Venduta il","Valore (€)","Credito (€)","Scade","Stato"],[[g.code,name(g.contact),g.created.astimezone(tz).strftime("%d/%m/%Y"),g.amount,g.balance,g.expires.strftime("%d/%m/%Y") if g.expires else "",g.get_status_display()] for g in cards])
     # the dashboard: the figures of the period and its bars, as widths of 0..100
     top=max([v[1] for v in by_month.values()] or [0]) or 1;best=max([v[1] for v in by_staff.values()] or [0]) or 1
     dash={"money":euro(total[1]),"visits":total[0],"average":euro(total[1]//total[0]) if total[0] else euro(0),"clients":len(by_client),"width":10*min(len(by_month),24),
         "months":[{"label":k[5:]+"/"+k[2:4],"money":euro(v[1]),"x":10*i+2,"y":102-round(100*v[1]/top),"h":max(1,round(100*v[1]/top))} for i,(k,v) in enumerate(sorted(by_month.items())[-24:])],
         "staff":[{"label":k,"money":euro(v[1]),"n":v[0],"w":round(100*v[1]/best)} for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])],
-        "owed":sum(s.due for s in open_),"owed_n":len(open_)} if total[0] or open_ else {}
+        "owed":sum(s.due for s in open_),"owed_n":len(open_),"parked":sum(x.total for x in parked),"parked_n":len(parked)} if total[0] or open_ or parked else {}
     return out,dash
 
 def xlsx(head,rows,title):
@@ -171,7 +182,7 @@ def xlsx(head,rows,title):
     return buf.getvalue()
 
 TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_anno":"Anno per anno, con gli operatori",
-    "lavori_servizio":"I servizi più fatti","da_incassare":"Da incassare","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
+    "lavori_servizio":"I servizi più fatti","da_incassare":"Da incassare","sospesi":"Preventivo pagamenti cassa","gift_card":"Gift card vendute","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
     "occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
     "origine":"Da dove arrivano le prenotazioni","valore":"Valore stimato"}
 def view(request,slug):

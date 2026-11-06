@@ -157,6 +157,15 @@ def iso_day(iso):
     return (timezone.localtime(v) if v.tzinfo else v).strftime("%d/%m/%Y")
 
 @register.filter
+def iso_time(iso):
+    """2.22.0: the same, as the local hour: "18:02"."""
+    from datetime import datetime
+    from django.utils import timezone
+    try:v=datetime.fromisoformat(str(iso))
+    except ValueError:return ""
+    return (timezone.localtime(v) if v.tzinfo else v).strftime("%H:%M")
+
+@register.filter
 def birthday(iso):
     """2.14.0: "1985-03-12" -> "12 marzo"."""
     from datetime import date

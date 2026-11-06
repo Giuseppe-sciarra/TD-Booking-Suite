@@ -314,7 +314,10 @@ def notifications_view(request,slug):
                 from .client_mails import WHATSAPP
                 text=request.POST.get("whatsapp_text","").replace("\r\n","\n").strip()
                 if len(text)>1000 or any(ord(c)<32 and c!="\n" for c in text):raise ValueError("Messaggio WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
-                Tenant.objects.filter(pk=tenant.pk).update(whatsapp_text="" if text==WHATSAPP else text)
+                from .client_mails import REMINDER
+                again=request.POST.get("whatsapp_reminder","").replace("\r\n","\n").strip()
+                if len(again)>1000 or any(ord(c)<32 and c!="\n" for c in again):raise ValueError("Promemoria WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
+                Tenant.objects.filter(pk=tenant.pk).update(whatsapp_text="" if text==WHATSAPP else text,whatsapp_reminder="" if again==REMINDER else again)
                 audit(tenant,request.user,"whatsapp.saved",tenant.pk)
                 messages.success(request,"Messaggio WhatsApp salvato.")
                 return redirect(reverse("notifications",args=[slug])+"#whatsapp")
@@ -343,6 +346,6 @@ def notifications_view(request,slug):
     mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD,"locked":k in cm.ADMIN and not (request.user.is_staff or getattr(settings,"SHOP_MAILS",False))} for k,label,help in cm.KINDS}
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
-        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
+        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"whatsapp_reminder":tenant.whatsapp_reminder or cm.REMINDER,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
         "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant),"site_mails":by_site(tenant)})
 SUMMARY_HOURS=range(16,23)

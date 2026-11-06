@@ -96,13 +96,15 @@ def snapshot(tenant,days):
         if any(f.get("required") for f in s.fields):continue  # shortcut: the service's own questions are not on the site, a service that needs one stays off it
         options=list(Option.objects.filter(service=s,active=True));people=list(linked(s))
         slots={}
-        for o in options or [None]:
+        for o in [None,*options]:  # 2.22.0: also without variant (key ""): a service added to a visit goes at its own duration
             for r in people:
                 for n in range(days):
                     d=today+timedelta(days=n)
                     if t:=[f"{datetime.fromisoformat(x['start']).strftime('%H:%M')}-{datetime.fromisoformat(x['end']).strftime('%H:%M')}" for x in available(tenant,s.pk,d,o and o.pk,r.pk)]:
                         slots.setdefault(str(o.pk) if o else "",{}).setdefault(str(r.pk),{})[d.isoformat()]=t
         out.append({"id":str(s.pk),"name":s.name,"description":s.description,"location":s.location.name,"picks":s.client_picks,
+            # 2.22.0: more services in one visit on the site: of the same location, with the same operator or not, waiting at most this
+            "location_id":str(s.location_id),"split":s.location.visit_split,"wait":s.location.visit_wait,
             # 2.21.0: for the emails the site writes itself: a request waits for the business's yes; the client cancels until cutoff minutes before
             "approval":bool(s.request_all),"cutoff":s.cancel_cutoff_minutes,"phone":s.location.phone,
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration} for o in options],"resources":[{"id":str(r.pk),"name":r.name} for r in people],"slots":slots})
@@ -162,7 +164,9 @@ def take(tenant,rows):
             if Booking.objects.filter(request_key=key).exists():continue
             try:start=local_datetime(date.fromisoformat(str(r.get("date"))),datetime.strptime(str(r.get("time")),"%H:%M").time(),tz).isoformat()
             except (ValueError,AttributeError):errors.append("una prenotazione del sito con data non valida");continue
-            data={"service":str(r.get("service","")),"option":str(r.get("option") or ""),"resource":"" if r.get("any") else str(r.get("resource","")),"start":start,"party":1,
+            # 2.22.0: the other services of the visit, placed again here one after the other (the PC has the truth)
+            extra=[str(x.get("service","")) for x in r.get("extra",[]) if isinstance(x,dict)] if isinstance(r.get("extra"),list) else []
+            data={"service":str(r.get("service","")),"option":str(r.get("option") or ""),"resource":"" if r.get("any") else str(r.get("resource","")),"start":start,"party":1,**({"extra":extra} if extra else {}),
                 **{k:str(r.get(k) or "") for k in ("first_name","last_name","email","phone","notes")},"marketing":r.get("marketing") is True and not staff,"notices":r.get("notices") is not False,"request_key":key,
                 **({"force":True} if staff and r.get("free") else {})}  # Altro orario: any time, kept if nothing is in the way
             try:b,_=create_booking(tenant,data,**how)

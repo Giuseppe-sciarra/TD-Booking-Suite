@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
+from core import gift,quotes,cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/app.css",branding.app_css,name="brand_app_css"),
@@ -63,6 +63,7 @@ urlpatterns=[
  path("t/<slug:slug>/bookings/",portal.bookings,name="bookings"),
  path("t/<slug:slug>/bookings/new/",public.manual_booking,name="manual_booking"),
  path("t/<slug:slug>/bookings/<uuid:booking_id>/",portal.booking_detail,name="booking_detail"),
+ path("t/<slug:slug>/bookings/<uuid:booking_id>/riepilogo/",portal.booking_peek,name="booking_peek"),
  path("t/<slug:slug>/bookings/<uuid:booking_id>/move/",public.move_page,name="move_booking"),
  path("t/<slug:slug>/bookings/<uuid:booking_id>/iscritti/",portal.attendees,name="attendees"),
  path("t/<slug:slug>/bookings/<uuid:booking_id>/move-api/",public.move_api,name="move_api"),
@@ -73,10 +74,18 @@ urlpatterns=[
  path("t/<slug:slug>/contacts/search/",portal.contacts_search,name="contacts_search"),
  path("t/<slug:slug>/contacts/import/",portal.contacts_import,name="contacts_import"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/",portal.contact_detail,name="contact_detail"),
+ path("t/<slug:slug>/contacts/<uuid:contact_id>/storico/",portal.contact_history,name="contact_history"),
+ path("t/<slug:slug>/promemoria-whatsapp/",portal.wa_reminders,name="wa_reminders"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/unisci/",portal.contact_merge,name="contact_merge"),
  path("t/<slug:slug>/attesa/",portal.waitlist_view,name="waitlist"),
  path("t/<slug:slug>/richiami/",portal.recalls_view,name="recalls"),
  path("t/<slug:slug>/cassa/",cassa.till_view,name="till"),
+ path("t/<slug:slug>/cassa/gift-card/",gift.page,name="gift_cards"),
+ path("t/<slug:slug>/cassa/gift-card/codice/",gift.lookup,name="gift_lookup"),
+ path("t/<slug:slug>/preventivi/",quotes.index,name="quotes"),
+ path("t/<slug:slug>/preventivi/nuovo/",quotes.edit,name="quote_new"),
+ path("t/<slug:slug>/preventivi/<uuid:quote_id>/",quotes.edit,name="quote_edit"),
+ path("t/<slug:slug>/preventivi/<uuid:quote_id>/stampa/",quotes.sheet,name="quote_sheet"),
  path("t/<slug:slug>/registratore/",cassa.settings_view,name="till_settings"),
  path("t/<slug:slug>/alloggi/",stays.stays_view,name="stays"),
  path("t/<slug:slug>/alloggi/file/<str:what>/",stays.stay_files,name="stay_files"),

@@ -1,5 +1,6 @@
 import csv,io,re,secrets
 from datetime import date,datetime,time,timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.contrib import messages
@@ -12,7 +13,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.db.models import Q
 from .models import *
-from .forms import LocationForm,ResourceForm,ServiceForm,OptionForm,ScheduleForm,ExceptionForm,OccurrenceForm,CampaignForm,ShiftForm
+from .forms import ProductForm,LocationForm,ResourceForm,ServiceForm,OptionForm,ScheduleForm,ExceptionForm,OccurrenceForm,CampaignForm,ShiftForm
 from .tenancy import scope
 from .middleware import require_role
 from .permissions import can,require,visible_bookings,shown,check_new_booking
@@ -33,6 +34,7 @@ CATALOG={
  "options":(Option,OptionForm,"Varianti dei servizi"),
  "turns":(ShiftRule,ShiftForm,"Turni del ristorante"),
  "occurrences":(Occurrence,OccurrenceForm,"Eventi con data"),
+ "products":(Product,ProductForm,"Prodotti"),
 }
 # One plain sentence per catalog page: what it is and when it is needed.
 CATALOG_HELP={
@@ -44,8 +46,9 @@ CATALOG_HELP={
  "options":"Versioni dello stesso servizio con durata diversa, per esempio taglio corto o lungo",
  "turns":"I turni che si ripetono ogni settimana, per esempio pranzo e cena, con i coperti di ciascuno",
  "occurrences":"Le date con posti limitati: un evento, un corso, un tour. Una data si può ripetere ogni settimana o ogni N settimane",
+ "products":"Quello che vendi oltre ai servizi, per esempio shampoo e spazzole: lo trovi in Cassa e nei preventivi. Il reparto dello scontrino si sceglie in Registratore di cassa",
 }
-EDIT_TITLES={"locations":"sede","schedules":"fascia oraria","exceptions":"chiusura o giorno speciale","services":"servizio","resources":"risorsa","options":"variante","turns":"turno","occurrences":"data dell'evento"}
+EDIT_TITLES={"locations":"sede","schedules":"fascia oraria","exceptions":"chiusura o giorno speciale","services":"servizio","resources":"risorsa","options":"variante","turns":"turno","occurrences":"data dell'evento","products":"prodotto"}
 EDIT_HELP={
  "locations":"Il nome con cui riconosci la sede, l'indirizzo e il telefono che compaiono nelle email di conferma",
  "schedules":"Un giorno della settimana con un orario di apertura. Per pranzo e cena crea due fasce. Le prenotazioni già fatte non vengono mai annullate",
@@ -55,12 +58,13 @@ EDIT_HELP={
  "options":"La stessa prestazione con una durata diversa, per esempio Taglio corto e Taglio lungo",
  "turns":"Un turno che si ripete ogni settimana, per esempio la cena del venerdì dalle 19:30 alle 23:00, con i suoi coperti",
  "occurrences":"Una data dell'evento o del corso, con i posti disponibili. Con Ripeti crei in un colpo tutte le date della stagione",
+ "products":"Un prodotto che vendi in Cassa e che metti nei preventivi",
 }
 # 2.10.0, every edition: the agency (the program's administrator) sets up type, locations and the technical side;
 # the business runs the day and keeps its opening hours, closing days and staff (operators, rooms) up to date.
 # 2.11.0: also its services with their variants and prices; the kind of booking of a service stays the agency's
 # 2.14.0: and the turns of the restaurant and the dates of the events, everyday work there
-OWNER_CATALOG={"schedules","exceptions","resources","services","options","turns","occurrences"}
+OWNER_CATALOG={"schedules","exceptions","resources","services","options","turns","occurrences","products"}
 def catalog_allowed(request,kind):return request.user.is_staff or kind in OWNER_CATALOG
 def catalog_kinds(tenant=None):
     """Pages appear only when a service actually uses them, with the names the business uses: a restaurant
@@ -98,6 +102,9 @@ def setup(request,slug):
         steps.append(step(key="resources",title=many,done=n>0,count=n,text=f"{n} {one.lower() if n==1 else many.lower()}" if n else f"Ancora nessuno: servono ai servizi su appuntamento o con {many.lower()}",hint=unit_help))
     if "shift" in kinds:steps.append(step(key="turns",title="Turni del ristorante",done=ShiftRule.objects.exists(),count=ShiftRule.objects.count(),text=f"{ShiftRule.objects.count()} turni settimanali",hint=CATALOG_HELP["turns"]))
     if "event" in kinds:steps.append(step(key="occurrences",title="Eventi con data",done=Occurrence.objects.filter(start__gte=timezone.now()).exists(),count=Occurrence.objects.count(),text=f"{Occurrence.objects.filter(start__gte=timezone.now()).count()} date in programma",hint=CATALOG_HELP["occurrences"]))
+    if t.till_on or Product.objects.exists():  # 2.22.0: optional, so it never counts as missing
+        n=Product.objects.filter(active=True).count()
+        steps.append(step(key="products",title="Prodotti",done=True,count=n,text=f"{n} prodott{'o' if n==1 else 'i'} in vendita" if n else "Facoltativo: aggiungili se vendi prodotti, anche un po' alla volta dai preventivi",hint=CATALOG_HELP["products"]))
     members=Membership.objects.filter(tenant=t).count()
     agency=[
      {"title":"Persone e permessi","done":members>1,"text":f"{members} person{'a' if members==1 else 'e'} con accesso","link":"members" if request.user.is_staff else ""},
@@ -116,7 +123,7 @@ def setup(request,slug):
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
     return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
-        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),
+        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"wa_when":__import__("core.client_mails",fromlist=["WA_WHEN"]).WA_WHEN,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),
         "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
@@ -155,12 +162,15 @@ def setup_desk(request,slug):
         absences=int(request.POST.get("absences_request",t.absences_request));minutes=int(request.POST.get("wait_minutes",t.wait_minutes))
         mode=request.POST.get("wait_mode",t.wait_mode)
         if absences not in ABSENCES or minutes not in WAIT_MINUTES or mode not in ("all","queue"):raise ValueError
+        from .client_mails import WA_WHEN
+        wa=request.POST.get("wa_when",t.wa_when)
+        if wa not in dict(WA_WHEN):raise ValueError
         from .clients import parse_categories
         cats=parse_categories(request.POST.get("client_categories","")) if "client_categories" in request.POST else t.client_categories
     except (ValueError,BookingError) as ex:
         messages.error(request,str(ex) if isinstance(ex,BookingError) else "Scelta non valida.");return redirect(reverse("setup",args=[slug])+"#banco")
-    Tenant.objects.filter(pk=t.pk).update(force_all=on,till_operators=request.POST.get("till_operators")=="on",absences_request=absences,wait_mode=mode,wait_minutes=minutes,client_categories=cats)
-    audit(t,request.user,"tenant.force_all",t.pk,on=on,absences=absences,wait_mode=mode,wait_minutes=minutes)
+    Tenant.objects.filter(pk=t.pk).update(force_all=on,till_operators=request.POST.get("till_operators")=="on",absences_request=absences,wait_mode=mode,wait_minutes=minutes,client_categories=cats,wa_when=wa)
+    audit(t,request.user,"tenant.force_all",t.pk,on=on,absences=absences,wait_mode=mode,wait_minutes=minutes,wa_when=wa)
     messages.success(request,("Ora anche reception e operatori possono forzare al banco." if on else "Al banco forzano solo gli amministratori.")+" Regole salvate.")
     return redirect(reverse("setup",args=[slug])+"#banco")
 
@@ -424,7 +434,11 @@ def dashboard(request,slug):
     if can(request,"contacts.read") and can(request,"pii.read"):
         from .clients import birthdays
         born=birthdays(request.tenant,today)[:20]
-    return render(request,"dashboard.html",{"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").exclude(channel="webhook").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).exclude(channel="webhook").count(),
+    closes=[]
+    if can(request,"sale.write"):  # 2.22.0: a day of receipts without its daily closure
+        from .cassa import places,missing_close
+        closes=[(l,d) for l in places() for d in [missing_close(request.tenant,l)] if d]
+    return render(request,"dashboard.html",{"closes":closes,"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").exclude(channel="webhook").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).exclude(channel="webhook").count(),
         "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists(),"turns":turn_list,"turn_day":turn_day,"many_locations":Location.objects.filter(active=True).count()>1})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)
@@ -452,6 +466,21 @@ def bookings(request,slug):
     from .clients import mark
     for row in mark(request,page):row.shown=shown(request,row.data)
     return render(request,"bookings.html",{"page":page,"start":a.date(),"end":(b-timedelta(days=1)).date(),"agenda":agenda})
+def booking_peek(request,slug,booking_id):
+    """2.22.0: the appointment tapped in the agenda, in a panel beside it: who, the services of the visit with their
+    price and operator, what is to pay, Pagamento (the Cassa with the bill ready) and the way to the booking."""
+    require(request,"booking.read")
+    b=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service","resource","contact","location"),pk=booking_id)
+    rows=[b]+(list(Booking.objects.filter(visit=b.visit).exclude(pk=b.pk).exclude(status="cancelled").select_related("service","resource").order_by("start")) if b.visit else [])
+    lines=[{"name":" · ".join(x for x in (r.snapshot.get("service") or r.service.name,r.snapshot.get("option","")) if x),"start":r.start,"end":r.end,"who":r.snapshot.get("resource") or (r.resource.name if r.resource_id else ""),
+        "price":Decimal(r.snapshot["total"]) if r.snapshot.get("total") else None} for r in rows]
+    total=sum(l["price"] or 0 for l in lines)
+    sales=list(Sale.objects.filter(booking__in=rows,kind="sale").exclude(status__in=("failed","void")).order_by("-created"))
+    paid=sum(x.total for x in sales if x.status in ("done","queued","sending","unknown"))
+    parked=list(Parked.objects.filter(booking__in=rows))
+    extras=client_extras(request,b.contact) if b.contact_id and can(request,"pii.read") else {}
+    return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],"end":max(r.end for r in rows),
+        "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),**extras})
 def booking_detail(request,slug,booking_id):
     from .booking import visit_rows
     require(request,"booking.read")
@@ -672,8 +701,15 @@ def contacts_search(request,slug):
     from .clients import search as find,receipt_code
     require(request,"contacts.read","pii.read")
     from django.http import JsonResponse
+    found=find(request.tenant,request.GET.get("q",""),limit=8);extra={}
+    if request.GET.get("cassa") and can(request,"sale.write"):
+        # 2.22.0: in Cassa, the client's gift cards with credit and what he has in Preventivo pagamenti cassa
+        from .gift import of
+        today=timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date()
+        for c in found:extra[c.pk]={"gifts":[{"code":g.code,"balance":str(g.balance).replace(".",",")} for g in of(c) if g.status=="active" and g.balance>0 and not (g.expires and g.expires<today)],
+            "parked":[{"id":str(x.pk),"total":str(x.total).replace(".",","),"day":x.created.astimezone(ZoneInfo(request.tenant.timezone)).strftime("%d/%m")} for x in Parked.objects.filter(contact=c).order_by("created")]}
     return JsonResponse({"results":[{"id":str(c.pk),"first_name":c.found.get("first_name",""),"last_name":c.found.get("last_name",""),
-        "email":c.found.get("email",""),"phone":c.found.get("phone",""),"cf":receipt_code(c.found)} for c in find(request.tenant,request.GET.get("q",""),limit=8)]})
+        "email":c.found.get("email",""),"phone":c.found.get("phone",""),"cf":receipt_code(c.found),**extra.get(c.pk,{})} for c in found]})
 def contacts_import(request,slug):
     """Clients and treatment history from the old program (CSV or Excel): file, columns, preview, import.
     Needs what adding clients and treatments by hand needs; the marketing consents also the privacy permission."""
@@ -863,7 +899,40 @@ def contact_detail(request,slug,contact_id):
     ctx["sales"]=contact.sales.filter(kind="sale").order_by("-created")[:20]  # 2.16.0: his receipts from the Cassa
     from .cassa import owed
     ctx["owed"]=list(owed(contact=contact).order_by("created"));ctx["owed_total"]=sum(s.due for s in ctx["owed"])  # 2.20.9: what he still has to pay
+    ctx.update(client_extras(request,contact))
     return render(request,"contact_detail.html",ctx)
+def client_extras(request,contact):
+    """2.22.0: what the client card shows from the Cassa: Preventivo pagamenti cassa, gift cards, quotes."""
+    from .gift import of
+    parked=list(Parked.objects.filter(contact=contact).order_by("created"))
+    for x in parked:x.lines=x.data.get("lines",[]);x.note=x.data.get("note","")
+    today=timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date()
+    gifts=[g for g in of(contact) if g.status=="active"]
+    for g in gifts:g.expired=bool(g.expires and g.expires<today)
+    return {"parked":parked,"parked_total":sum(x.total for x in parked),"gifts":gifts,
+        "quotes":list(Quote.objects.filter(contact=contact).order_by("-year","-number")[:10]) if can(request,"booking.write") else []}
+def contact_history(request,slug,contact_id):
+    """2.22.0: Storico del cliente, to print or save as PDF: everything recorded on his card in a period (or always),
+    with what he spent, what he still owes and his credit."""
+    require(request,"contacts.read","pii.read","notes.read")
+    contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
+    from .clients import treatments
+    from .cassa import owed
+    tz=ZoneInfo(request.tenant.timezone)
+    def day(k):
+        try:return date.fromisoformat(request.GET.get(k,""))
+        except ValueError:return None
+    since,until=day("dal"),day("al")
+    rows=[r for r in reversed(treatments(contact)) if (not since or r.date>=since) and (not until or r.date<=until)]
+    for r in rows:a=r.info.get("amount");r.euro=Decimal(a)/100 if isinstance(a,int) else None
+    visits=[r for r in rows if r.info.get("kind")!="payment"]
+    due=list(owed(contact=contact))
+    ctx={"contact":contact,"data":contact.data,"rows":rows,"since":since,"until":until,"visits":len(visits),"spent":sum(r.euro or 0 for r in rows),
+        "owed_total":sum(s.due for s in due),"next":list(Booking.objects.filter(contact=contact,start__gte=timezone.now(),status__in=ACCEPTED).select_related("service").order_by("start")[:5]),
+        "today":timezone.now().astimezone(tz).date(),**client_extras(request,contact)}
+    ctx["credit"]=sum(g.balance for g in ctx["gifts"] if not g.expired)
+    audit(request.tenant,request.user,"contact.history",contact.pk)
+    return render(request,"contact_history.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;
     Chiama, WhatsApp, Prenota, Fatta, Togli. Names and contacts as the role may see them, the entries of its scope."""
@@ -903,6 +972,62 @@ def waitlist_view(request,slug):
     return render(request,"waitlist.html",{"rows":rows,"error":error,"form":form,"client":client,"services":Service.objects.filter(active=True,location__active=True).select_related("location").order_by("name"),
         "resources":Resource.objects.filter(active=True,location__active=True,id__in=ServiceResource.objects.filter(service__active=True,service__kind__in=("resource","day")).values("resource_id")).order_by("name"),
         "one":units(t.business_type)[0],"today":now.astimezone(tz).date(),"many_locations":Location.objects.filter(active=True).count()>1})
+def to_remind(request,a,b):
+    """2.22.0: the confirmed appointments from a to b this role sees, one a visit (its first service)."""
+    return visible_bookings(request,Booking.objects.filter(start__gte=a,start__lt=b,status="confirmed"))
+def wa_due(request):
+    """2.22.0: how many clients still to remind on WhatsApp now, for the banner on every page; 0 when the business
+    does not use it or this person cannot do it."""
+    from .client_mails import wa_window
+    t=getattr(request,"tenant",None)
+    if not t or not t.wa_when or not (can(request,"booking.write") and can(request,"pii.read")):return 0
+    w=wa_window(t,timezone.now())
+    if not w:return 0
+    rows=to_remind(request,*w).exclude(snapshot__has_key="wa_reminded").values_list("visit","pk")
+    return len({v or p for v,p in rows})
+def reminders_due(request,a,b):
+    """The appointments from a to b to remind on WhatsApp, with the chat ready when there is a phone."""
+    from .client_mails import whatsapp,REMINDER
+    rows=to_remind(request,a,b).select_related("service","resource","contact").order_by("start")
+    out=[];seen=set()
+    for x in rows:
+        if x.visit and x.visit in seen:continue
+        if x.visit:seen.add(x.visit)
+        d=x.data;x.who=" ".join(v for v in (d.get("first_name",""),d.get("last_name","")) if v)
+        x.wa=whatsapp(request.tenant,d.get("phone",""),x,request.tenant.whatsapp_reminder or REMINDER) if can(request,"pii.read") else ""
+        x.sent=x.snapshot.get("wa_reminded","");out.append(x)
+    return out
+def wa_reminders(request,slug):
+    """2.22.0: Promemoria WhatsApp: tomorrow's appointments (or of the day chosen), each with WhatsApp open on its text;
+    the desk presses Invio and the program marks it sent. Nothing is sent by the program: WhatsApp does it."""
+    require(request,"booking.read","pii.read")
+    tz=ZoneInfo(request.tenant.timezone);today=timezone.now().astimezone(tz).date()
+    if request.method=="POST":
+        require(request,"booking.write")
+        from django.http import JsonResponse
+        b=get_object_or_404(visible_bookings(request,Booking.objects.all()),pk=request.POST.get("booking"))
+        on=request.POST.get("sent")!="0"
+        for x in (Booking.objects.filter(visit=b.visit) if b.visit else [b]):  # the whole visit: one message says all its services
+            if on:x.snapshot["wa_reminded"]=timezone.now().isoformat()
+            else:x.snapshot.pop("wa_reminded",None)
+            x.save(update_fields=["snapshot"])
+        audit(request.tenant,request.user,"whatsapp.reminded" if on else "whatsapp.unmarked",b.pk)
+        return JsonResponse({"ok":True,"at":timezone.now().astimezone(tz).strftime("%H:%M") if on else ""})
+    from .client_mails import wa_window,WA_WHEN
+    now=timezone.now();w=wa_window(request.tenant,now)
+    try:day=date.fromisoformat(request.GET["giorno"]) if request.GET.get("giorno") else None
+    except ValueError:day=None
+    from django.utils.formats import date_format
+    if day or not w:
+        day=day or today+timedelta(days=1);a=datetime.combine(day,time.min,tz);w=(a,a+timedelta(days=1))
+        title="Oggi" if day==today else date_format(day,"l j F").capitalize()
+    else:
+        last=(w[1]-timedelta(seconds=1)).astimezone(tz);day=last.date()
+        title={"d1":"Appuntamenti di "+date_format(day,"l j F"),"t0":"Oggi, da adesso"}.get(request.tenant.wa_when) or "Fino alle "+date_format(w[1].astimezone(tz),"H:i")+("" if w[1].astimezone(tz).date()==today else " di domani")
+    rows=reminders_due(request,*w)
+    return render(request,"wa_reminders.html",{"rows":rows,"day":day,"today":today,"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":title,
+        "when":dict(WA_WHEN).get(request.tenant.wa_when,""),
+        "todo":sum(1 for r in rows if not r.sent),"writer":can(request,"booking.write")})
 def recalls_view(request,slug):
     """2.14.0: Richiami: the clients whose recall is due (a week ahead), without a booking to come; Chiama, WhatsApp,
     Prenota, Fatto. For who sees the client cards."""
@@ -1197,7 +1322,7 @@ def outlook_view(request,slug,item_id=None):
         messages.success(request,"Outlook scollegato.");return redirect("catalog_edit",slug,"resources",r.pk)
     if not mscal.config(request.tenant):raise PermissionDenied
     return redirect(mscal.start(request,r))
-REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","options":"Variante","turns":"Turno","occurrences":"Data"}
+REMOVABLE={"locations":"Sede","services":"Servizio","resources":"Risorsa","options":"Variante","turns":"Turno","occurrences":"Data","products":"Prodotto"}
 def calendar_remove(request,slug,kind,item_id):
     if request.method!="POST" or kind not in CATALOG:raise PermissionDenied
     require(request,"catalog.write")

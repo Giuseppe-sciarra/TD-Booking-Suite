@@ -9,7 +9,7 @@ import re
 from datetime import datetime,timedelta,time
 from zoneinfo import ZoneInfo
 from django.conf import settings
-from django.db import transaction
+from django.db import models,transaction
 from django.utils import timezone,translation
 from django.utils.translation import gettext
 
@@ -96,14 +96,44 @@ def codes_line(location):return " · ".join(f"{k} {v}" for k,v in (("CIN",locati
 # 2.14.0: the WhatsApp button of a booking and of the client card opens the chat with this text, with the fields of the
 # emails; the person at the desk sends it from WhatsApp, the program sends nothing
 WHATSAPP="Ciao {nome}, ti scriviamo da {attivita} per la prenotazione: {servizio}, {quando}."
-def whatsapp(tenant,phone,booking=None):
+# 2.22.0: Promemoria WhatsApp, the appointments of a day with the chat ready: the desk presses Invio, nothing leaves by itself
+# when the banner on every page asks to remind. d1, the advice: on the last opening day before the appointment, so a
+# shop closed on Sunday and Monday reminds on Saturday the clients of Tuesday (the text says the day); t0: the same
+# morning, the appointments of today; h3: from now to three hours from now
+WA_WHEN=[("","Spenti"),("d1","Il giorno di apertura prima (consigliato): il sabato per il martedì, se domenica e lunedì è chiuso"),
+    ("t0","La mattina stessa: gli appuntamenti di oggi"),("h24","Nelle prossime 24 ore"),("h3","Nelle prossime 3 ore"),("h2","Nelle prossime 2 ore")]
+def open_days(tenant,first,n=7):
+    """Which of the n days from first the business works: opening hours on that weekday, no closure of the whole
+    business. Without any opening hours written, every day. Two queries, whatever n."""
+    from datetime import timedelta
+    from .models import Schedule,ExceptionDay
+    days=[first+timedelta(days=i) for i in range(n)]
+    hours=list(Schedule.objects.filter(purpose="service").values_list("weekday","valid_from","valid_until"))
+    if not hours:return days
+    shut=list(ExceptionDay.objects.filter(purpose="service",closed=True,location__isnull=True,service__isnull=True,resource__isnull=True,date__lte=days[-1]).filter(models.Q(until__gte=first)|models.Q(until__isnull=True,date__gte=first)).values_list("date","until"))
+    def works(d):
+        return any(w==d.weekday() and not (a and a>d) and not (b and b<d) for w,a,b in hours) and not any(x<=d<=(y or x) for x,y in shut)
+    return [d for d in days if works(d)]
+def wa_window(tenant,now):
+    """The start and end of the appointments to remind now, or None when the business does not want them."""
+    from datetime import datetime,time,timedelta
+    w=tenant.wa_when or ""
+    if w not in dict(WA_WHEN) or not w:return None
+    tz=ZoneInfo(tenant.timezone);today=now.astimezone(tz).date();mid=lambda d:datetime.combine(d,time.min,tz)
+    if w[0]=="h":return now,now+timedelta(hours=int(w[1:]))
+    if w=="t0":return now,mid(today+timedelta(days=1))
+    # d1: tomorrow and the closed days after it, up to the next day the business works (a week at most)
+    last=(open_days(tenant,today+timedelta(days=1)) or [today+timedelta(days=1)])[0]
+    return mid(today+timedelta(days=1)),mid(last+timedelta(days=1))
+REMINDER="Ciao {nome}, ti ricordiamo l'appuntamento da {attivita} {quando}: {servizio}. Se non puoi venire, rispondi a questo messaggio. A presto!"
+def whatsapp(tenant,phone,booking=None,text=None):
     """The wa.me link to this phone (an Italian number without prefix is +39), empty without a usable number.
     With a booking, the business's text filled with it; without, an empty chat."""
     from urllib.parse import quote
     from .booking import normalize_phone
     number=normalize_phone(phone)[1:]
     if not number:return ""
-    text=fill(tenant.whatsapp_text or WHATSAPP,values(tenant,booking,booking.data)) if booking else ""
+    text=fill(text or tenant.whatsapp_text or WHATSAPP,values(tenant,booking,booking.data)) if booking else ""
     return f"https://wa.me/{number}"+(f"?text={quote(text)}" if text else "")
 
 def sample(tenant):

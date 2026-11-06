@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,audit
+from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,Quote,Parked,GiftCard,audit
 from .crypto import encrypt
 from .booking import BookingError,OPEN
 
@@ -36,7 +36,11 @@ def export_contact(tenant,contact):
         "consent":contact.consent,"consent_at":contact.consent_at.isoformat() if contact.consent_at else None,"suppressed":contact.suppressed},
         "bookings":bookings,"waiting_list":[{"service":w.service.name,"first":w.first.isoformat(),"last":w.last.isoformat(),"status":w.status,"data":w.data,"consent":w.snapshot.get("consent")}
             for w in WaitEntry.objects.filter(contact=contact).select_related("service").order_by("created")],"treatments":[{"date":t.date.isoformat(),**t.data,"booking":str(t.booking_id or "")} for t in Treatment.objects.filter(contact=contact).order_by("date","created")],
-        "consent_history":[{"at":e.at.isoformat(),"event":e.kind,"channel":e.channel,"text_sha256":e.text_hash} for e in history(contact)]}
+        "consent_history":[{"at":e.at.isoformat(),"event":e.kind,"channel":e.channel,"text_sha256":e.text_hash} for e in history(contact)],
+        # 2.22.0: quotes, Preventivo pagamenti cassa and gift cards in his name
+        "quotes":[{"number":q.ref,"created":q.created.isoformat(),"total":str(q.total),**q.data} for q in Quote.objects.filter(contact=contact).order_by("created")],
+        "to_pay_at_the_desk":[{"created":x.created.isoformat(),"total":str(x.total),**x.data} for x in Parked.objects.filter(contact=contact).order_by("created")],
+        "gift_cards":[{"code":g.code,"amount":str(g.amount),"balance":str(g.balance),"expires":g.expires.isoformat() if g.expires else None,"status":g.status} for g in GiftCard.objects.filter(contact=contact)]}
 
 def _anonymize_booking(tenant,b):
     b.pii=encrypt(tenant,ANON_BOOKING,"booking:"+str(b.pk))
@@ -62,6 +66,8 @@ def _anonymize_contact(tenant,c,forget=False):
     WaitEntry.objects.filter(contact=c).delete()  # 2.14.0: and the waiting list
     from .cassa import forget
     forget(tenant,Sale.objects.filter(contact=c))  # 2.16.0: his receipts keep lines and totals, not his codice fiscale
+    # 2.22.0: his quotes (they carry his name and phone) and his Preventivo pagamenti cassa go; a gift card stays, in nobody's name
+    Quote.objects.filter(contact=c).delete();Parked.objects.filter(contact=c).delete();GiftCard.objects.filter(contact=c).update(contact=None)
     for d in Delivery.objects.filter(contact=c).exclude(payload=""):
         d.payload=encrypt(tenant,{"redacted":True},"delivery:"+str(d.pk))
         if d.status in ("pending","sending"):d.status="skipped"
@@ -101,13 +107,14 @@ def apply_retention(tenant,apply=False,now=None):
     old_records=Treatment.objects.filter(date__lt=since)
     report["treatments"]=old_records.count()
     report["deliveries"]=Delivery.objects.filter(created__lt=cutoff).exclude(payload="").count()
+    old_quotes=Quote.objects.filter(created__lt=cutoff);report["quotes"]=old_quotes.count()  # 2.22.0: name and phone inside, also without a card
     if not apply:return report
     with transaction.atomic():
         Tenant.objects.select_for_update().get(pk=tenant.pk)
         for b in old.iterator(chunk_size=200):_anonymize_booking(tenant,b)
         for c in stale:
             _anonymize_contact(tenant,c);record(tenant,c,"erased","retention")
-        old_records.delete();gone.delete()
+        old_records.delete();gone.delete();old_quotes.delete()
         from .cassa import forget
         forget(tenant,Sale.objects.filter(created__lt=cutoff).exclude(actor=""))
         for d in Delivery.objects.filter(created__lt=cutoff).exclude(payload=""):

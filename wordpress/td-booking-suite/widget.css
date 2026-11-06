@@ -1,7 +1,22 @@
 .tdbs-embed{width:100%;max-width:1100px;margin:auto}.tdbs-frame{border:0;border-radius:14px;display:block;width:100%;background:transparent}.tdbs-embed>p{text-align:center;font-size:13px}
-.tdbs-pc{max-width:720px;margin:auto}.tdbs-pc select,.tdbs-pc input[type=text],.tdbs-pc input[type=email],.tdbs-pc input[type=tel],.tdbs-pc textarea{width:100%;max-width:100%;box-sizing:border-box}
-.tdbs-pc-slots{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.tdbs-pc-slot{min-width:4.5em}.tdbs-pc-slot[aria-pressed=true]{outline:3px solid currentColor;outline-offset:1px;font-weight:700}
-.tdbs-pc-updated{font-size:13px;opacity:.75}.tdbs-pc-done{font-weight:600}
+/* 2.22.0: the booking form takes fonts, colours, borders and buttons from the theme (UIkit classes on YOOtheme Pro); here only the layout */
+.tdbs-pc{max-width:720px;margin:auto}.tdbs-pc .tdbs-pc-grid{display:grid;grid-template-columns:1fr;gap:16px 20px;margin:0 0 20px}@media(min-width:640px){.tdbs-pc .tdbs-pc-grid{grid-template-columns:1fr 1fr}}
+.tdbs-pc .tdbs-pc-field{margin:0;min-width:0}.tdbs-pc .tdbs-pc-field label{display:block;margin-bottom:6px}.tdbs-pc select,.tdbs-pc input:not([type=checkbox]),.tdbs-pc textarea{width:100%;max-width:100%;box-sizing:border-box}
+.tdbs-pc .tdbs-pc-description-box{grid-column:1/-1}.tdbs-pc-who{margin:0 0 20px;padding:0;border:0}.tdbs-pc-who legend{margin-bottom:12px}
+.tdbs-pc-check{display:flex;gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer}.tdbs-pc-check input{flex:none;margin-top:.3em}
+.tdbs-pc-privacy{margin:0 0 16px}.tdbs-pc-privacy summary{cursor:pointer}.tdbs-pc-send{margin:8px 0 12px}.tdbs-pc-send button{width:100%}@media(min-width:640px){.tdbs-pc-send button{width:auto;min-width:220px}}
+.tdbs-pc-status{min-height:1.4em;margin:0 0 16px}.tdbs-pc-status:empty{display:none}.tdbs-pc-updated{font-size:.8em;opacity:.7;margin:0}.tdbs-pc-done{font-weight:600}
+/* the services added to the visit */
+.tdbs-pc-extra{margin:-8px 0 20px}.tdbs-pc-extra-list{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.tdbs-pc-extra-list:not(:empty){margin-bottom:10px}
+.tdbs-pc-extra-item{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 12px;border:1px solid color-mix(in srgb,currentColor 35%,transparent);border-radius:999px;font-size:.95em}
+.tdbs-pc-remove{border:0;background:none;padding:0 2px;cursor:pointer;font:inherit;font-size:1.15em;line-height:1;color:inherit;opacity:.7}.tdbs-pc-remove:hover{opacity:1}
+.tdbs-pc-extra-foot{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0}.tdbs-pc-pick{max-width:320px}
+/* with no UIkit: tidy fields in the theme's font and colour */
+.tdbs-plain select,.tdbs-plain input:not([type=checkbox]),.tdbs-plain textarea{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:8px;padding:10px 12px;line-height:1.4}
+.tdbs-plain select:focus,.tdbs-plain input:focus,.tdbs-plain textarea:focus{outline:2px solid currentColor;outline-offset:1px}.tdbs-plain select{appearance:auto}
+.tdbs-plain .uk-button{font:inherit;font-weight:600;padding:11px 20px;border-radius:8px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;line-height:1.3}
+.tdbs-plain .uk-button-primary{border-width:2px;font-weight:700;background:color-mix(in srgb,currentColor 12%,transparent)}.tdbs-plain .uk-button:hover{background:color-mix(in srgb,currentColor 20%,transparent)}
+.tdbs-plain .uk-button-small{padding:6px 12px;font-size:.9em;font-weight:500}.tdbs-plain .uk-checkbox{width:1.1em;height:1.1em}.tdbs-plain .uk-form-label{font-size:.95em;font-weight:600}
 .tdbs-agenda-bar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}.tdbs-agenda-bar [aria-current=true]{outline:3px solid currentColor;outline-offset:1px;font-weight:700}.tdbs-agenda-bar form{display:inline}
 .tdbs-agenda-updated{font-size:13px;opacity:.75}.tdbs-agenda-body{animation:tdbs-in .25s ease-out}@keyframes tdbs-in{from{opacity:0;transform:translateY(4px)}}
 /* 2.19.0: one scroll for the operators' row and the bookings: the row stays on top, the days of the week on the left; the theme's colours, a tint and a blur under what stays */

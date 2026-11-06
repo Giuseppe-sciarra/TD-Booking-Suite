@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
- * Version: 2.21.0
+ * Version: 2.22.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.21.0';
+const TDBS_VERSION='2.22.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -368,8 +368,58 @@ function tdbs_archive_bookings($from,$to,&$a) {
 /** The site's requests the PC has not taken yet: their times are no longer free on the site. */
 function tdbs_pc_taken() {
     global $wpdb;$out=array();
-    foreach ((array)$wpdb->get_col('SELECT slot FROM '.tdbs_pc_table()) as $slot) {$slot=json_decode($slot,true);if (is_array($slot)) $out[]=$slot;}
+    foreach ((array)$wpdb->get_col('SELECT slot FROM '.tdbs_pc_table()) as $slot) {
+        $slot=json_decode($slot,true);if (!is_array($slot)) continue;
+        // 2.22.0: a visit of several services keeps each of its pieces busy, with the end of the first one its own
+        $pieces=(array)($slot['extra']??array());$first=$slot;$first['end']=$pieces?(string)($slot['first_end']??$slot['end']):(string)$slot['end'];$out[]=$first;
+        foreach ($pieces as $x) if (is_array($x)) $out[]=array('resource'=>(string)($x['resource']??''),'date'=>(string)$slot['date'],'time'=>(string)($x['time']??''),'end'=>(string)($x['end']??''));
+    }
     return $out;
+}
+/** 2.22.0: more services in one visit, one after the other: the free times of the first (as tdbs_pc_free) that leave room
+    for each next service (no variant), with the same operator or, when the location allows it, with another, waiting at
+    most the location's minutes between two. Returns day => array(array(range, resource, pieces)), pieces one an extra:
+    array('service','resource','time','end'). $extra: the ids of the services after the first. */
+function tdbs_pc_free_visit($snap,$sv,$option,$resource,$extra) {
+    $free=tdbs_pc_free($snap,$sv,$option,$resource);
+    if (!$extra) return $free;
+    $others=array();
+    foreach ($extra as $id) {$x=tdbs_pc_service($snap,(string)$id);if (!$x || ($x['location_id']??'')!==($sv['location_id']??'')) return array();$others[]=$x;}
+    $split=(string)($sv['split']??'need');$wait=(int)($sv['wait']??15);$out=array();
+    $mins=function($t){return (int)substr($t,0,2)*60+(int)substr($t,3,2);};
+    $at=function($m){return sprintf('%02d:%02d',intdiv($m,60),$m%60);};
+    foreach ($free as $day=>$times) foreach ($times as $x) {
+        $first=$x[1];$pieces=array();$end=substr($x[0],6,5);$ok=true;
+        foreach ($others as $o) {
+            $ofree=tdbs_pc_free($snap,$o,'','');$found=null;
+            // the one who did the previous piece first, then the others when the location splits a visit
+            $ids=array($first);
+            if ($split!=='same') foreach (array_column((array)($o['resources']??array()),'id') as $rid) if ($rid!==$first) $ids[]=$rid;
+            $limit=$mins($end)+$wait;
+            foreach ($split==='need'?array(array($first),$ids):array($ids) as $try) {
+                $best=null;
+                foreach ((array)($ofree[$day]??array()) as $y) {
+                    if (!in_array($y[1],$try,true)) continue;
+                    $a=$mins(substr($y[0],0,5));
+                    if ($a<$mins($end) || $a>$limit) continue;
+                    if ($best===null || $a<$mins(substr($best[0],0,5))) $best=$y;
+                }
+                if ($best) {$found=$best;break;}
+            }
+            if (!$found) {$ok=false;break;}
+            $pieces[]=array('service'=>(string)$o['id'],'resource'=>$found[1],'time'=>substr($found[0],0,5),'end'=>substr($found[0],6,5));
+            $first=$found[1];$end=substr($found[0],6,5);
+        }
+        if ($ok) $out[$day][]=array($x[0],$x[1],$pieces);
+    }
+    return $out;
+}
+function tdbs_pc_extra($snap,$sv,$value) {
+    /** the ids asked as extras (array or "a,b"), at most 4, each a service of the snapshot of the same location, the first one excluded */
+    $ids=array_values(array_unique(array_filter(array_map('strval',is_array($value)?$value:explode(',',(string)$value)))));
+    if (count($ids)>4) return null;
+    foreach ($ids as $id) {$x=tdbs_pc_service($snap,$id);if (!$x || $id===($sv['id']??'') || ($x['location_id']??'')!==($sv['location_id']??'')) return null;}
+    return $ids;
 }
 function tdbs_pc_service($snap,$id) {
     foreach ((array)($snap['services']??array()) as $sv) if (is_array($sv) && ($sv['id']??'')===$id) return $sv;
@@ -401,7 +451,9 @@ function tdbs_pc_slots_api(WP_REST_Request $request) {
     if (!$snap) return tdbs_pc_error('Prenotazioni online non disponibili.',404);
     $sv=tdbs_pc_service($snap,(string)$request->get_param('service'));
     if (!$sv) return tdbs_pc_error('Servizio non disponibile.',404);
-    $response=new WP_REST_Response(array('ok'=>true,'days'=>(object)tdbs_pc_free($snap,$sv,(string)$request->get_param('option'),(string)$request->get_param('resource'))),200);
+    $extra=tdbs_pc_extra($snap,$sv,(string)$request->get_param('extra'));
+    if ($extra===null) return tdbs_pc_error('Servizi da aggiungere non validi.');
+    $response=new WP_REST_Response(array('ok'=>true,'days'=>(object)tdbs_pc_free_visit($snap,$sv,(string)$request->get_param('option'),(string)$request->get_param('resource'),$extra)),200);
     $response->header('Cache-Control','no-store');
     return $response;
 }
@@ -443,17 +495,20 @@ function tdbs_pc_book(WP_REST_Request $request) {
     foreach (array('first_name','last_name') as $k) $client[$k]=tdbs_name_case($client[$k]);
     // one request at a time: two clients on the same time, only the first gets it
     $wpdb->get_var("SELECT GET_LOCK('tdbs_book',10)");
-    $free=tdbs_pc_free($snap,$sv,$option,$any?'':$resource);$hit=null;
+    $extra=tdbs_pc_extra($snap,$sv,$p['extra']??array());
+    if ($extra===null) {$wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");return tdbs_pc_error('Servizi da aggiungere non validi.');}
+    $free=tdbs_pc_free_visit($snap,$sv,$option,$any?'':$resource,$extra);$hit=null;
     foreach ((array)($free[$date]??array()) as $x) if (substr($x[0],0,5)===$time && ($any || $x[1]===$resource)) {$hit=$x;break;}
     if (!$hit) {$wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");return tdbs_pc_error('Questo orario non è più libero: scegline un altro.',409,array('reload'=>true));}
-    $id=bin2hex(random_bytes(16));
-    $saved=$wpdb->insert(tdbs_pc_table(),array('id'=>$id,'created'=>current_time('mysql',true),'slot'=>wp_json_encode(array('service'=>$sv['id'],'option'=>$option,'resource'=>$hit[1],'any'=>$any,'date'=>$date,'time'=>$time,'end'=>substr($hit[0],6,5))),'data'=>tdbs_pc_seal($client)));
+    $id=bin2hex(random_bytes(16));$pieces=(array)($hit[2]??array());$last=$pieces?end($pieces)['end']:substr($hit[0],6,5);
+    // 2.22.0: a visit: the end of the whole visit in end, the first service's own in first_end, each next service in extra
+    $saved=$wpdb->insert(tdbs_pc_table(),array('id'=>$id,'created'=>current_time('mysql',true),'slot'=>wp_json_encode(array('service'=>$sv['id'],'option'=>$option,'resource'=>$hit[1],'any'=>$any,'date'=>$date,'time'=>$time,'end'=>$last,'first_end'=>substr($hit[0],6,5),'extra'=>$pieces)),'data'=>tdbs_pc_seal($client)));
     $wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");
     if (!$saved) return tdbs_pc_error('Non è stato possibile salvare la richiesta: riprova.',500);
     $who='';foreach ((array)($sv['resources']??array()) as $r) if (!$any && ($r['id']??'')===$hit[1]) $who=' con '.$r['name'];
     if (tdbs_master()) {
         // 2.21.0: the site in charge confirms it now (or takes the request, for a service the business confirms) and writes to the client
-        $pending=!empty($sv['approval']);$info=tdbs_site_info($snap,$sv,$option,$any?'':$hit[1],$date,$time,substr($hit[0],6,5),$client);
+        $pending=!empty($sv['approval']);$info=tdbs_site_info($snap,$sv,$option,$any?'':$hit[1],$date,$time,$last,$client,$pieces);
         tdbs_state_put('wp-'.$id,$pending?'pending':'confirmed',$info['start'],$info,array(),time());
         tdbs_tell($pending?'requested':'confirmed','wp-'.$id,$info);
         tdbs_notify($pending?'Nuova richiesta dal sito':'Nuova prenotazione dal sito',$info);
@@ -461,7 +516,7 @@ function tdbs_pc_book(WP_REST_Request $request) {
     }
     $day=DateTime::createFromFormat('Y-m-d',$date);
     wp_mail($client['email'],'Richiesta ricevuta · '.sanitize_text_field((string)($snap['name']??'')),
-        'Ciao '.$client['first_name'].",\n\nabbiamo ricevuto la tua richiesta: ".sanitize_text_field((string)$sv['name']).$who.' il '.($day?$day->format('d/m/Y'):$date).' alle '.$time.".\nRiceverai la conferma per email.\n\n".sanitize_text_field((string)($snap['name']??'')));
+        'Ciao '.$client['first_name'].",\n\nabbiamo ricevuto la tua richiesta: ".sanitize_text_field(tdbs_visit_name($snap,$sv,$pieces)).$who.' il '.($day?$day->format('d/m/Y'):$date).' alle '.$time.".\nRiceverai la conferma per email.\n\n".sanitize_text_field((string)($snap['name']??'')));
     return new WP_REST_Response(array('ok'=>true,'message'=>'Richiesta ricevuta: riceverai la conferma per email.'),201);
 }
 
@@ -475,7 +530,7 @@ function tdbs_pc_shortcode($atts) {
     $services=array();
     foreach ((array)$snap['services'] as $sv) {
         if (!is_array($sv) || ($atts['service']!=='' && ($sv['id']??'')!==$atts['service'])) continue;
-        $services[]=array('id'=>(string)$sv['id'],'name'=>(string)$sv['name'],'description'=>(string)($sv['description']??''),'picks'=>!empty($sv['picks']),
+        $services[]=array('id'=>(string)$sv['id'],'name'=>(string)$sv['name'],'description'=>(string)($sv['description']??''),'picks'=>!empty($sv['picks']),'location_id'=>(string)($sv['location_id']??''),
             'options'=>array_map(function($o){return array('id'=>(string)$o['id'],'name'=>(string)$o['name']);},(array)($sv['options']??array())),
             'resources'=>array_map(function($r){return array('id'=>(string)$r['id'],'name'=>(string)$r['name']);},(array)($sv['resources']??array())));
     }
@@ -484,20 +539,23 @@ function tdbs_pc_shortcode($atts) {
     wp_enqueue_style('tdbs-widget',plugins_url('widget.css',__FILE__),array(),TDBS_VERSION);
     wp_enqueue_script('tdbs-pc',plugins_url('pc.js',__FILE__),array(),TDBS_VERSION,true);
     $config=array('rest'=>esc_url_raw(rest_url('tdbs/v1/')),'nonce'=>wp_create_nonce('tdbs_book'),'services'=>$services);
-    $field=function($name,$label,$type='text',$auto=''){return '<p><label>'.esc_html($label).'<br><input name="'.$name.'" type="'.$type.'" required maxlength="'.($type==='email'?254:100).'"'.($auto?' autocomplete="'.$auto.'"':'').'></label></p>';};
-    return '<div class="tdbs-pc" data-config="'.esc_attr(wp_json_encode($config)).'"><form class="tdbs-pc-form" novalidate>'
+    // 2.22.0: the theme's own look: UIkit classes (YOOtheme Pro) on every field and button, harmless elsewhere; the time as a list
+    $field=function($name,$label,$type='text',$auto=''){return '<div class="tdbs-pc-field"><label class="uk-form-label" for="tdbs-'.$name.'">'.esc_html($label).'</label><input id="tdbs-'.$name.'" class="uk-input" name="'.$name.'" type="'.$type.'" required maxlength="'.($type==='email'?254:100).'"'.($auto?' autocomplete="'.$auto.'"':'').'></div>';};
+    $select=function($name,$label,$class='',$hidden=false){return '<div class="tdbs-pc-field'.($class?' '.$class:'').'"'.($hidden?' hidden':'').'><label class="uk-form-label" for="tdbs-'.$name.'">'.esc_html($label).'</label><select id="tdbs-'.$name.'" class="uk-select" name="'.$name.'"'.($class?'':' required').'></select></div>';};
+    return '<div class="tdbs-pc uk-form-stacked" data-config="'.esc_attr(wp_json_encode($config)).'"><form class="tdbs-pc-form" novalidate>'
+        .'<div class="tdbs-pc-grid">'.$select('service','Servizio').'<div class="tdbs-pc-field tdbs-pc-description-box" hidden><small class="tdbs-pc-description"></small></div>'
+        .$select('option','Prestazione','tdbs-pc-option',true).$select('resource','Con chi','tdbs-pc-resource',true).'</div>'
+        .'<div class="tdbs-pc-extra" hidden><div class="tdbs-pc-extra-list"></div><p class="tdbs-pc-extra-foot"><button type="button" class="uk-button uk-button-default uk-button-small tdbs-pc-add">+ Aggiungi un altro servizio</button> <small>Nella stessa visita, uno dopo l\'altro</small></p></div>'
+        .'<div class="tdbs-pc-grid">'.$select('date','Giorno').$select('time','Orario').'</div>'
+        .'<p class="tdbs-pc-status" role="status" aria-live="polite"></p>'
+        .'<fieldset class="uk-fieldset tdbs-pc-who"><legend class="uk-legend">I tuoi recapiti</legend><div class="tdbs-pc-grid">'.$field('first_name','Nome','text','given-name').$field('last_name','Cognome','text','family-name').$field('email','Email','email','email').$field('phone','Telefono','tel','tel').'</div></fieldset>'
+        .'<div class="tdbs-pc-field"><label class="uk-form-label" for="tdbs-notes">Vuoi dirci qualcosa?</label><textarea id="tdbs-notes" class="uk-textarea" name="notes" rows="3" maxlength="4000"></textarea></div>'
+        .'<details class="tdbs-pc-privacy"><summary>Come utilizziamo i tuoi dati</summary><p>'.nl2br(esc_html((string)($t['privacy']??''))).'</p></details>'
+        .'<label class="tdbs-pc-check"><input class="uk-checkbox" type="checkbox" name="notices" checked> <span>'.esc_html((string)($t['notices']??'')).'</span></label>'
+        .(!empty($t['consent'])?'<label class="tdbs-pc-check"><input class="uk-checkbox" type="checkbox" name="marketing"> <span>'.esc_html((string)$t['consent']).' (facoltativo)</span></label>':'')
+        .'<p class="tdbs-pc-send"><button type="submit" class="uk-button uk-button-primary">Invia la richiesta</button></p>'
         .'<p class="tdbs-pc-updated">Disponibilità aggiornata alle '.esc_html(wp_date('H:i',(int)$snap['received'])).' del '.esc_html(wp_date('d/m',(int)$snap['received'])).'</p>'
-        .'<p><label>Servizio<br><select name="service" required></select></label><small class="tdbs-pc-description"></small></p>'
-        .'<p class="tdbs-pc-option" hidden><label>Prestazione<br><select name="option"></select></label></p>'
-        .'<p class="tdbs-pc-resource" hidden><label>Con chi<br><select name="resource"></select></label></p>'
-        .'<p><label>Giorno<br><select name="date" required></select></label></p>'
-        .'<div class="tdbs-pc-slots" role="group" aria-label="Orari disponibili"></div><p class="tdbs-pc-status" role="status" aria-live="polite"></p>'
-        .'<fieldset><legend>I tuoi recapiti</legend>'.$field('first_name','Nome','text','given-name').$field('last_name','Cognome','text','family-name').$field('email','Email','email','email').$field('phone','Telefono','tel','tel').'</fieldset>'
-        .'<p><label>Vuoi dirci qualcosa?<br><textarea name="notes" rows="3" maxlength="4000"></textarea></label></p>'
-        .'<details><summary>Come utilizziamo i tuoi dati</summary><p>'.nl2br(esc_html((string)($t['privacy']??''))).'</p></details>'
-        .'<p><label><input type="checkbox" name="notices" checked> '.esc_html((string)($t['notices']??'')).'</label></p>'
-        .(!empty($t['consent'])?'<p><label><input type="checkbox" name="marketing"> '.esc_html((string)$t['consent']).' (facoltativo)</label></p>':'')
-        .'<p><button type="submit">Invia la richiesta</button></p></form><div class="tdbs-pc-done" role="status" hidden></div></div>';
+        .'</form><div class="tdbs-pc-done uk-alert uk-alert-success" role="status" hidden></div></div>';
 }
 
 /* ---------- 2.17.1 Agenda riservata: the PC sends the bookings of the next days sealed with the shared secret; with the
@@ -556,6 +614,7 @@ function tdbs_agenda_pending() {
         if (!is_array($slot) || !is_array($client)) continue;
         $sv=tdbs_pc_service($snap,(string)($slot['service']??''));$name=$sv?(string)$sv['name']:'Richiesta dal sito';$who='';
         foreach ((array)($sv['options']??array()) as $o) if (($o['id']??'')===($slot['option']??'')) $name.=' · '.$o['name'];
+        if ($sv) $name=tdbs_visit_name($snap,$sv,(array)($slot['extra']??array())).(strpos($name,' · ')!==false?substr($name,strpos($name,' · ')):'');
         foreach ((array)($sv['resources']??array()) as $r) if (($r['id']??'')===($slot['resource']??'')) $who=(string)$r['name'];
         $out[]=array('start'=>$slot['date'].'T'.$slot['time'],'end'=>$slot['date'].'T'.$slot['end'],'service'=>$name,'resource'=>(string)$slot['resource'],'operator'=>$who,
             'status'=>($slot['source']??'')==='agenda'?'Da sincronizzare'.(!empty($slot['free'])?' · altro orario, lo controlla il PC':''):'In attesa di conferma · dal sito','pending'=>true,'client'=>trim($client['first_name'].' '.$client['last_name']),'phone'=>$client['phone'],'notes'=>$client['notes']);
@@ -802,9 +861,16 @@ function tdbs_name_case($name) {
     return preg_replace_callback("/(^|[\\s'’-])(\\p{L})/u",function($m){return $m[1].mb_strtoupper($m[2]);},mb_strtolower($name));
 }
 /** 2.21.0: what an email needs of a booking made on the site. */
-function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client) {
+/** 2.22.0: «Colore + Taglio + Piega»: the first service with the ones added to the visit. */
+function tdbs_visit_name($snap,$sv,$pieces) {
+    $name=(string)$sv['name'];
+    foreach ((array)$pieces as $x) {$o=tdbs_pc_service($snap,(string)($x['service']??''));if ($o) $name.=' + '.$o['name'];}
+    return $name;
+}
+function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client,$pieces=array()) {
     $tz=tdbs_tz();$name=(string)$sv['name'];$who='';
     foreach ((array)($sv['options']??array()) as $o) if (($o['id']??'')===$option) $name.=' · '.$o['name'];
+    foreach ((array)$pieces as $x) {$o=tdbs_pc_service($snap,(string)($x['service']??''));if ($o) $name.=' + '.$o['name'];}
     foreach ((array)($sv['resources']??array()) as $r) if ($rid!=='' && ($r['id']??'')===$rid) $who=(string)$r['name'];
     return array('first_name'=>$client['first_name'],'last_name'=>$client['last_name'],'email'=>$client['email'],'phone'=>$client['phone'],'notices'=>!empty($client['notices']),
         'service'=>$name,'service_id'=>(string)$sv['id'],'operator'=>$who,'location'=>(string)($sv['location']??''),

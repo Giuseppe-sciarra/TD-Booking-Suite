@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Location,Resource,Service,ServiceResource,Option,Schedule,ExceptionDay,Occurrence,Tenant,Campaign,ShiftRule,TimeBlock,BLOCK_REASONS
+from .models import Location,Product,Resource,Service,ServiceResource,Option,Schedule,ExceptionDay,Occurrence,Tenant,Campaign,ShiftRule,TimeBlock,BLOCK_REASONS
 from .calendar import local_datetime
 
 LABELS={"turnover":"A turni: il posto si libera dopo un tempo fisso","name":"Nome","location":"Sede","active":"Attivo","kind":"Tipo di prenotazione","description":"Descrizione","address":"Indirizzo","phone":"Telefono",
@@ -467,6 +467,20 @@ class OptionForm(ScopedForm):
     def clean_price(self):
         val=self.cleaned_data.get("price")
         if val is not None and not 0<=val<=100000:raise ValidationError("Prezzo tra 0 e 100.000 €.")
+        return val
+class ProductForm(ScopedForm):
+    """2.22.0: a product of the shop, sold at the Cassa (on the products' department of Registratore di cassa)."""
+    class Meta:
+        model=Product;fields=["name","price","active"];localized_fields=["price"]
+        labels={"name":"Nome del prodotto","price":"Prezzo (€)","active":"In vendita"}
+        help_texts={"name":"Come compare in Cassa, nei preventivi e sullo scontrino (sullo scontrino al massimo 32 caratteri)","price":"Facoltativo: vuoto, lo scrivi ogni volta in Cassa"}
+    def clean_name(self):
+        v=" ".join(self.cleaned_data["name"].split())
+        if Product.objects.filter(name__iexact=v,active=True).exclude(pk=self.instance.pk).exists():raise ValidationError("C'è già un prodotto con questo nome.")
+        return v
+    def clean_price(self):
+        val=self.cleaned_data.get("price")
+        if val is not None and not 0<val<=99999:raise ValidationError("Prezzo tra 0,01 e 99.999 €.")
         return val
 class CalendarForm(ScopedForm):
     confirm_conflicts=forms.BooleanField(required=False,label="Confermo la modifica anche se esistono prenotazioni da ricontattare")
