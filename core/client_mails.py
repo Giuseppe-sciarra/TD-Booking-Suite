@@ -58,11 +58,17 @@ FIELDS=[("nome","nome del cliente"),("servizio","servizio"),("quando","giorno e 
         ("operatore","operatore o camera"),("attivita","nome dell'attività"),("link","link per gestire o annullare"),("istruzioni","istruzioni del servizio")]
 WEEKDAYS=["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"]
 
+def free(tenant):
+    """2.20.11: the business chooses which emails go, their words and when: the agency let it, or there is no agency
+    (the Windows program, SHOP_MAILS: the shop itself sets everything up)."""
+    from django.conf import settings
+    return tenant.client_mails_enabled or getattr(settings,"SHOP_MAILS",False)
+
 def current(tenant):
     """What goes and with which words. The words, and whether the standard emails go, are the business's own only while
     the agency lets it choose; the reminders, the other messages and their timing always (2.14.0), as saved (clean)."""
     own=tenant.client_mails or {}
-    mine=lambda k,x:tenant.client_mails_enabled or x not in ("subject","body","subject_en","body_en") and not (x=="on" and k in STANDARD)
+    mine=lambda k,x:free(tenant) or x not in ("subject","body","subject_en","body_en") and not (x=="on" and k in STANDARD)
     return {k:{**v,**{x:y for x,y in (own.get(k) or {}).items() if mine(k,x)}} for k,v in DEFAULTS.items()}
 
 def fill(text,values):
