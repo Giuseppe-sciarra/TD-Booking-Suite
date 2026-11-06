@@ -1546,8 +1546,12 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
  body.print-one .printing th,body.print-one .printing td{padding:4px 6px;white-space:normal;word-break:break-word}body.print-one .report-charts{grid-template-columns:1fr 1fr}}
 /* 2.22.0: Cassa: rows «In sospeso» (Preventivo pagamenti cassa), gift cards, the closure missing */
 .till-row-end{white-space:nowrap}
-.till-park{font-size:.82em}
-.till-park[aria-pressed="true"]{background:var(--warn-soft);color:var(--ink);border-color:var(--warn);font-weight:700}
+.till-park-cell{white-space:nowrap}
+.till-park{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font-weight:600;font-size:.9em;cursor:pointer}
+.till-park-box{width:18px;height:18px;border:2px solid var(--muted);border-radius:5px;display:inline-grid;place-items:center;flex:none}
+.till-park[aria-pressed="true"]{background:var(--warn-soft);border-color:var(--warn)}
+.till-park[aria-pressed="true"] .till-park-box{background:var(--warn);border-color:var(--warn)}
+.till-park[aria-pressed="true"] .till-park-box::after{content:"✓";color:#fff;font-size:13px;font-weight:800;line-height:1}
 .till-lines tr.is-parked td{background:var(--warn-soft)}
 .till-lines tr.is-parked input:not([type=hidden]){text-decoration:line-through;opacity:.75}
 .till-total{flex-wrap:wrap}

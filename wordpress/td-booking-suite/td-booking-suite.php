@@ -381,36 +381,44 @@ function tdbs_pc_taken() {
     most the location's minutes between two. Returns day => array(array(range, resource, pieces)), pieces one an extra:
     array('service','resource','time','end'). $extra: the ids of the services after the first. */
 function tdbs_pc_free_visit($snap,$sv,$option,$resource,$extra) {
-    $free=tdbs_pc_free($snap,$sv,$option,$resource);
-    if (!$extra) return $free;
+    if (!$extra) return tdbs_pc_free($snap,$sv,$option,$resource);
     $others=array();
     foreach ($extra as $id) {$x=tdbs_pc_service($snap,(string)$id);if (!$x || ($x['location_id']??'')!==($sv['location_id']??'')) return array();$others[]=$x;}
     $split=(string)($sv['split']??'need');$wait=(int)($sv['wait']??15);$out=array();
     $mins=function($t){return (int)substr($t,0,2)*60+(int)substr($t,3,2);};
-    $at=function($m){return sprintf('%02d:%02d',intdiv($m,60),$m%60);};
-    foreach ($free as $day=>$times) foreach ($times as $x) {
-        $first=$x[1];$pieces=array();$end=substr($x[0],6,5);$ok=true;
-        foreach ($others as $o) {
-            $ofree=tdbs_pc_free($snap,$o,'','');$found=null;
-            // the one who did the previous piece first, then the others when the location splits a visit
-            $ids=array($first);
-            if ($split!=='same') foreach (array_column((array)($o['resources']??array()),'id') as $rid) if ($rid!==$first) $ids[]=$rid;
-            $limit=$mins($end)+$wait;
-            foreach ($split==='need'?array(array($first),$ids):array($ids) as $try) {
-                $best=null;
-                foreach ((array)($ofree[$day]??array()) as $y) {
-                    if (!in_array($y[1],$try,true)) continue;
-                    $a=$mins(substr($y[0],0,5));
-                    if ($a<$mins($end) || $a>$limit) continue;
-                    if ($best===null || $a<$mins(substr($best[0],0,5))) $best=$y;
+    // the free times of each operator, once: of the first service (the chosen one, or every one of its operators) and of
+    // each extra (every operator of it, no variant); tdbs_pc_free with no operator keeps one a time, which would hide the others
+    $firsts=array();
+    foreach ($resource!==''?array($resource):array_column((array)($sv['resources']??array()),'id') as $rid) $firsts[$rid]=tdbs_pc_free($snap,$sv,$option,$rid);
+    $ofree=array();
+    foreach ($others as $o) foreach (array_column((array)($o['resources']??array()),'id') as $rid) $ofree[$o['id']][$rid]=tdbs_pc_free($snap,$o,'',$rid);
+    $days=array();
+    foreach ($firsts as $rid=>$free) foreach ($free as $day=>$times) foreach ($times as $x) $days[$day][substr($x[0],0,5)][]=array($x[0],$rid);
+    ksort($days);
+    foreach ($days as $day=>$starts) {
+        ksort($starts);
+        foreach ($starts as $candidates) foreach ($candidates as $x) {
+            $first=$x[1];$pieces=array();$end=substr($x[0],6,5);$ok=true;
+            foreach ($others as $o) {
+                // the one who did the previous piece first, then the others when the location splits a visit
+                $ids=array($first);
+                if ($split!=='same') foreach (array_keys((array)($ofree[$o['id']]??array())) as $rid) if ($rid!==$first) $ids[]=$rid;
+                $limit=$mins($end)+$wait;$found=null;
+                foreach ($split==='need'?array(array($first),$ids):array($ids) as $try) {
+                    $best=null;
+                    foreach ($try as $rid) foreach ((array)($ofree[$o['id']][$rid][$day]??array()) as $y) {
+                        $a=$mins(substr($y[0],0,5));
+                        if ($a<$mins($end) || $a>$limit) continue;
+                        if ($best===null || $a<$mins(substr($best[0],0,5))) $best=$y;  // strictly earlier: on a tie the first operator tried wins
+                    }
+                    if ($best) {$found=$best;break;}
                 }
-                if ($best) {$found=$best;break;}
+                if (!$found) {$ok=false;break;}
+                $pieces[]=array('service'=>(string)$o['id'],'resource'=>$found[1],'time'=>substr($found[0],0,5),'end'=>substr($found[0],6,5));
+                $first=$found[1];$end=substr($found[0],6,5);
             }
-            if (!$found) {$ok=false;break;}
-            $pieces[]=array('service'=>(string)$o['id'],'resource'=>$found[1],'time'=>substr($found[0],0,5),'end'=>substr($found[0],6,5));
-            $first=$found[1];$end=substr($found[0],6,5);
+            if ($ok) {$out[$day][]=array($x[0],$x[1],$pieces);break;}  // one a start, as tdbs_pc_free does
         }
-        if ($ok) $out[$day][]=array($x[0],$x[1],$pieces);
     }
     return $out;
 }
@@ -418,6 +426,7 @@ function tdbs_pc_extra($snap,$sv,$value) {
     /** the ids asked as extras (array or "a,b"), at most 4, each a service of the snapshot of the same location, the first one excluded */
     $ids=array_values(array_unique(array_filter(array_map('strval',is_array($value)?$value:explode(',',(string)$value)))));
     if (count($ids)>4) return null;
+    if (($sv['location_id']??'')==='') return $ids?null:array();  // a PC before 2.22.0: no visits from the site
     foreach ($ids as $id) {$x=tdbs_pc_service($snap,$id);if (!$x || $id===($sv['id']??'') || ($x['location_id']??'')!==($sv['location_id']??'')) return null;}
     return $ids;
 }
@@ -644,7 +653,7 @@ function tdbs_agenda_table($a,$days) {
             usort($items,function($x,$y){return strcmp($x['start'],$y['start']);});
             $html.='<td>'.($items?'':($week?'<span class="tdbs-agenda-empty" aria-hidden="true">—</span><span class="screen-reader-text">Nessuna prenotazione</span>':'<p class="tdbs-agenda-empty">Nessuna prenotazione</p>'));
             foreach ($items as $b) {
-                $when=substr($b['start'],11,5);  // 2.22.0: the start only$dl='';
+                $when=substr($b['start'],11,5);$dl='';  // 2.22.0: the start only
                 foreach (array('Quando'=>$when,'Servizio'=>$b['service'],'Con'=>$b['operator'],'Cliente'=>$b['client'],'Telefono'=>$b['phone'],'Note'=>$b['notes'],'Stato'=>$b['status']) as $key=>$v) if ((string)$v!=='')
                     $dl.='<dt>'.$key.'</dt><dd>'.($key==='Telefono'?'<a href="tel:'.esc_attr(preg_replace('/[^0-9+]/','',(string)$v)).'">'.esc_html($v).'</a>':nl2br(esc_html($v))).'</dd>';
                 $html.='<details class="tdbs-agenda-booking'.(!empty($b['pending'])?' is-pending':'').'"><summary><strong>'.esc_html($when).'</strong> '.esc_html($b['service'].($b['client']?' · '.$b['client']:''))

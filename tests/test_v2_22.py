@@ -311,3 +311,79 @@ def test_review_fixes_visit_mark_void_receipt_quote_retention(shop):
         card=GiftCard.objects.create(tenant=t,code="ABCD2345",amount=10,balance=10,status="active",expires=date(2027,1,1))
     c.post("/t/salone/cassa/gift-card/",{"card":str(card.pk),"action":"expires","expires":"31/12/2026"})
     with scope(t):assert GiftCard.objects.get().expires==date(2027,1,1)
+
+def test_rch_counts_the_numbers_and_voids_without_asking(shop):
+    """RCH never answers the document number: the program counts the «chiusura-documento» pair from the last closure
+    written in Registratore di cassa; Annulla on the row needs no number typed; without the closure number the void
+    command drops that part; a number typed by hand still wins."""
+    t,loc,svc=shop;c,_=client_as(t)
+    sell_one=lambda:cassa.finish(t,cassa.claim(loc),"done",{}) if cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]}) else None
+    with scope(t):
+        assert [(s.z,s.number) for s in (sell_one(),sell_one())]==[("","1"),("","2")]  # no closure number known yet
+        loc.till={**loc.till,"last_z":2025,"rch_void":"=k/&{data}/[{z}/]{numero}"};loc.save()
+        s=sell_one();assert (s.z,s.number)==("2026","3")
+        cl=cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{});loc.refresh_from_db();assert loc.till["last_z"]==2026
+        s=sell_one();assert (s.z,s.number)==("2027","1")  # after the closure: next closure, documents from 1
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
+    assert f'id="d-{s.pk}" name="doc" value="2027-1"' in page and "contato il programma" in page and 'name="doc" value="2027-1" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
+    c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":"2027-1"})
+    with scope(t):
+        v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0001"
+        cassa.finish(t,cassa.claim(loc),"done",{});assert Sale.objects.get(pk=s.pk).status=="void"
+        s2=sell_one();assert (s2.z,s2.number)==("2027","3")  # the annullo counted too
+    # the closure done on the register's keys, marked here: the counter moves too
+    c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
+    with scope(t):
+        loc.refresh_from_db();assert loc.till["last_z"]==2027
+        s3=sell_one();assert (s3.z,s3.number)==("2028","1")
+        # no closure number: the void command without the [z/] part; typed by hand «5-0007» wins
+        v=cassa.enqueue(t,loc,kind="void",voids=s3,total=s3.total,data={"z":"","number":"4","day":date.today().isoformat()})
+        assert cassa.rch(v,v.data,loc.till)[-1].endswith("/0004") and "[" not in cassa.rch(v,v.data,loc.till)[-1]
+    r=c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s3.pk),"doc":"5-0007"},follow=True)
+    assert "già stato inviato" in r.content.decode()  # one annullo a receipt
+    with scope(t):cassa.finish(t,cassa.claim(loc),"done",{});s4=sell_one();assert s4.kind=="sale"  # the queued annullo first, then a new receipt
+    c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s4.pk),"doc":"5-0007"})
+    with scope(t):v=Sale.objects.filter(kind="void").order_by("-created").first();assert v.voids_id==s4.pk and v.data["z"]=="5" and v.data["number"]=="0007" and "[0005/]" in cassa.rch(v,v.data,loc.till)[-1]
+    # the settings page takes the closure number, and refuses a bad one
+    owner,_=client_as(t);Tenant.objects.filter(pk=t.pk).update(till_self=True)
+    base={"location":str(loc.pk),"action":"save","device":"rch","connection":"net","address":"192.168.1.50","serial":"1","default_dept":"1","rch_off":"=V-/${importo}","rch_void":"=k/&{data}/[{z}/]{numero}","rch_close":"=C3 =C10 =C1"}
+    owner.post("/t/salone/registratore/",{**base,"last_z":"abc"})
+    with scope(t):loc.refresh_from_db();assert loc.till["last_z"]==2027
+    owner.post("/t/salone/registratore/",{**base,"last_z":"3000"})
+    with scope(t):loc.refresh_from_db();assert loc.till["last_z"]==3000
+
+def test_rch_count_survives_a_receipt_to_check_and_custom_void_commands(shop):
+    """A sent and lost («Da verificare»), B printed, then A found printed: A=1, B=2 as on the register's paper.
+    A void command written without brackets drops {z}/ cleanly; a stale till copy never overwrites last_z."""
+    t,loc,svc=shop
+    with scope(t):
+        loc.till={**loc.till,"last_z":10};loc.save()
+        mk=lambda:cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]})
+        a=mk();a=cassa.claim(loc);a=cassa.finish(t,a,"unknown",{"error":"persa"});assert a.status=="unknown" and a.printed is None
+        b=mk();b=cassa.claim(loc);b=cassa.finish(t,b,"done",{});assert (b.z,b.number)==("11","2")  # A sent before it counts
+        a=cassa.finish(t,a,"done",{});assert (a.z,a.number)==("11","1") and a.printed==a.claimed  # found printed: its own place
+        c_=mk();c_=cassa.claim(loc);c_=cassa.finish(t,c_,"done",{});assert (c_.z,c_.number)==("11","3")
+        # a command without brackets
+        v=cassa.enqueue(t,loc,kind="void",voids=c_,total=10,data={"z":"","number":"3","day":date.today().isoformat()})
+        assert cassa.rch(v,v.data,{**loc.till,"rch_void":"=k/&{data}/{z}/{numero}"})[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/0003"
+        assert cassa.rch(v,{**v.data,"z":"11"},{**loc.till,"rch_void":"=k/&{data}/{z}/{numero}"})[-1].endswith("/0011/0003")
+        # the closure finishing with a stale location copy: last_z bumped on the fresh one, other settings kept
+        cassa.finish(t,cassa.claim(loc),"done",{})  # the annullo queued above
+        cl=cassa.enqueue(t,loc,kind="close");cl=cassa.claim(loc);assert cl.kind=="close"
+        Location.objects.filter(pk=loc.pk).update(till={**loc.till,"last_z":10,"serial":"NEW"})
+        cassa.finish(t,cl,"done",{});loc.refresh_from_db();assert loc.till["last_z"]==11 and loc.till["serial"]=="NEW"
+
+def test_site_visit_whose_time_went_is_kept_as_a_request_of_its_first_service(shop):
+    from core import wpsync
+    t,loc,svc=shop
+    with scope(t):
+        op=Resource.objects.create(tenant=t,location=loc,name="Anna");piega=Service.objects.create(tenant=t,location=loc,name="Piega",kind="resource",duration=30,capacity=1,max_party=1,lead_minutes=0)
+        taglio=Service.objects.create(tenant=t,location=loc,name="Taglio",kind="resource",duration=30,capacity=1,max_party=1,lead_minutes=0)
+        for s in (piega,taglio):ServiceResource.objects.create(tenant=t,service=s,resource=op)
+        day=(timezone.now()+timedelta(days=3)).astimezone(ZoneInfo(t.timezone)).date()
+        create_booking(t,{**payload(taglio),"resource":str(op.pk),"start":timezone.datetime.combine(day,timezone.datetime.min.time().replace(hour=11),ZoneInfo(t.timezone)).isoformat()},actor=None,origin="desk")
+    row={"id":"a"*32,"service":str(taglio.pk),"option":"","resource":str(op.pk),"any":False,"date":day.isoformat(),"time":"11:00","first_name":"Dora","last_name":"Viola","email":"dora@example.invalid","phone":"3471000004","notes":"","notices":True,"extra":[{"service":str(piega.pk),"resource":str(op.pk),"time":"11:30","end":"12:00"}]}
+    new,ack,errors,refused=wpsync.take(t,[row])
+    with scope(t):
+        b=Booking.objects.get(origin="wordpress");assert b.status=="pending" and b.service_id==taglio.pk and not b.visit and "Dal sito con: Piega" in b.data["notes"]
+    assert ack==["a"*32] and not errors

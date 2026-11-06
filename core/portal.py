@@ -472,14 +472,14 @@ def booking_peek(request,slug,booking_id):
     require(request,"booking.read")
     b=get_object_or_404(visible_bookings(request,Booking.objects.all()).select_related("service","resource","contact","location"),pk=booking_id)
     rows=[b]+(list(Booking.objects.filter(visit=b.visit).exclude(pk=b.pk).exclude(status="cancelled").select_related("service","resource").order_by("start")) if b.visit else [])
-    lines=[{"name":" · ".join(x for x in (r.snapshot.get("service") or r.service.name,r.snapshot.get("option","")) if x),"start":r.start,"end":r.end,"who":r.snapshot.get("resource") or (r.resource.name if r.resource_id else ""),
+    lines=[{"name":" · ".join(x for x in (r.snapshot.get("service") or r.service.name,r.snapshot.get("option","")) if x),"start":r.start,"who":r.snapshot.get("resource") or (r.resource.name if r.resource_id else ""),
         "price":Decimal(r.snapshot["total"]) if r.snapshot.get("total") else None} for r in rows]
     total=sum(l["price"] or 0 for l in lines)
     sales=list(Sale.objects.filter(booking__in=rows,kind="sale").exclude(status__in=("failed","void")).order_by("-created"))
     paid=sum(x.total for x in sales if x.status in ("done","queued","sending","unknown"))
     parked=list(Parked.objects.filter(booking__in=rows))
     extras=client_extras(request,b.contact) if b.contact_id and can(request,"pii.read") else {}
-    return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],"end":max(r.end for r in rows),
+    return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],
         "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),**extras})
 def booking_detail(request,slug,booking_id):
     from .booking import visit_rows
@@ -1189,22 +1189,28 @@ def services_import(request,slug):
             col={importer.plain(h):i for i,h in enumerate(head)}
             pick=lambda *names:next((col[n] for n in names if n in col),None)
             n,pr,du=pick("servizio","nome","descrizione","trattamento"),pick("prezzo","prezzovendita","importo"),pick("durata","duratainminuti","minuti","tempomedio","tempo")
+            gr=pick("gruppo","categoria","reparto","tipo")  # 2.22.0: the resale rows of the old program become products
             if n is None:raise BookingError("Nel file manca la colonna Servizio (il nome).")
             have={s.casefold() for s in Service.objects.filter(location=loc).values_list("name",flat=True)}
+            goods={p.casefold() for p in Product.objects.values_list("name",flat=True)}
             staff=list(Resource.objects.filter(location=loc,active=True)) if request.POST.get("staff")=="on" else []
-            done={"created":0,"same":0,"errors":[]}
+            done={"created":0,"same":0,"products":0,"errors":[]}
             with transaction.atomic():
                 for i,row in enumerate(rows,start=2):
                     cell=lambda c:row[c].strip() if c is not None and c<len(row) else ""
                     name=importer.name(cell(n))[:120]
                     if not name:continue
-                    if name.casefold() in have:done["same"]+=1;continue
+                    resale=bool(re.search(r"rivendit|prodott|vendita|retail",cell(gr),re.I))
+                    if "gift card" in name.casefold() or "giftcard" in name.casefold():continue  # the program has its own gift cards
+                    if name.casefold() in (goods if resale else have):done["same"]+=1;continue
                     try:
                         from decimal import Decimal,InvalidOperation
                         price=Decimal(cell(pr).replace("€","").replace(",",".").strip()).quantize(Decimal("0.01")) if cell(pr) else None
                         minutes=int(float(cell(du).replace(",","."))) if cell(du) else 0
                     except (ValueError,TypeError,InvalidOperation):done["errors"].append(f"riga {i}: prezzo o durata non validi");continue
                     if price is not None and not (price.is_finite() and 0<=price<=99999):done["errors"].append(f"riga {i}: prezzo non valido");continue
+                    if resale:
+                        Product.objects.create(tenant=request.tenant,name=name[:80],price=price if price else None);goods.add(name.casefold());done["products"]+=1;continue
                     svc=Service.objects.create(tenant=request.tenant,location=loc,name=name,kind="resource",duration=minutes if 5<=minutes<=720 else 30,
                         interval=15,price=price,resource_label="Operatore")
                     for r in staff:ServiceResource.objects.create(tenant=request.tenant,service=svc,resource=r)

@@ -171,7 +171,10 @@ def take(tenant,rows):
                 **({"force":True} if staff and r.get("free") else {})}  # Altro orario: any time, kept if nothing is in the way
             try:b,_=create_booking(tenant,data,**how)
             except BookingError:
-                try:b,_=create_booking(tenant,{**data,"resource":str(r.get("resource",""))},late=True,**how)
+                # 2.22.0: a visit whose time went meanwhile is kept as a request of its first service, the others in the note
+                names=[s.name for s in Service.objects.filter(pk__in=[x for x in extra if re.fullmatch(r"[0-9a-f-]{36}",x)])] if extra else []
+                keep={**data,"resource":str(r.get("resource","")),**({"extra":[],"notes":(data["notes"]+"\nDal sito con: "+", ".join(names)).strip()} if extra else {})}
+                try:b,_=create_booking(tenant,keep,late=True,**how)
                 except BookingError as ex:
                     when=f"{r.get('date')} {r.get('time')}";errors.append(f"{when}: {ex}")
                     if site:refused.append({"id":sid,"reason":str(ex)[:300]})  # 2.21.0: the site tells the client

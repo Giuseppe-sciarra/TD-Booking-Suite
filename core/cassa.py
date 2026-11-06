@@ -105,7 +105,8 @@ def rch(sale,d,conf):
         cmds+=["=S"]+[f"=T{pay_code(conf,k)}/${c}" if c else f"=T{pay_code(conf,k)}" for k,c in d["payments"]]
     elif sale.kind=="void":
         day=date.fromisoformat(d["day"])
-        cmds+=[c.replace("{data}",f"{day:%d%m%y}").replace("{z}",f"{int(d['z']):04d}").replace("{numero}",f"{int(d['number']):04d}") for c in rch_cmd(conf,"rch_void").split()]
+        # 2.22.0: without the closure number (RCH never tells it) the [z/] part goes
+        cmds+=[(c if d.get("z") else re.sub(r"\[[^\]]*\{z\}[^\]]*\]|\{z\}/?","",c)).replace("{data}",f"{day:%d%m%y}").replace("{z}",f"{int(d['z']):04d}" if d.get("z") else "").replace("{numero}",f"{int(d['number']):04d}") for c in rch_cmd(conf,"rch_void").split()]
     elif sale.kind=="close":cmds+=rch_cmd(conf,"rch_close").split()
     return cmds
 def epson(sale,d,conf):
@@ -198,9 +199,15 @@ def finish(tenant,sale,state,info,attempt_id=None):
     sale=Sale.objects.select_for_update().get(pk=sale.pk)
     if sale.status not in ("sending","unknown") or attempt_id and sale.claimed and attempt_id!=attempt(sale):return sale
     if state=="busy":sale.status="queued";sale.claimed=None;sale.save(update_fields=["status","claimed"]);return sale
-    sale.status=state;sale.error=info.get("error","")[:200]
+    was=sale.status;sale.status=state;sale.error=info.get("error","")[:200]
     if state=="done":
         sale.number=str(info.get("number") or "")[:20];sale.z=str(info.get("z") or "")[:10];sale.serial=sale.location.till.get("serial","");sale.printed=timezone.now()
+        if sale.kind=="sale" and not sale.number and sale.location.till.get("device")=="rch":
+            # 2.22.0: RCH never says the number: the program counts. A «Da verificare» found printed keeps the place
+            # it had when it was sent, so the ones printed after it are not shifted
+            if was=="unknown" and sale.claimed:sale.printed=sale.claimed
+            sale.z,sale.number=counted(sale)
+        if sale.kind=="close":closed(sale.location)
     sale.save(update_fields=["status","error","number","z","serial","printed"])
     audit(tenant,None,"sale."+state,sale.pk,kind=sale.kind,number=sale.number)
     if sale.kind=="sale":
@@ -226,6 +233,23 @@ def finish(tenant,sale,state,info,attempt_id=None):
                     except BookingError:pass  # not started yet: the desk completes it later
         send_copy(tenant,sale)
     return sale
+def counted(sale):
+    """2.22.0: the «chiusura-documento» pair of a document emitted on a register that does not say it (RCH), as printed
+    at its foot: the closure it will belong to (the last closure's number, written once in Registratore di cassa and
+    raised at each closure, plus one) and its number, 1 for the first after the closure, then 2, 3… counting the
+    receipts and annulli this program emitted here. Receipts made on the register's own keys are not seen: the desk
+    corrects the number then. Without the closure number the pair is ("", n)."""
+    location=Location.objects.get(pk=sale.location_id);conf=location.till  # fresh: the one on the sale was read before the register was called
+    last=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__lt=sale.printed).order_by("-printed").values_list("printed",flat=True).first()
+    # the ones printed before it, and the ones sent before it still «Da verificare» (printed, as far as anyone knows)
+    q=Sale.objects.filter(location=location,kind__in=("sale","void")).exclude(pk=sale.pk).filter(models.Q(status__in=("done","void"),printed__lt=sale.printed)|models.Q(status="unknown",claimed__lt=sale.printed))
+    if last:q=q.filter(models.Q(printed__gt=last)|models.Q(status="unknown",claimed__gt=last))
+    return (str(int(conf["last_z"])+1) if conf.get("last_z") is not None else ""),str(q.count()+1)
+def closed(location):
+    """A daily closure done on an RCH (emitted here or on its keys): the next documents belong to the closure after."""
+    location=Location.objects.get(pk=location.pk);conf=location.till  # fresh, never the copy read before the register was called
+    if conf.get("device")=="rch" and conf.get("last_z") is not None:
+        conf["last_z"]=int(conf["last_z"])+1;location.till=conf;location.save(update_fields=["till"])
 def shares(d,total):
     """{operator: cents} of a bill: each line net of its discount, the discount on the total spread over the lines."""
     nets=[(l.get("staff",""),l["qty"]*l["cents"]-l.get("off",0)) for l in d.get("lines",[])];gross=sum(c for _,c in nets) or 1
@@ -517,7 +541,7 @@ def till_view(request,slug):
             if action=="closed_by_hand":
                 # 2.22.0: the closure done on the register: only noted, so the reminder goes away
                 sale=Sale(tenant=t,location=loc,kind="close",status="done",printed=timezone.now(),error="Fatta dalla cassa",key=secrets.token_urlsafe(24),actor=str(request.user.pk))
-                sale.pii=encrypt(t,{},"sale:"+str(sale.pk));sale.save();audit(t,request.user,"sale.close_by_hand",loc.pk)
+                sale.pii=encrypt(t,{},"sale:"+str(sale.pk));sale.save();closed(loc);audit(t,request.user,"sale.close_by_hand",loc.pk)
                 messages.success(request,"Segnata la chiusura fatta dalla cassa.");return redirect(back)
             if action=="void" and not request.POST.get("sale"):
                 void(request,t,loc,None);return redirect(back)
@@ -581,7 +605,7 @@ def till_view(request,slug):
         "missing_close":missing_close(t,loc),
         "staff_names":names,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"settle":SETTLE,"due":due,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
-        "contact":contact if contact and names_ok else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
+        "contact":contact if contact and names_ok else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"counted":loc.till["device"]=="rch","can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(contact.data) if contact and names_ok else ""})
 def missing_close(t,loc):
     """2.22.0: the last day with receipts emitted here and no daily closure after them, before today: the register
@@ -608,12 +632,12 @@ def favourites(t,loc,items,n=12):
     score=lambda i:used.get((i["svc"],i["name"]),0)+used.get((i["svc"],""),0)
     ranked=sorted((i for i in items if score(i)),key=lambda i:-score(i))
     return (ranked+[i for i in items if not score(i)])[:n]  # the used ones first, then the list fills the rest
-DOC=re.compile(r"\s*(\d{1,4})\s*-\s*(\d{1,4})\s*")
+DOC=re.compile(r"\s*(?:(\d{1,4})\s*-)?\s*(\d{1,4})\s*")  # 2.22.0: «2026-0012» or just «12» (RCH, no closure number)
 def void(request,t,loc,sale):
     """The annullo of a documento commerciale: of one in the list, or of any other written by hand (day and «Documento n.»,
     closure and number as printed at its foot). On RCH with no annullo command the desk does it on the register and it is
     only marked here."""
-    m=DOC.fullmatch(request.POST.get("doc","") or (f"{sale.z}-{sale.number}" if sale and sale.z and sale.number else ""))
+    m=DOC.fullmatch(request.POST.get("doc","") or (f"{sale.z}-{sale.number}" if sale and sale.z and sale.number else sale.number if sale and sale.number else ""))
     try:day=date.fromisoformat(request.POST.get("day","")) if request.POST.get("day") else sale.printed.astimezone(ZoneInfo(t.timezone)).date()
     except (ValueError,AttributeError):day=None
     if loc.till["device"]=="rch" and not rch_cmd(loc.till,"rch_void"):
@@ -623,8 +647,9 @@ def void(request,t,loc,sale):
         messages.success(request,"Segnato come annullato.");return
     if not (m and day) or day>timezone.now().astimezone(ZoneInfo(t.timezone)).date():raise ValueError("Scrivi la data e il «Documento n.» dello scontrino, come sono stampati in fondo: per esempio 2026-0012.")
     if loc.till["device"]=="epson" and not (sale and sale.serial or loc.till.get("serial")):raise ValueError("Manca la matricola della cassa: scrivila in Registratore di cassa.")
+    if loc.till["device"]=="epson" and not (m[1] or sale and sale.z):raise ValueError("Su Epson serve anche il numero della chiusura, come stampato in fondo: per esempio 2026-0012.")
     if sale and sale.voided_by.exclude(status="failed").exists():raise ValueError("L'annullo è già stato inviato.")
-    v=enqueue(t,loc,kind="void",voids=sale,total=sale.total if sale else 0,actor=str(request.user.pk),data={"z":m[1],"number":m[2],"day":day.isoformat()})
+    v=enqueue(t,loc,kind="void",voids=sale,total=sale.total if sale else 0,actor=str(request.user.pk),data={"z":m[1] or "","number":m[2],"day":day.isoformat()})
     audit(t,request.user,"sale.void",sale.pk if sale else v.pk);messages.success(request,"Annullo inviato alla cassa.")
 def allowed(request):
     return request.user.is_staff or request.tenant.till_self and getattr(request.member,"role","")=="owner"
@@ -661,6 +686,9 @@ def settings_view(request,slug):
                     for k in ("product_dept","gift_dept"):  # 2.22.0: empty, the one of the free lines
                         if number(k):conf[k]=number(k)
                     if device=="rch":
+                        v=request.POST.get("last_z","").strip()  # 2.22.0: the closure number the documents are counted from
+                        if v and not (v.isdigit() and int(v)<=9999):raise ValueError("Numero dell'ultima chiusura: da 0 a 9999, come stampato sulla chiusura.")
+                        if v:conf["last_z"]=int(v)
                         for key,(default,need) in RCH_CMDS.items():
                             v=" ".join(request.POST.get(key,default).split())
                             if v and not (all(re.fullmatch(r"=[\x21-\x7e]{1,38}",c) and "(" not in c for c in v.split()) and need in v and len(v)<=80):

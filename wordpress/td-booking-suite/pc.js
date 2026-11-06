@@ -16,10 +16,11 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
   extra.forEach(id=>{const x=c.services.find(s=>s.id===id);if(!x)return;const span=document.createElement("span");span.className="tdbs-pc-extra-item";span.textContent="+ "+x.name+" ";
    const b=document.createElement("button");b.type="button";b.className="tdbs-pc-remove";b.textContent="×";b.setAttribute("aria-label","Togli "+x.name);b.title="Togli";
    b.addEventListener("click",()=>{extra=extra.filter(v=>v!==id);visit();load();});span.append(b);list.append(span);});
-  const add=q(".tdbs-pc-add");add.hidden=!others().length||extra.length>=4;box.hidden=!c.services.some(x=>x.id!==service().id&&x.location_id===service().location_id);
+  const add=q(".tdbs-pc-add");add.hidden=!others().length||extra.length>=4;box.hidden=!service().location_id||!c.services.some(x=>x.id!==service().id&&x.location_id===service().location_id);
   q(".tdbs-pc-pick")?.remove();
  }
  q(".tdbs-pc-add").addEventListener("click",()=>{
+  q(".tdbs-pc-pick")?.remove();  // one picker at a time
   const sel=document.createElement("select");sel.className="uk-select tdbs-pc-pick";sel.setAttribute("aria-label","Servizio da aggiungere");
   fill(sel,others().map(x=>[x.id,x.name]),"Scegli il servizio");sel.addEventListener("change",()=>{if(sel.value){extra.push(sel.value);visit();load();}});
   q(".tdbs-pc-extra-list").append(sel);sel.focus();

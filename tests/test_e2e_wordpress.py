@@ -144,24 +144,27 @@ def test_a_visit_of_several_services_from_the_site(sample):
     Tenant.objects.filter(pk=t.pk).update(wp_archive=True);t.refresh_from_db()
     wpsync.sync(t,full=True);t.refresh_from_db();assert not t.wp_state.get("error"),t.wp_state
     day=day_of(taglio).isoformat()
-    free=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={taglio.pk}&option=&resource={anna.pk}&extra={colore.pk}"))["days"]
-    alone=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={taglio.pk}&option=&resource={anna.pk}&extra="))["days"]
+    # with Bruno, the second of the list: both pieces with him (visit_split same), not with Anna
+    free=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={taglio.pk}&option=&resource={bruno.pk}&extra={colore.pk}"))["days"]
+    alone=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={taglio.pk}&option=&resource={bruno.pk}&extra="))["days"]
     assert day in free and len(free[day])<len(alone[day])  # the late times, where the colour would not fit, are gone
-    first=free[day][0];assert first[1]==str(anna.pk) and first[2][0]["service"]==str(colore.pk) and first[2][0]["resource"]==str(anna.pk) and first[2][0]["time"]==first[0][6:11]
+    first=free[day][0];assert first[1]==str(bruno.pk) and first[2][0]["service"]==str(colore.pk) and first[2][0]["resource"]==str(bruno.pk) and first[2][0]["time"]==first[0][6:11]
+    anyone=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={taglio.pk}&option=&resource=&extra={colore.pk}"))["days"]
+    assert len(anyone[day])>=len(free[day])  # «Il primo disponibile»: at least as many starts
     when=first[0][:5]
-    r=book(service=str(taglio.pk),option="",resource=str(anna.pk),any=False,date=day,time=when,extra=[str(colore.pk)],first_name="Dora",last_name="Viola",email="dora@example.invalid",phone="347 100 0004")
+    r=book(service=str(taglio.pk),option="",resource=str(bruno.pk),any=False,date=day,time=when,extra=[str(colore.pk)],first_name="Dora",last_name="Viola",email="dora@example.invalid",phone="347 100 0004")
     assert r["ok"],r
     m=[x for x in mails() if x["to"]=="dora@example.invalid"];assert len(m)==1 and "Taglio + Colore" in m[0]["message"]
-    # the colour's time with Anna is busy on the site now
-    again=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={colore.pk}&option=&resource={anna.pk}&extra="))["days"]
+    # the colour's time with Bruno is busy on the site now
+    again=json.loads(get(URL+f"/wp-json/tdbs/v1/slots?service={colore.pk}&option=&resource={bruno.pk}&extra="))["days"]
     assert all(x[0][:5]!=first[2][0]["time"] for x in again.get(day,[]))
     # the same time for someone else: refused
-    with pytest.raises(urllib.error.HTTPError) as ex:book(service=str(taglio.pk),option="",resource=str(anna.pk),any=False,date=day,time=when,extra=[],first_name="Eva",last_name="Rosa",email="eva@example.invalid",phone="347 100 0005")
+    with pytest.raises(urllib.error.HTTPError) as ex:book(service=str(taglio.pk),option="",resource=str(bruno.pk),any=False,date=day,time=when,extra=[],first_name="Eva",last_name="Rosa",email="eva@example.invalid",phone="347 100 0005")
     assert ex.value.code==409
     # the PC on again: one visit, two bookings, one after the other with Anna
     wpsync.sync(t);t.refresh_from_db();assert not t.wp_state.get("error"),t.wp_state
     with scope(t):
         rows=list(Booking.objects.filter(origin="wordpress").order_by("start"))
         assert len(rows)==2 and rows[0].visit and rows[0].visit==rows[1].visit and [b.service_id for b in rows]==[taglio.pk,colore.pk]
-        assert rows[0].end==rows[1].start and {b.resource_id for b in rows}=={anna.pk} and all(b.status=="confirmed" for b in rows)
+        assert rows[0].end==rows[1].start and {b.resource_id for b in rows}=={bruno.pk} and all(b.status=="confirmed" for b in rows)
         assert not Delivery.objects.exists()  # the site wrote to her, the PC does not

@@ -243,10 +243,14 @@ def test_close_and_annullo_by_hand_from_the_page(shop):
     c,_=client_as(t,role="reception");url=reverse("till",args=[t.slug])
     assert c.post(url,{"sede":loc.pk,"action":"close"}).status_code==302
     assert c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"2026-0012"}).status_code==302
-    c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"12"})  # no closure number: refused
+    c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"12"})  # 2.22.0: no closure number: fine on RCH (it never tells it)
     with scope(t):
-        assert list(Sale.objects.order_by("created").values_list("kind",flat=True))==["close","void"]
-        assert Sale.objects.get(kind="void").data=={"z":"2026","number":"0012","day":"2026-10-24"}
+        assert list(Sale.objects.order_by("created").values_list("kind",flat=True))==["close","void","void"]
+        assert Sale.objects.filter(kind="void").order_by("created").first().data=={"z":"2026","number":"0012","day":"2026-10-24"}
+        assert Sale.objects.filter(kind="void").order_by("created").last().data=={"z":"","number":"12","day":"2026-10-24"}
+        loc.till={**loc.till,"device":"epson","serial":"99MEX1"};loc.save()
+    r=c.post(url,{"sede":loc.pk,"action":"void","day":"2026-10-24","doc":"12"},follow=True)
+    assert "serve anche il numero della chiusura" in r.content.decode()  # Epson wants it
 
 def test_services_imported_from_the_old_price_list_once(shop):
     from django.core.files.uploadedfile import SimpleUploadedFile
@@ -254,7 +258,7 @@ def test_services_imported_from_the_old_price_list_once(shop):
     t,loc,svc=shop
     with scope(t):op=Resource.objects.create(tenant=t,location=loc,name="Cristina")
     c,_=client_as(t,role="owner")
-    csv="Servizio;Prezzo;Durata in minuti;Gruppo\nCOLOR CARE;34,00;30;Tecnico\nTaglio donna;25;30;\nPiega glam lunghi;21;;\n;;;\nBalayage;abc;50;\n".encode()
+    csv="Servizio;Prezzo;Durata in minuti;Gruppo\nCOLOR CARE;34,00;30;Tecnico\nTaglio donna;25;30;\nPiega glam lunghi;21;;\n;;;\nBalayage;abc;50;\nAccessori;9,50;;Rivendita\nGift Card;;;Rivendita\n".encode()
     for _ in range(2):
         r=c.post(reverse("services_import",args=[t.slug]),{"location":loc.pk,"staff":"on","file":SimpleUploadedFile("listino.csv",csv)})
         assert r.status_code==200
@@ -262,6 +266,7 @@ def test_services_imported_from_the_old_price_list_once(shop):
         made=Service.objects.filter(location=loc).exclude(pk=svc.pk).order_by("name")
         assert [(s.name,s.price,s.duration,s.kind) for s in made]==[("Color Care",Decimal("34.00"),30,"resource"),("Piega glam lunghi",Decimal("21.00"),30,"resource")]
         assert all(s.resource_links.filter(resource=op).exists() for s in made)
+        assert list(Product.objects.values_list("name","price"))==[("Accessori",Decimal("9.50"))]  # 2.22.0: Rivendita rows are products; the gift card is the program's own
     assert "con errori: 1" in r.content.decode() or "già presenti" in r.content.decode()
 
 def test_discover_finds_the_register_and_fills_the_form(shop,register,settings,monkeypatch):
