@@ -644,7 +644,7 @@ function tdbs_agenda_table($a,$days) {
             usort($items,function($x,$y){return strcmp($x['start'],$y['start']);});
             $html.='<td>'.($items?'':($week?'<span class="tdbs-agenda-empty" aria-hidden="true">—</span><span class="screen-reader-text">Nessuna prenotazione</span>':'<p class="tdbs-agenda-empty">Nessuna prenotazione</p>'));
             foreach ($items as $b) {
-                $when=substr($b['start'],11,5).'–'.substr($b['end'],11,5);$dl='';
+                $when=substr($b['start'],11,5);  // 2.22.0: the start only$dl='';
                 foreach (array('Quando'=>$when,'Servizio'=>$b['service'],'Con'=>$b['operator'],'Cliente'=>$b['client'],'Telefono'=>$b['phone'],'Note'=>$b['notes'],'Stato'=>$b['status']) as $key=>$v) if ((string)$v!=='')
                     $dl.='<dt>'.$key.'</dt><dd>'.($key==='Telefono'?'<a href="tel:'.esc_attr(preg_replace('/[^0-9+]/','',(string)$v)).'">'.esc_html($v).'</a>':nl2br(esc_html($v))).'</dd>';
                 $html.='<details class="tdbs-agenda-booking'.(!empty($b['pending'])?' is-pending':'').'"><summary><strong>'.esc_html($when).'</strong> '.esc_html($b['service'].($b['client']?' · '.$b['client']:''))

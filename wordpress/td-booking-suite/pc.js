@@ -42,7 +42,7 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
  function day(){
   pick=null;status("");
   const list=days[el("date").value]||[];
-  fill(el("time"),list.map(([range,res,pieces])=>{const last=pieces&&pieces.length?pieces[pieces.length-1].end:range.slice(6,11);return [range.slice(0,5),range.slice(0,5)+(extra.length?" – fino alle "+last:"")];}),"Scegli l'orario");
+  fill(el("time"),list.map(([range])=>[range.slice(0,5),range.slice(0,5)]),"Scegli l'orario");  // 2.22.0: the start only, as at the desk: the end is never a promise
  }
  el("service").addEventListener("change",chosen);el("option").addEventListener("change",load);el("resource").addEventListener("change",load);el("date").addEventListener("change",day);
  el("time").addEventListener("change",()=>{const hit=(days[el("date").value]||[]).find(x=>x[0].slice(0,5)===el("time").value);pick=hit?[hit[0],hit[1]]:null;status("");});
