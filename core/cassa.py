@@ -33,10 +33,12 @@ from .prices import euro
 from .tenancy import scope
 
 DEVICES=[("","Nessuno"),("rch","RCH Print!F"),("epson","Epson FP-81II / FP-90III RT")]
-PAYMENTS=[("cash","Contanti"),("card","Carta o bancomat"),("other","Altro")]
+PAYMENTS=[("cash","Contanti"),("card","Carta o bancomat"),("other","Altro"),("due","Da pagare")]
+SETTLE=PAYMENTS[:3]  # 2.20.9: how a «Da pagare» is paid later
 # shortcut: RCH 1 contanti, 4 carta, 2 non riscosso as Spiagge.it's setup asks; Epson paymentType 0 contanti, 2 carta,
 # 5 non riscosso, always index 1: change them in Registratore di cassa to what the register has
-DEFAULT_PAY={"rch":{"cash":1,"card":4,"other":2},"epson":{"cash":0,"card":2,"other":5}}
+DEFAULT_PAY={"rch":{"cash":1,"card":4,"other":2,"due":2},"epson":{"cash":0,"card":2,"other":5,"due":5}}  # 2.20.9: Da pagare is non riscosso
+def pay_code(conf,k):return conf.get("payments",{}).get(k,DEFAULT_PAY[conf["device"]][k])  # a register saved before 2.20.9 has no «due»
 COPY_TEXT="Il cliente vuole la copia dello scontrino per email."
 TIMEOUT=20
 STALE=timedelta(seconds=120)  # longer than a direct send (busy retries, one timeout): past it nobody is still waiting
@@ -84,7 +86,6 @@ def units(d,line=True):
     return rows
 def rch(sale,d,conf):
     """The commands, one a line: in the XML of the web service, or a frame each through USB."""
-    pay=conf["payments"]
     cmds=["=K"]  # clears whatever a failed request left open; shortcut: the probe reads the status off the answer to a clear, a real status command when RCH documents one
     if sale.kind in ("sale","void","test"):cmds.append("=C1")  # the key back on REG, in case a closure stopped halfway left it on Z
     if sale.kind=="test":
@@ -95,7 +96,7 @@ def rch(sale,d,conf):
         cmds+=([f'="/?C/({d["cf"]})'] if d.get("cf") else [])+([f'="/?L/$1/({d["lottery"]})'] if d.get("lottery") else [])
         off=rch_cmd(conf,"rch_off")
         for desc,dept,c,x in units(d,bool(off)):cmds+=[f"=R{dept}/${c}/({text(desc)})"]+([off.replace("{importo}",str(x))] if x else [])
-        cmds+=["=S"]+[f"=T{pay[k]}/${c}" for k,c in d["payments"]]
+        cmds+=["=S"]+[f"=T{pay_code(conf,k)}/${c}" for k,c in d["payments"]]
     elif sale.kind=="void":
         day=date.fromisoformat(d["day"])
         cmds+=[c.replace("{data}",f"{day:%d%m%y}").replace("{z}",f"{int(d['z']):04d}").replace("{numero}",f"{int(d['number']):04d}") for c in rch_cmd(conf,"rch_void").split()]
@@ -111,14 +112,13 @@ def epson(sale,d,conf):
         z,n,serial=(d.get("z") or o.z),(d.get("number") or o.number),(o.serial if o and o.serial else conf.get("serial",""))
         body=f'<printerFiscalReceipt><printRecMessage operator="1" messageType="4" message={quoteattr(f"VOID {int(z):04d} {int(n):04d} {day:%d%m%Y} {serial}")} /></printerFiscalReceipt>'
     else:
-        pay=conf["payments"]
         # shortcut: adjustmentType 0 (discount on the last sale) from the fpMate examples, to be confirmed on the register
         rows="".join(f'<printRecItem operator="1" description={quoteattr(text(l["desc"],38))} quantity="{l["qty"]}" unitPrice="{money(l["cents"])}" department="{l["dept"]}" justification="1" />'
             +(f'<printRecItemAdjustment operator="1" adjustmentType="0" description="{off_label(l)}" amount="{money(l["off"])}" department="{l["dept"]}" justification="1" />' if l.get("off") else "") for l in d["lines"])
         if d.get("discount"):rows+=f'<printRecSubtotalAdjustment operator="1" adjustmentType="1" description="SCONTO" amount="{money(d["discount"])}" justification="1" />'
         if d.get("cf"):rows+=f'<printRecMessage operator="1" messageType="7" index="1" message={quoteattr(d["cf"])} />'
         if d.get("lottery"):rows+=f'<printRecLotteryID operator="1" code={quoteattr(d["lottery"])} />'
-        rows+="".join(f'<printRecTotal operator="1" description={quoteattr(dict(PAYMENTS)[k].upper())} payment="{money(c)}" paymentType="{pay[k]}" index="1" justification="1" />' for k,c in d["payments"])
+        rows+="".join(f'<printRecTotal operator="1" description={quoteattr(dict(PAYMENTS)[k].upper())} payment="{money(c)}" paymentType="{pay_code(conf,k)}" index="1" justification="1" />' for k,c in d["payments"])
         body=f'<printerFiscalReceipt><beginFiscalReceipt operator="1" />{rows}<endFiscalReceipt operator="1" /></printerFiscalReceipt>'
     return '<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'+body+"</s:Body></s:Envelope>"
 def off_label(l):return f"SCONTO {l['pct']}%" if l.get("pct") else "SCONTO"
@@ -228,8 +228,30 @@ def record(tenant,sale,what,rows,sign=1):
     lines=sale.data.get("lines",[]) if sale.kind=="sale" else []
     staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff"))) or (sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else "")
     day=(sale.printed or timezone.now()).astimezone(ZoneInfo(tenant.timezone)).date()
-    total=int(sale.total*100);by={k:sign*v for k,v in shares(sale.data,total).items()}
+    total=paid(sale);by={k:sign*v for k,v in shares(sale.data,total).items()}
     save_treatment(tenant,sale.contact,{"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000],"amount":sign*total,"by":by},None,booking=sale.booking)
+def paid(sale):
+    """2.20.9: the cents the client has paid: a «Da pagare» still open is not money in (it goes in on the day he pays)."""
+    return int(sale.total*100)-(0 if sale.settled else int(sale.due*100))
+def owed(**where):
+    """The receipts with a «Da pagare» still open: emitted, not voided, not paid yet."""
+    return Sale.objects.filter(kind="sale",status="done",due__gt=0,settled__isnull=True,**where)
+def settle(tenant,user,sale,how):
+    """2.20.9: the client pays what he owed: the day and how, and in his record the payment, with each operator's part,
+    for the reports of that day. Nothing goes to the register: what to print, if anything, the shop's accountant says."""
+    if how not in dict(SETTLE):raise ValueError("Scegli come ha pagato.")
+    sale=Sale.objects.select_for_update().get(pk=sale.pk)
+    if not (sale.kind=="sale" and sale.status=="done" and sale.due>0 and not sale.settled):raise ValueError("Questo scontrino non ha niente da pagare.")
+    sale.settled=timezone.now();sale.settled_with=how;sale.save(update_fields=["settled","settled_with"])
+    audit(tenant,user,"sale.settled",sale.pk,due=str(sale.due),how=how)
+    if sale.contact_id:
+        from .clients import save_treatment
+        tz=ZoneInfo(tenant.timezone);c=int(sale.due*100);lines=sale.data.get("lines",[])
+        staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff")))
+        doc=f"n. {sale.z+'-' if sale.z else ''}{sale.number} " if sale.number else ""
+        save_treatment(tenant,sale.contact,{"date":sale.settled.astimezone(tz).date(),"service":f"Pagamento dello scontrino {doc}del {sale.printed.astimezone(tz):%d/%m/%Y}"[:120],
+            "staff":staff[:100],"details":f"Pagato {euro(sale.due)} con {dict(SETTLE)[how].lower()}","amount":c,"by":shares(sale.data,c),"kind":"payment"},user,booking=sale.booking)
+    return sale
 def send_now(tenant_id,location_id):
     """Direct: after the request is committed, the sale's own transaction each step, the register called in between."""
     tenant=Tenant.objects.get(pk=tenant_id)
@@ -375,11 +397,13 @@ def till_view(request,slug):
                 d,total=bill(request.POST,loc.till)
                 contact=booking.contact if booking and booking.contact_id else None
                 if request.POST.get("contact") and can(request,"contacts.read"):contact=get_object_or_404(Contact,pk=request.POST["contact"])
+                due=sum(c for k,c in d["payments"] if k=="due")
+                if due and not contact:raise ValueError("Con «Da pagare» scegli il cliente: così resta segnato chi deve pagare.")
                 if request.POST.get("copy")=="on":
                     email=contact.data.get("email","") if contact else ""
                     if not email:raise ValueError("Per la copia per email scegli un cliente con l'email nella scheda.")
                     d.update(copy=True,email=email)
-                sale=enqueue(t,loc,key=key,booking=booking,contact=contact,total=Decimal(total)/100,actor=str(request.user.pk),data=d)
+                sale=enqueue(t,loc,key=key,booking=booking,contact=contact,total=Decimal(total)/100,due=Decimal(due)/100,actor=str(request.user.pk),data=d)
                 if d.get("copy"):ConsentEvent.objects.create(tenant=t,contact=contact,kind="confirmed",purpose="receipt_copy",channel="desk",
                     text_hash=__import__("core.privacy",fromlist=["text_hash"]).text_hash(COPY_TEXT),ref=str(sale.pk),actor=str(request.user.pk))
                 audit(t,request.user,"sale.sent",sale.pk,total=str(sale.total),booking=str(booking.pk) if booking else "")
@@ -401,6 +425,8 @@ def till_view(request,slug):
                 finish(t,sale,"done",{"number":re.sub(r"\D","",request.POST.get("number",""))[:20]})
                 audit(t,request.user,"sale.printed_by_hand",sale.pk)
             elif action=="void" and sale.kind=="sale" and sale.status=="done":void(request,t,loc,sale)
+            elif action=="settle":
+                settle(t,request.user,sale,request.POST.get("how",""));messages.success(request,f"Segnato pagato: {euro(sale.due)}.")
             elif action=="mail" and sale.status in ("done","void"):
                 messages.success(request,"Copia inviata per email." if send_copy(t,sale) else "Il cliente non ha chiesto la copia per email.")
             return redirect(back)
@@ -420,11 +446,14 @@ def till_view(request,slug):
     top=favourites(t,loc,items)
     rows=Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
     busy=any(s.status in ("queued","sending") for s in rows)
+    due=list(owed(location=loc).select_related("contact").order_by("created"))  # 2.20.9: Da incassare, of every day
+    names_ok=can(request,"pii.read")
+    for s in due:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else "Cliente"
     who=booking.data if booking and can(request,"pii.read") else {}
     names=list(Resource.objects.filter(location=loc,active=True).order_by("name").values_list("name",flat=True))
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"top":top,"count":len(items),"booking":booking,"who":who,"lines":prefill(booking) if booking else [],
         "staff_names":names,"default_staff":booking.resource.name if booking and booking.resource_id else "",
-        "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
+        "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"settle":SETTLE,"due":due,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":booking.contact if booking and booking.contact_id and can(request,"pii.read") else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(booking.contact.data) if booking and booking.contact_id and can(request,"pii.read") else ""})
 

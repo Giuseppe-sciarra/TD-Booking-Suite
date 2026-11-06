@@ -861,6 +861,8 @@ def contact_detail(request,slug,contact_id):
     ctx.update(fiscal_kinds=FISCAL_KINDS,fiscal=[(l,dict(FISCAL_KINDS).get(data[k],data[k]) if k=="fiscal_kind" else data[k]) for k,l in FISCAL if data.get(k)])
     ctx["channels"]=Contact._meta.get_field("channel").choices
     ctx["sales"]=contact.sales.filter(kind="sale").order_by("-created")[:20]  # 2.16.0: his receipts from the Cassa
+    from .cassa import owed
+    ctx["owed"]=list(owed(contact=contact).order_by("created"));ctx["owed_total"]=sum(s.due for s in ctx["owed"])  # 2.20.9: what he still has to pay
     return render(request,"contact_detail.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;

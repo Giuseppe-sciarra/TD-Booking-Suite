@@ -194,7 +194,7 @@ def test_settings_by_owner_when_allowed_and_receipts_on_booking(shop):
     assert r.status_code==302
     with scope(t):
         conf=Location.objects.get(pk=loc.pk).till
-        assert conf["connection"]=="usb" and conf["port"]=="COM3" and conf["link"]=="bridge" and conf["departments"][str(svc.pk)]=={"dept":3,"vat":"10%"} and conf["payments"]=={"cash":1,"card":5,"other":2}
+        assert conf["connection"]=="usb" and conf["port"]=="COM3" and conf["link"]=="bridge" and conf["departments"][str(svc.pk)]=={"dept":3,"vat":"10%"} and conf["payments"]=={"cash":1,"card":5,"other":2,"due":2}
     c.post("/t/salone/registratore/",{"location":str(loc.pk),"action":"save","device":"rch","connection":"net","address":"93.184.216.34"})
     with scope(t):assert Location.objects.get(pk=loc.pk).till["connection"]=="usb"  # a public address is refused, nothing changes
     r=c.post("/t/salone/registratore/",{"location":str(loc.pk),"action":"token"});assert b"tdcassa_" in r.content
@@ -314,3 +314,42 @@ def test_the_most_used_services_come_first(shop):
     assert top[0]["name"]=="Servizio 09" and len(top)==12
     c,_=client_as(t);page=c.get("/t/salone/cassa/").content.decode()
     assert "Più usati" in page and "Tutti i servizi (15)" in page
+
+def test_da_pagare_open_then_paid_in_the_reports(shop):
+    """2.20.9: «Da pagare» goes to the register as non riscosso (a register saved before has no code for it), needs the
+    client, stays in Da incassare and on his card, is not money in until he pays; paid later, it is money of that day."""
+    t,loc,svc=shop
+    with scope(t):b,_=create_booking(t,payload(svc))
+    c,_=client_as(t,role="reception")
+    r=sell(c,loc,pay_cash="20",pay_due="35")
+    assert "scegli il cliente" in r.content.decode()
+    with scope(t):assert not Sale.objects.exists()  # no client: refused
+    sell(c,loc,b,pay_cash="20",pay_due="35",staff=["Cristina","Cristina"])
+    with scope(t):
+        s=cassa.claim(loc);assert s.due==Decimal("35.00") and s.contact_id==b.contact_id
+        cmds=cassa.rch(s,s.data,loc.till);assert "=T1/$2000" in cmds and "=T2/$3500" in cmds
+        assert 'paymentType="5"' in cassa.epson(s,s.data,{**loc.till,"device":"epson"})
+        s=cassa.finish(t,s,"done",{"number":"7","z":"12"})
+        info=Treatment.objects.get(contact_id=b.contact_id).data
+        assert info["amount"]==2000 and info["by"]=={"Cristina":2000} and "Da pagare  35,00 €" in info["details"]
+        assert list(cassa.owed())==[s]
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
+    assert "Da incassare" in page and "Segna pagato" in page and "da pagare 35,00" in page
+    owner,_=client_as(t)
+    assert "Deve 35,00 €" in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
+    rep=owner.get("/t/salone/report/").content.decode().replace(",",".")
+    assert "Da incassare" in rep and "<td>35.00</td>" in rep and "<td>20.00</td>" in rep
+    r=c.post("/t/salone/cassa/",{"action":"settle","sede":str(loc.pk),"sale":str(s.pk),"how":"due"})  # not a way to pay
+    with scope(t):assert not Sale.objects.get(pk=s.pk).settled
+    c.post("/t/salone/cassa/",{"action":"settle","sede":str(loc.pk),"sale":str(s.pk),"how":"card"})
+    with scope(t):
+        s=Sale.objects.get(pk=s.pk);assert s.settled and s.settled_with=="card" and not cassa.owed().exists() and cassa.paid(s)==5500
+        pay=[x.data for x in Treatment.objects.filter(contact_id=b.contact_id) if x.data.get("kind")=="payment"]
+        assert len(pay)==1 and pay[0]["amount"]==3500 and pay[0]["by"]=={"Cristina":3500} and pay[0]["service"].startswith("Pagamento dello scontrino n. 12-7 del")
+    c.post("/t/salone/cassa/",{"action":"settle","sede":str(loc.pk),"sale":str(s.pk),"how":"cash"})  # twice: once
+    with scope(t):assert Treatment.objects.filter(contact_id=b.contact_id).count()==2
+    rep=owner.get("/t/salone/report/?xlsx=lavori_mese")
+    import zipfile,io
+    sheet=zipfile.ZipFile(io.BytesIO(rep.content)).read("xl/worksheets/sheet1.xml").decode()
+    assert "<v>1</v>" in sheet and "<v>55.00</v>" in sheet  # one visit, all of it money in now
+    assert "Deve" not in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()

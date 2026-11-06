@@ -465,8 +465,9 @@ def clean_treatment(data,today):
 
 def save_treatment(tenant,contact,d,actor,treatment=None,booking=None):
     t=treatment or Treatment(tenant=tenant,contact=contact,booking=booking,author=str(getattr(actor,"pk","") or ""))
-    keep={k:v for k,v in (treatment.data if treatment else {}).items() if k in ("amount","by")}  # 2.20.5: an edit by hand keeps what the visit cost
-    t.date=d["date"];t.pii=encrypt(tenant,{**keep,**{k:d[k] for k in ("service","staff","details","amount","by") if k in d}},"treatment:"+str(t.pk))
+    keep={k:v for k,v in (treatment.data if treatment else {}).items() if k in ("amount","by","kind")}  # 2.20.5: an edit by hand keeps what the visit cost
+    # 2.20.9: kind «payment», a «Da pagare» paid later: money in for the reports, not a visit
+    t.date=d["date"];t.pii=encrypt(tenant,{**keep,**{k:d[k] for k in ("service","staff","details","amount","by","kind") if k in d}},"treatment:"+str(t.pk))
     t.save();return t
 
 def treatments(contact):

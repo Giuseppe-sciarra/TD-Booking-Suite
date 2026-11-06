@@ -658,6 +658,10 @@ class Sale(Scoped):
     error=models.CharField(max_length=200,blank=True)
     claimed=models.DateTimeField(null=True,blank=True)
     mailed=models.DateTimeField(null=True,blank=True)
+    # 2.20.9: what the client still owes (the «Da pagare» of the bill, non riscosso on the receipt), when and how he paid it
+    due=models.DecimalField(max_digits=9,decimal_places=2,default=0)
+    settled=models.DateTimeField(null=True,blank=True)
+    settled_with=models.CharField(max_length=6,blank=True)
     key=models.CharField(max_length=64)
     actor=models.CharField(max_length=36,blank=True)
     pii=models.TextField()

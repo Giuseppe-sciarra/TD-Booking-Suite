@@ -105,18 +105,21 @@ def record_tables(request,first,last):
     for t in Treatment.objects.select_related("contact").order_by("date"):
         d=open_seal(t.pii,key,f"{tid}:treatment:{t.pk}");cost=d.get("amount") or 0;split=dict(d.get("by") or {})
         names=[x.strip() for x in (d.get("staff") or "").split(",") if x.strip()]
+        n=0 if d.get("kind")=="payment" else 1  # 2.20.9: a «Da pagare» paid later is money in on its day, not one more visit
         if not split and names:split={n:cost//len(names)+((cost%len(names)) if i==0 else 0) for i,n in enumerate(names)}
         if not split:split={"":cost}
         elif cost and sum(split.values())!=cost and d.get("by"):split[""]=split.get("",0)+cost-sum(split.values())  # products and lines without an operator
-        y=by_year[t.date.year];y[0]+=1;y[1]+=cost
+        y=by_year[t.date.year];y[0]+=n;y[1]+=cost
         for who,c in split.items():y[2][who or "Senza operatore"]+=c
         if not first<=t.date<=last:continue
         for who,c in split.items():
-            v=by_staff[who or "Senza operatore"];v[0]+=1;v[1]+=c
-        v=by_month[t.date.strftime("%Y-%m")];v[0]+=1;v[1]+=cost
-        v=by_client[t.contact_id];v[0]+=1;v[1]+=cost;v[2]=max(v[2] or t.date,t.date);who_is[t.contact_id]=t.contact
-        for one in (d.get("service") or "").split(" + "):
-            if one.strip():by_service[one.strip()]+=1
+            v=by_staff[who or "Senza operatore"];v[0]+=n;v[1]+=c
+        v=by_month[t.date.strftime("%Y-%m")];v[0]+=n;v[1]+=cost
+        v=by_client[t.contact_id];v[0]+=n;v[1]+=cost;who_is[t.contact_id]=t.contact
+        if n:
+            v[2]=max(v[2] or t.date,t.date)
+            for one in (d.get("service") or "").split(" + "):
+                if one.strip():by_service[one.strip()]+=1
         listed.append((t,d,cost))
     out={}
     total=[sum(v[0] for v in by_month.values()),sum(v[1] for v in by_month.values())]
@@ -130,14 +133,23 @@ def record_tables(request,first,last):
         rows=[]
         for cid,v in by_client.items():
             c=open_seal(who_is[cid].pii,key,f"{tid}:contact:{cid}");people[cid]=" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente"
-            rows.append([people[cid],v[0],euro(v[1]),v[2].strftime("%d/%m/%Y")])
+            rows.append([people[cid],v[0],euro(v[1]),v[2].strftime("%d/%m/%Y") if v[2] else ""])
         out["lavori_cliente"]=(["Cliente","Visite","Speso (€)","Ultima visita"],sorted(rows,key=lambda r:-r[2]))
         out["elenco"]=(["Data","Cliente","Trattamento","Operatore","Importo (€)"],[[t.date.strftime("%d/%m/%Y"),people.get(t.contact_id,""),d.get("service",""),d.get("staff",""),euro(c)] for t,d,c in reversed(listed)])
+    # 2.20.9: what the clients still owe, today, whatever the period: the «Da pagare» of the Cassa not paid yet
+    from .cassa import owed
+    open_=list(owed().select_related("contact").order_by("created"));today=timezone.now().astimezone(ZoneInfo(request.tenant.timezone)).date()
+    for s in open_:
+        if s.contact_id and s.contact_id not in people and names_ok:
+            c=open_seal(s.contact.pii,key,f"{tid}:contact:{s.contact_id}");people[s.contact_id]=" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente"
+    out["da_incassare"]=(["Cliente","Scontrino del","Numero","Da pagare (€)","Da giorni"],[[people.get(s.contact_id,"Cliente"),s.printed.astimezone(ZoneInfo(request.tenant.timezone)).strftime("%d/%m/%Y"),
+        f"{s.z}-{s.number}" if s.z else s.number,s.due,(today-s.printed.astimezone(ZoneInfo(request.tenant.timezone)).date()).days] for s in open_])
     # the dashboard: the figures of the period and its bars, as widths of 0..100
     top=max([v[1] for v in by_month.values()] or [0]) or 1;best=max([v[1] for v in by_staff.values()] or [0]) or 1
     dash={"money":euro(total[1]),"visits":total[0],"average":euro(total[1]//total[0]) if total[0] else euro(0),"clients":len(by_client),"width":10*min(len(by_month),24),
         "months":[{"label":k[5:]+"/"+k[2:4],"money":euro(v[1]),"x":10*i+2,"y":102-round(100*v[1]/top),"h":max(1,round(100*v[1]/top))} for i,(k,v) in enumerate(sorted(by_month.items())[-24:])],
-        "staff":[{"label":k,"money":euro(v[1]),"n":v[0],"w":round(100*v[1]/best)} for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])]} if total[0] else {}
+        "staff":[{"label":k,"money":euro(v[1]),"n":v[0],"w":round(100*v[1]/best)} for k,v in sorted(by_staff.items(),key=lambda i:-i[1][1])],
+        "owed":sum(s.due for s in open_),"owed_n":len(open_)} if total[0] or open_ else {}
     return out,dash
 
 def xlsx(head,rows,title):
@@ -159,7 +171,7 @@ def xlsx(head,rows,title):
     return buf.getvalue()
 
 TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_anno":"Anno per anno, con gli operatori",
-    "lavori_servizio":"I servizi più fatti","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
+    "lavori_servizio":"I servizi più fatti","da_incassare":"Da incassare","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
     "occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
     "origine":"Da dove arrivano le prenotazioni","valore":"Valore stimato"}
 def view(request,slug):

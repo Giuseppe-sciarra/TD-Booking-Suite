@@ -1,6 +1,12 @@
-# TD Booking Suite 2.20.8 — registro modifiche
+# TD Booking Suite 2.20.9 — registro modifiche
 
-**5 novembre 2026 · versione 2.20.8**
+**6 novembre 2026 · versione 2.20.9**
+
+## 2.20.9 — il cliente paga dopo
+
+- **Cassa: pagamento «Da pagare»**, anche solo per una parte con Dividi il pagamento: lo scontrino esce con il pagamento non riscosso e serve il cliente. Resta nel riquadro **Da incassare** della Cassa, di tutti i giorni, con **Segna pagato** e come ha pagato; nella scheda del cliente in alto **Deve** con l'importo, e negli scontrini «da pagare» o «pagato il»
+- **Report: incassato vero**: un «Da pagare» entra nell'incassato il giorno in cui il cliente paga, con la parte di ogni operatore, e non conta come un'altra visita; la tabella **Da incassare** (Excel e PDF) e il riquadro in alto dicono quanto devono ancora pagare e chi
+- **Registratore di cassa**: il numero del pagamento «Da pagare», vuoto come non riscosso (RCH 2, Epson 5); il suggerimento per chi usa «Altro» per Satispay, bonifico o buoni
 
 ## 2.20.8 — Stato del programma
 
