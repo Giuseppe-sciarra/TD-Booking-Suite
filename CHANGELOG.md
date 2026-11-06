@@ -1,6 +1,12 @@
-# TD Booking Suite 2.20.10 — registro modifiche
+# TD Booking Suite 2.20.11 — registro modifiche
 
-**6 novembre 2026 · versione 2.20.10**
+**6 novembre 2026 · versione 2.20.11**
+
+## 2.20.11 — finestre di Windows, non del browser
+
+- **Edizione Windows: i file si salvano con «Salva con nome» di Windows** (Excel dei report, log, backup, certificato), in Download o nella cartella che scegli: niente più barra dei download del browser
+- **Edizione Windows: le conferme sono finestre di Windows** («Annullare lo scontrino?», «Il cliente ha pagato?»…) con OK e Annulla, non più la finestrella «localhost:8443 dice»
+- **Edizione Windows: la stampa dell'agenda del giorno e della copia dello scontrino** apre la finestra di stampa di Windows, non l'anteprima del browser
 
 ## 2.20.10 — PDF dei report senza la finestra di stampa, davvero
 

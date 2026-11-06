@@ -376,7 +376,8 @@
  veil();
  // only the paper sheets (agenda of the day, copy of the receipt): a Report table has its own id and its PDF below.
  // 2.20.10: it was on every [data-print], so in the Windows program the print dialog opened next to the PDF into Download
- document.querySelectorAll('[data-print=""]').forEach(b=>b.addEventListener("click",()=>print()));
+ // 2.20.11: in the Windows program (2.20.11 on) the Windows print dialog, not the browser's
+ document.querySelectorAll('[data-print=""]').forEach(b=>b.addEventListener("click",()=>{if(window.tdwinPrint&&window.chrome&&window.chrome.webview)window.chrome.webview.postMessage("tdwin-print:");else print();}));
 
  const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
  const encoded=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
