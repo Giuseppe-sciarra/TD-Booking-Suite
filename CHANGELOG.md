@@ -1,14 +1,17 @@
-# TD Booking Suite 2.20.11 — registro modifiche
+# TD Booking Suite 2.20.12 — registro modifiche
 
-**6 novembre 2026 · versione 2.20.11**
+**6 novembre 2026 · versione 2.20.12**
 
-## 2.20.11 — finestre di Windows, non del browser
+## 2.20.12 — Notifiche e promemoria
 
-- **Edizione Windows: ogni file va dritto in Download, come il PDF dei report**, senza chiedere niente e senza la barra dei download del browser: Excel, PDF e calendario si aprono da soli; log, backup e certificato si vedono nella cartella, già selezionati
 - **Edizione Windows: Notifiche, gli interruttori delle email ai clienti funzionano tutti**: promemoria, secondo promemoria, prima dell'arrivo, dopo la visita, conferma, modifica e annullamento, con orari e testi, li accende e li scrive il titolare. Prima erano grigi e non si cliccavano, perché li riservava all'agenzia, che nel programma per Windows non c'è
 - **Notifiche e promemoria dal menu dell'amministratore**: si apriva con errore 403 senza l'accesso concesso dal titolare; non ha dati dei clienti, ora si apre
 - **Iscritti di un corso: «Nessun sostituto»** prima di aver messo un sostituto mandava la pagina in errore; ora non fa niente
 - **Edizione Windows: niente più «agenzia» nelle pagine** (invio email, assistenza, privacy, tipo di servizio, accesso riservato): c'è «amministratore del programma»
+
+## 2.20.11 — finestre di Windows, non del browser
+
+- **Edizione Windows: ogni file va dritto in Download, come il PDF dei report**, senza chiedere niente e senza la barra dei download del browser: Excel, PDF e calendario si aprono da soli; log, backup e certificato si vedono nella cartella, già selezionati
 - **Edizione Windows: niente tasti del browser**: Ctrl+P, Ctrl+F, F5, Ctrl+R, Ctrl+U, Alt+frecce e F12 non fanno più niente; taglia, copia, incolla e annulla restano
 - **Edizione Windows: le conferme sono finestre di Windows** («Annullare lo scontrino?», «Il cliente ha pagato?»…) con OK e Annulla, non più la finestrella «localhost:8443 dice»
 - **Edizione Windows: la stampa dell'agenda del giorno e della copia dello scontrino** apre la finestra di stampa di Windows, non l'anteprima del browser
