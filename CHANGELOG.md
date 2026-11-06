@@ -1,6 +1,10 @@
-# TD Booking Suite 2.20.9 — registro modifiche
+# TD Booking Suite 2.20.10 — registro modifiche
 
-**6 novembre 2026 · versione 2.20.9**
+**6 novembre 2026 · versione 2.20.10**
+
+## 2.20.10 — PDF dei report senza la finestra di stampa, davvero
+
+- **Edizione Windows: il pulsante PDF dei report non apre più la finestra di stampa**: c'era ancora il vecchio comando di stampa sullo stesso pulsante, che partiva insieme al PDF nella cartella Download e apriva la stampa di tutta la pagina. Ora resta solo per i fogli di carta (agenda del giorno, copia dello scontrino)
 
 ## 2.20.9 — il cliente paga dopo
 

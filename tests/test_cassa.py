@@ -353,3 +353,10 @@ def test_da_pagare_open_then_paid_in_the_reports(shop):
     sheet=zipfile.ZipFile(io.BytesIO(rep.content)).read("xl/worksheets/sheet1.xml").decode()
     assert "<v>1</v>" in sheet and "<v>55.00</v>" in sheet  # one visit, all of it money in now
     assert "Deve" not in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
+
+def test_report_pdf_is_not_also_printed():
+    """2.20.10: a Report PDF button ran two handlers, the PDF into Download and print(): the print dialog opened anyway."""
+    import re,pathlib
+    js=pathlib.Path(__file__).resolve().parent.parent.joinpath("static/app.js").read_text()
+    assert re.findall(r"querySelectorAll\('(\[data-print[^']*)'\)",js)==['[data-print=""]','[data-print]:not([data-print=""])']
+    assert 'querySelectorAll("[data-print]")' not in js

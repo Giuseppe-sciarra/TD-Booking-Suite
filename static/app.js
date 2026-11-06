@@ -374,7 +374,9 @@
   if(privacy){privacy.setAttribute("aria-pressed",String(veiled));privacy.querySelector("span").textContent=veiled?"Mostra nomi":"Nascondi nomi";}}
  privacy?.addEventListener("click",()=>{veiled=!veiled;try{localStorage.setItem("tdbs-privacy",veiled?"1":"0");}catch{}veil();});
  veil();
- document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",()=>print()));
+ // only the paper sheets (agenda of the day, copy of the receipt): a Report table has its own id and its PDF below.
+ // 2.20.10: it was on every [data-print], so in the Windows program the print dialog opened next to the PDF into Download
+ document.querySelectorAll('[data-print=""]').forEach(b=>b.addEventListener("click",()=>print()));
 
  const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
  const encoded=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
@@ -543,7 +545,7 @@ document.querySelectorAll("[data-till-use]").forEach(b=>b.addEventListener("clic
 
 // 2.20.5: Report, PDF of one table: the print of the browser (Salva come PDF) with only that card. 2.20.7: in the
 // Windows program its window makes the PDF itself, into Download, without the print dialog (after it the window took no more clicks)
-document.querySelectorAll("[data-print]").forEach(b=>b.addEventListener("click",()=>{const card=document.getElementById(b.dataset.print);if(!card)return;
+document.querySelectorAll('[data-print]:not([data-print=""])').forEach(b=>b.addEventListener("click",()=>{const card=document.getElementById(b.dataset.print);if(!card)return;
  document.querySelectorAll(".printing").forEach(x=>x.classList.remove("printing"));card.classList.add("printing");document.body.classList.add("print-one");
  const done=()=>{document.body.classList.remove("print-one");card.classList.remove("printing");removeEventListener("afterprint",done);b.disabled=false;};
  const host=window.chrome&&window.chrome.webview;
