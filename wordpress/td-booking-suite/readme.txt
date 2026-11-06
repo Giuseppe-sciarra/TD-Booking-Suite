@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.20.0
+Stable tag: 2.21.0
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -52,6 +52,20 @@ arriva dopo viene confermata al PC ma non sostituisce quella più nuova. Se il s
 coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sincronizza con il sito" confronta tutto e tiene
 la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
 L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
+
+Il sito gestisce prenotazioni ed email (2.21.0). Si accende dal programma, in Sito WordPress · modalità PC, con "Sito come
+archivio centrale" e "Il sito gestisce prenotazioni ed email". Da allora chi prenota dal sito è confermato subito (o riceve
+"Richiesta ricevuta" per i servizi che l'attività conferma), e tutte le email partono da qui con la posta del sito (wp_mail, con
+il plugin SMTP del sito): conferma, richiesta ricevuta, modifica, annullamento, promemoria e secondo promemoria con i tasti
+"Confermo" e "Annulla", e gli avvisi al titolare, anche con il PC spento per giorni. Valgono anche per gli appuntamenti presi al
+banco, che arrivano con l'archivio. Il programma non manda più le email delle prenotazioni: riceve le prenotazioni e quello che i clienti fanno dai link
+(annullata, confermata, "Non vengo" oltre il termine) alla sincronizzazione dopo, anche il giorno dopo. I testi si scrivono in
+Impostazioni > TD Booking Suite > Email ai clienti, con {nome}, {servizio}, {quando}, {data}, {ora}, {sede}, {operatore},
+{attivita}, {link}; c'è un'email di prova. Le email partono solo per quello che cambia dopo l'accensione, mai per lo storico. I
+promemoria partono da WP-Cron: per l'ora giusta anche senza visite al sito, un cron di sistema ogni 5 minuti su wp-cron.php.
+I nomi scritti tutti minuscoli o tutti maiuscoli diventano "Mario Rossi"; il programma lega la prenotazione alla scheda con lo
+stesso nome e cognome. I link delle email aprono una pagina del sito, firmata con la chiave condivisa, valida fino a 30 giorni
+dopo l'appuntamento.
 
 Per il firewall del sito. Il PC chiama solo /wp-json/tdbs/v1/sync e /wp-json/tdbs/v1/archive/push e /archive/pull, sempre
 in POST con JSON, intestazioni X-TDBS-Time e X-TDBS-Signature, corpo fino a 512 KB per l'archivio (/sync di solito

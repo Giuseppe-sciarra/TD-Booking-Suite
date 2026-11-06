@@ -40,6 +40,8 @@ def notify_staff(tenant,booking,event):
     to=[tenant.notify_email] if tenant.notify_email else []
     from .booking import visit_rows
     for rid in dict.fromkeys(b.resource_id for b in visit_rows(booking) if b.resource_id):to+=[e for e,_ in operators(tenant,rid) if e not in to]  # 2.14.0: also the operator of this booking (of each service of a visit)
+    from .wpsync import by_site
+    if by_site(tenant):to=[]  # 2.21.0: the site in charge tells the business by email; Telegram stays from here
     for address in to:queue(tenant,{"to":address,"subject":subject,"body":text})
     if tenant.telegram:
         d=queue(tenant,{"text":text})

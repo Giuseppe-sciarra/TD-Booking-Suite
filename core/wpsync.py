@@ -12,6 +12,12 @@ in order to /archive/push, sealed, until the site acks it; the site keeps the la
 what is gone. A new PC gets it all back from /archive/pull (restore). The PC only ever POSTs JSON to /wp-json/tdbs/v1/sync
 and /wp-json/tdbs/v1/archive/..., with X-TDBS-Time and X-TDBS-Signature, each body under 512 KB but the free times of /sync.
 
+2.21.0, the site in charge (Il sito gestisce prenotazioni ed email, with the archive on): the site confirms the bookings
+made on it at once and sends every email to the clients and the business's notices, with the texts set in the plugin,
+also with the PC off for days: the bookings of the desk reach it with the archive. The program sends no email at all
+(booking.queue); it only gets the bookings and what the clients did on the site's links (changes: cancelled, confirmed),
+also a day later when it is switched on again.
+
 2.20.0, the newest wins: each record has a version, the exact moment of its last change in microseconds since 1970 UTC
 (ver), the same number whatever the clock's time zone on the PC or on the site's server. The site keeps the higher one
 (a late older copy never overwrites a newer one), and merge (Sincronizza con il sito, and the archive turned on) lines
@@ -60,10 +66,13 @@ def save(tenant,post,actor):
     try:days=int(post.get("days") or 30)
     except ValueError:days=0
     if not 1<=days<=MAX_DAYS:raise ValueError(f"I giorni vanno da 1 a {MAX_DAYS}.")
-    c=conf(tenant);on=bool(post.get("on"));archive=bool(post.get("archive"))
+    c=conf(tenant);on=bool(post.get("on"));archive=bool(post.get("archive"));mails=bool(post.get("mails"))
     if on and not c.get("secret"):raise ValueError("Prima genera la chiave e incollala nel plugin.")
     if archive and not on:raise ValueError("Il sito fa da archivio solo con la sincronizzazione attiva.")
-    c.update(url=url,days=days,on=on);store(tenant,c);state(tenant,sent="")  # the next call sends the free times again
+    if mails and not archive:raise ValueError("Il sito gestisce prenotazioni ed email solo come archivio centrale: accendi anche quello.")
+    started=mails and not c.get("mails")
+    # 2.21.0: since: what changed before the site took over was already mailed by the PC (the site keeps quiet on it)
+    c.update(url=url,days=days,on=on,mails=mails,**({"mails_since":time.time_ns()//1000} if started else {}));store(tenant,c);state(tenant,sent="")  # the next call sends the free times again
     was=tenant.wp_archive;Tenant.objects.filter(pk=tenant.pk).update(wp_archive=archive);tenant.wp_archive=archive
     got=None
     if archive and not was:
@@ -73,7 +82,8 @@ def save(tenant,post,actor):
         except ValueError:upload_all(tenant)
     with scope(tenant):
         if was and not archive:SiteOutbox.objects.all().delete()
-        audit(tenant,actor,"wpsync.saved",tenant.pk,site=url,on=on,archive=archive)
+        if started:touch(tenant.pk,"booking",list(Booking.objects.filter(start__gt=timezone.now()).values_list("pk",flat=True)),stamp=False)  # the bookings to come, to the site again: it reminds them
+        audit(tenant,actor,"wpsync.saved",tenant.pk,site=url,on=on,archive=archive,mails=mails)
     return got
 
 def snapshot(tenant,days):
@@ -93,10 +103,12 @@ def snapshot(tenant,days):
                     if t:=[f"{datetime.fromisoformat(x['start']).strftime('%H:%M')}-{datetime.fromisoformat(x['end']).strftime('%H:%M')}" for x in available(tenant,s.pk,d,o and o.pk,r.pk)]:
                         slots.setdefault(str(o.pk) if o else "",{}).setdefault(str(r.pk),{})[d.isoformat()]=t
         out.append({"id":str(s.pk),"name":s.name,"description":s.description,"location":s.location.name,"picks":s.client_picks,
+            # 2.21.0: for the emails the site writes itself: a request waits for the business's yes; the client cancels until cutoff minutes before
+            "approval":bool(s.request_all),"cutoff":s.cancel_cutoff_minutes,"phone":s.location.phone,
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration} for o in options],"resources":[{"id":str(r.pk),"name":r.name} for r in people],"slots":slots})
     phone=next((l.phone for l in Location.objects.filter(active=True).exclude(phone="").order_by("name")),"")
     reminder=current(tenant)["reminder"]["on"]
-    return {"v":1,"name":tenant.name,"timezone":tenant.timezone,"generated":timezone.now().isoformat(),"days":days,"phone":phone,"services":out,
+    return {"v":1,"name":tenant.name,"timezone":tenant.timezone,"generated":timezone.now().isoformat(),"days":days,"phone":phone,"services":out,"master":master(tenant),"color":tenant.brand_color,
         "texts":{"privacy":tenant.privacy_text,"consent":tenant.consent_text,
             "notices":"Mandami per email la conferma, il promemoria e gli avvisi su questa prenotazione" if reminder else "Mandami per email la conferma e gli avvisi su questa prenotazione"}}
 
@@ -134,12 +146,13 @@ def agenda(tenant,c):
 STAFF=type("SiteAgenda",(),{"pk":""})()  # 2.19.0: who writes in the site's agenda: the desk's rules, no user of this program
 def take(tenant,rows):
     """The site's bookings: each one once (request_key wp-<id>), refused now a request at the same time; one that cannot
-    be kept at all is acked too, and its client told by email why. Returns the new bookings' ids, the ids to ack, errors.
+    be kept at all is acked too, and its client told by email why (2.21.0: by the site, refused). Returns the new bookings'
+    ids, the ids to ack, errors and the refused ones.
     2.19.0: source "agenda", written by the staff in the site's agenda: a booking of the desk, origin "Agenda del sito",
     confirmed when the time and the operator are still free, otherwise a request, without emails to the client until then."""
     from .booking import create_booking,queue,BookingError
     from .calendar import local_datetime
-    tz=ZoneInfo(tenant.timezone);new=[];ack=[];errors=[]
+    tz=ZoneInfo(tenant.timezone);new=[];ack=[];errors=[];refused=[];site=by_site(tenant)
     for r in rows[:200] if isinstance(rows,list) else []:
         sid=str(r.get("id","")) if isinstance(r,dict) else ""
         if not re.fullmatch(r"[a-f0-9]{32}",sid):continue
@@ -157,11 +170,14 @@ def take(tenant,rows):
                 try:b,_=create_booking(tenant,{**data,"resource":str(r.get("resource",""))},late=True,**how)
                 except BookingError as ex:
                     when=f"{r.get('date')} {r.get('time')}";errors.append(f"{when}: {ex}")
-                    if "@" in data["email"] and not staff:queue(tenant,{"to":data["email"],"subject":"Richiesta non registrata · "+tenant.name,
+                    if site:refused.append({"id":sid,"reason":str(ex)[:300]})  # 2.21.0: the site tells the client
+                    elif "@" in data["email"] and not staff:queue(tenant,{"to":data["email"],"subject":"Richiesta non registrata · "+tenant.name,
                         "body":f"La tua richiesta di prenotazione per il {date.fromisoformat(str(r['date'])).strftime('%d/%m/%Y')} alle {r.get('time')} non è stata registrata: {ex}\nContatta {tenant.name} per prenotare."})
                     continue
             new.append(str(b.pk))
-    return new,ack,errors
+            # 2.21.0: the site confirmed it at once; the time was taken meanwhile here: a request now, the site tells the client
+            if site and b.status=="pending" and not staff:refused.append({"id":sid,"kept":True,"reason":"l'orario nel frattempo è stato occupato: l'attività ti ricontatta per confermarlo o spostarlo"})
+    return new,ack,errors,refused
 
 def sync(tenant,full=False):
     """One call to the site; how it went stays on the tenant for the card and the banner. Returns the new bookings.
@@ -175,10 +191,12 @@ def sync(tenant,full=False):
             mark=str(Audit.objects.exclude(action__startswith="wpsync.").order_by("-created").values_list("created","pk").first() or "")
             # 2.20.0: right after a call that did not get through, the free times and the agenda again (the site may be a new one or restored)
             due=full or old.get("down") or mark!=old.get("mark") or not old.get("sent") or timezone.now()-datetime.fromisoformat(old["sent"])>FULL
-            body={"ack":old.get("ack",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30))),"agenda":agenda(tenant,c)} if due else {})}
+            # 2.21.0: the changes done (acked) and the site's bookings that could not be kept, for the site to tell the client
+            body={"ack":old.get("ack",[]),"changes_ack":old.get("changes_ack",[]),"refused":old.get("refused",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30))),"agenda":agenda(tenant,c)} if due else {})}
         data=call(c,"/sync",body)
-        new,ack,errors=take(tenant,data.get("bookings",[]) if isinstance(data,dict) else [])
-        state(tenant,running="",at=timezone.now().isoformat(),new=len(new),ids=new[:20],ack=ack,error="; ".join(errors)[:500],down=False,**({"sent":timezone.now().isoformat(),"mark":mark} if due else {}))
+        new,ack,errors,refused=take(tenant,data.get("bookings",[]) if isinstance(data,dict) else [])
+        done=apply(tenant,data.get("changes",[]))  # 2.21.0: what the clients did on the site's links
+        state(tenant,running="",at=timezone.now().isoformat(),new=len(new),ids=new[:20],ack=ack,changes_ack=done,refused=refused,error="; ".join(errors)[:500],down=False,**({"sent":timezone.now().isoformat(),"mark":mark} if due else {}))
         if new:
             with scope(tenant):audit(tenant,None,"wpsync.bookings",tenant.pk,n=len(new))
         if tenant.wp_archive:
@@ -521,5 +539,44 @@ def panel(tenant):
     with scope(tenant):queue=SiteOutbox.objects.count()
     return {"url":c.get("url",""),"days":c.get("days",30),"on":c.get("on",False),"secret":bool(c.get("secret")),
         "at":datetime.fromisoformat(s["at"]) if s.get("at") else None,"new":s.get("new",0),"error":s.get("error",""),
-        "archive":tenant.wp_archive,"queue":queue,"archive_at":datetime.fromisoformat(a["at"]) if a.get("at") else None,
+        "archive":tenant.wp_archive,"mails":bool(c.get("mails")),"queue":queue,"archive_at":datetime.fromisoformat(a["at"]) if a.get("at") else None,
         "records":a.get("records",0),"size":round(a.get("size",0)/1048576,1),"archive_error":a.get("error","")}
+
+# ---------- 2.21.0 the site in charge
+SILENT=ContextVar("wps_silent",default=False)
+
+def by_site(tenant):
+    """The site manages the bookings' emails: the sync, the archive and its switch on. Then the program sends no email."""
+    if not (tenant and getattr(tenant,"wp_archive",False) and tenant.wp_sync):return False
+    c=conf(tenant);return bool(c.get("on") and c.get("secret") and c.get("mails"))
+def master(tenant):
+    """For the site: in charge or not, and since when (the archive's records changed before are not mailed by it)."""
+    return {"on":True,"since":int(conf(tenant).get("mails_since") or 0)} if by_site(tenant) else {"on":False}
+
+def apply(tenant,changes):
+    """What the clients did on the site's links, done here without any email (the site sent them): cancelled, confirmed
+    (Confermo), declined inside the cutoff (Non vengo, the business decides). Returns the ids to ack, also of what no
+    longer applies (a booking gone, or already cancelled)."""
+    from django.db import transaction
+    from .booking import change_status,BookingError
+    done=[]
+    for ch in (changes if isinstance(changes,list) else [])[:500]:
+        cid=str(ch.get("id","")) if isinstance(ch,dict) else ""
+        if not re.fullmatch(r"\d{1,18}",cid):continue
+        done.append(cid);ref=str(ch.get("ref",""));what=ch.get("action")
+        with scope(tenant):
+            b=(Booking.objects.filter(pk=ref).first() if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f-]{27}",ref)
+               else Booking.objects.filter(request_key=ref).first() if re.fullmatch(r"wp-[a-f0-9]{32}",ref) else None)
+            if not b or b.status not in ("pending","confirmed"):continue
+            quiet=SILENT.set(True)
+            try:
+                with transaction.atomic():
+                    at=str(ch.get("at") or timezone.now().isoformat())[:40]
+                    if what=="confirm":b.snapshot.pop("declined",None);b.snapshot["client_confirmed"]=at;b.save(update_fields=["snapshot"])
+                    elif what=="declined":b.snapshot.pop("client_confirmed",None);b.snapshot["declined"]=at;b.save(update_fields=["snapshot"])
+                    elif what=="cancel":change_status(tenant,b,"cancelled",reason="client")
+                    else:continue
+                    audit(tenant,None,"wpsync.change",b.pk,what=what)
+            except BookingError:pass
+            finally:SILENT.reset(quiet)
+    return done

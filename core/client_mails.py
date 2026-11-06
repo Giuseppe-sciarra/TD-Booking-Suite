@@ -138,6 +138,8 @@ def send(tenant,booking,kind):
     from django.template.loader import render_to_string
     from .booking import queue,action_token
     from .branding import contrast_color
+    from .wpsync import by_site
+    if by_site(tenant):return None  # 2.21.0: the site in charge writes to the clients about their bookings, the program never
     mails=current(tenant);conf=mails[kind];data=booking.data
     if not conf["on"] or not data.get("email") or booking.snapshot.get("notices") is False:return None
     if booking.contact_id and not booking.contact.notices:return None
@@ -171,8 +173,9 @@ def substitute(tenant,booking):
     from django.template.loader import render_to_string
     from .booking import queue
     from .branding import contrast_color
+    from .wpsync import by_site
     data=booking.data
-    if not data.get("email") or booking.snapshot.get("notices") is False or booking.contact_id and not booking.contact.notices:return None
+    if by_site(tenant) or not data.get("email") or booking.snapshot.get("notices") is False or booking.contact_id and not booking.contact.notices:return None
     v=values(tenant,booking,data)
     body=gettext("Ciao {nome}, {servizio} di {quando} la tiene {operatore}.").format(**v)+("\n"+gettext("Prima era con {prima}.").format(prima=booking.snapshot["original"]) if booking.snapshot.get("original") else "")
     return queue(tenant,{"to":data["email"],"subject":gettext("Cambio di istruttore")+" · "+tenant.name,"body":body,
@@ -185,8 +188,9 @@ def offer(tenant,entry,slots,link,until=None):
     from django.template.loader import render_to_string
     from .booking import queue
     from .branding import contrast_color
+    from .wpsync import by_site
     conf=current(tenant)["waitlist"];d=entry.data
-    if not conf["on"] or not d.get("email") or not entry.contact.notices:return None
+    if by_site(tenant) or not conf["on"] or not d.get("email") or not entry.contact.notices:return None
     tz=ZoneInfo(tenant.timezone);first=datetime.fromisoformat(slots[0]["start"]).astimezone(tz)
     if entry.service.kind=="day":quando=when(first,datetime.fromisoformat(slots[0]["end"]).astimezone(tz),True)
     else:quando=gettext("{giorno} {data} alle {ora}").format(giorno=gettext(WEEKDAYS[first.weekday()]),data=f"{first:%d/%m/%Y}",ora=", ".join(datetime.fromisoformat(x["start"]).astimezone(tz).strftime("%H:%M") for x in slots[:6]))+(gettext(" e altri orari") if len(slots)>6 else "")

@@ -338,10 +338,11 @@ def notifications_view(request,slug):
     from . import client_mails as cm
     from .notify import operators
     from .texts import TEXT as SMS_TEXT
+    from .wpsync import by_site
     now=cm.current(tenant)
     mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD,"locked":k in cm.ADMIN and not (request.user.is_staff or getattr(settings,"SHOP_MAILS",False))} for k,label,help in cm.KINDS}
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
         "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
-        "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant)})
+        "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant),"site_mails":by_site(tenant)})
 SUMMARY_HOURS=range(16,23)

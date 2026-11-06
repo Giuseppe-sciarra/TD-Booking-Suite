@@ -1,6 +1,14 @@
-# TD Booking Suite 2.20.12 — registro modifiche
+# TD Booking Suite 2.21.0 — registro modifiche
 
-**6 novembre 2026 · versione 2.20.12**
+**6 novembre 2026 · versione 2.21.0**
+
+## 2.21.0 — il sito gestisce prenotazioni ed email
+
+- **Il sito gestisce prenotazioni ed email**: un interruttore nuovo in *Sito WordPress · modalità PC*, con il sito come archivio centrale. Chi prenota dal sito è confermato subito (o riceve «Richiesta ricevuta» per i servizi che l'attività conferma) e tutte le email le manda il sito con la sua posta: conferma, richiesta ricevuta, modifica, annullamento, promemoria e secondo promemoria con **Confermo** e **Annulla**, avvisi al titolare, anche con il PC spento per giorni; valgono anche per gli appuntamenti presi al banco. I testi si scrivono nel plugin (*Impostazioni › TD Booking Suite › Email ai clienti*), con un'email di prova
+- **Il programma non manda più le email delle prenotazioni** con il sito che le gestisce (restano quelle che non riguardano le prenotazioni: inviti ai collaboratori, ripristino della password, copia dello scontrino, riepilogo serale): riceve le prenotazioni dal sito e quello che i clienti fanno dai link delle email (annullata, confermata, «Non vengo» oltre il termine), anche se si accende il giorno dopo. Un orario preso al banco mentre un cliente lo prenotava online diventa una richiesta da confermare, e il sito lo dice al cliente. La pagina *Notifiche* lo scrive in alto
+- **Prenotazioni dal sito sulla scheda giusta**: si agganciano alla scheda con lo stesso nome e cognome, comunque scritto (minuscolo, maiuscolo, nome e cognome invertiti, senza accenti); con due schede dallo stesso nome quella con lo stesso telefono o la stessa email, altrimenti una nuova. Sul sito i nomi scritti tutti minuscoli o maiuscoli diventano «Mario Rossi»
+- **Plugin WordPress 2.21.0**: la pagina del cliente dei link (prenotazione, Confermo, Annulla; «Non vengo» oltre il termine per annullare), firmata con la chiave condivisa; l'agenda riservata mostra le prenotazioni annullate o confermate dal cliente in attesa del PC
+
 
 ## 2.20.12 — Notifiche e promemoria
 

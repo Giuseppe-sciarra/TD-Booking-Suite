@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
- * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima.
- * Version: 2.20.0
+ * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
+ * Version: 2.21.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.20.0';
+const TDBS_VERSION='2.21.0';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -159,6 +159,7 @@ function tdbs_settings_page() {
     submit_button();
     echo '</form></details>';
     tdbs_pc_settings($post);
+    tdbs_mail_settings($post);
     echo '<p>Collegato al portale, il plugin non conserva nomi, recapiti, note o credenziali nel database WordPress: il modulo arriva dal portale, dentro un riquadro della pagina. In modalità PC conserva le richieste cifrate solo finché il PC non le prende.</p></div>';
 }
 
@@ -264,7 +265,20 @@ function tdbs_pc_sync(WP_REST_Request $request) {
         $slot=json_decode($row['slot'],true);$client=tdbs_pc_open($row['data']);
         if (is_array($slot) && is_array($client)) $out[]=array_merge($slot,$client,array('id'=>$row['id']));
     }
-    return tdbs_pc_reply(array('ok'=>true,'bookings'=>$out));
+    // 2.21.0: the site in charge: what the clients did on the links goes to the PC until it acks it; its bookings it could not keep, told to the client here
+    list(,$changes)=tdbs_mail_tables();
+    $ack=array_values(array_filter(array_slice((array)($data['changes_ack']??array()),0,500),function($x){return is_string($x) && ctype_digit($x);}));
+    if ($ack) $wpdb->query('DELETE FROM '.$changes.' WHERE id IN ('.implode(',',array_map('intval',$ack)).')');
+    foreach (array_slice((array)($data['refused']??array()),0,200) as $r) if (is_array($r) && preg_match('/^[a-f0-9]{32}$/',(string)($r['id']??''))) {
+        $b=tdbs_state_get('wp-'.$r['id']);
+        if (!$b || !empty($b['flags']['told'])) continue;
+        $b['flags']['told']=time();
+        if (!empty($r['kept'])) {tdbs_state_put($b['ref'],'pending',$b['start'],$b['info'],$b['flags']);tdbs_tell('recheck',$b['ref'],$b['info']);}
+        else {tdbs_state_put($b['ref'],'cancelled',$b['start'],$b['info'],$b['flags']);tdbs_tell('refused',$b['ref'],$b['info'],array('motivo'=>rtrim(sanitize_text_field((string)($r['reason']??'')),'.')));}
+    }
+    $pending=array();
+    foreach ((array)$wpdb->get_results("SELECT id,ref,action,at FROM $changes ORDER BY id LIMIT 500",ARRAY_A) as $c) $pending[]=array('id'=>(string)$c['id'],'ref'=>$c['ref'],'action'=>$c['action'],'at'=>$c['at']);
+    return tdbs_pc_reply(array('ok'=>true,'bookings'=>$out,'changes'=>$pending));
 }
 
 /* ---------- 2.18.0 Il sito come archivio centrale: the PC pushes every change (bookings, client cards with fiscal data, client
@@ -293,7 +307,7 @@ function tdbs_archive_push(WP_REST_Request $request) {
     $data=tdbs_pc_verify($request,TDBS_ARCHIVE_BODY+4096);
     if ($data instanceof WP_REST_Response) return $data;
     if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
-    $table=tdbs_archive_table();$acked=array();
+    $table=tdbs_archive_table();$acked=array();$bookings=array();
     // 2.20.0: the record changed last wins, by v (a PC before 2.20.0 sends none: 0, and the higher number wins as before);
     // the condition is read before seq and v change, v last of all
     $win='(VALUES(v)>v OR (VALUES(v)=v AND VALUES(seq)>seq))';
@@ -304,6 +318,16 @@ function tdbs_archive_push(WP_REST_Request $request) {
         // what is gone stays as an empty row with its v, so an older copy arriving late cannot bring it back; an older one is acked too, and kept out
         $done=$wpdb->query($wpdb->prepare("INSERT INTO $table (kind,ref,seq,v,day,data) VALUES (%s,%s,%d,%d,%s,%s) ON DUPLICATE KEY UPDATE data=IF($win,VALUES(data),data),day=IF($win,VALUES(day),day),seq=IF($win,VALUES(seq),seq),v=GREATEST(v,VALUES(v))",$kind,$ref,$seq,$v,$day,$sealed));
         if ($done!==false) $acked[]=$seq;
+        if ($done!==false && $kind==='booking') $bookings[$ref]=array($v,$sealed);
+    }
+    // 2.21.0: after the cards (their "no" to the emails), what the site knows of each booking and the emails of what changed;
+    // only the copy that won, and not the history of before yesterday
+    if ($bookings && tdbs_master()) foreach ($bookings as $ref=>$x) {
+        if ((int)$wpdb->get_var($wpdb->prepare("SELECT v FROM $table WHERE kind='booking' AND ref=%s",$ref))!==$x[0]) continue;
+        $rec=$x[1]!==''?tdbs_pc_open($x[1]):null;
+        if (!is_array($rec)) {$old=tdbs_state_get($ref);if ($old) tdbs_state_put($ref,'cancelled',$old['start'],$old['info'],$old['flags']);continue;}
+        if (strtotime((string)($rec['start']??''))<time()-DAY_IN_SECONDS && !tdbs_state_get($ref)) continue;
+        tdbs_state_from_archive($ref,$rec,$x[0]);
     }
     update_option('tdbs_archive_at',time(),false);
     return tdbs_pc_reply(array('ok'=>true,'acked'=>$acked)+tdbs_archive_status());
@@ -327,9 +351,13 @@ function tdbs_archive_pull(WP_REST_Request $request) {
 /** The bookings of the archive from one day to another, as the agenda shows them; their operators added to its columns. */
 function tdbs_archive_bookings($from,$to,&$a) {
     global $wpdb;$out=array();$ids=array_map('strval',array_column((array)($a['operators']??array()),'id'));
-    foreach ((array)$wpdb->get_col($wpdb->prepare('SELECT data FROM '.tdbs_archive_table()." WHERE kind='booking' AND day BETWEEN %s AND %s AND data<>''",$from,$to)) as $sealed) {
-        $b=tdbs_pc_open($sealed);$v=is_array($b)?($b['view']??null):null;
+    foreach ((array)$wpdb->get_results($wpdb->prepare('SELECT ref,data FROM '.tdbs_archive_table()." WHERE kind='booking' AND day BETWEEN %s AND %s AND data<>''",$from,$to),ARRAY_A) as $row) {
+        $b=tdbs_pc_open($row['data']);$v=is_array($b)?($b['view']??null):null;
         if (!is_array($v)) continue;  // the cancelled ones have no view
+        // 2.21.0: cancelled by the client from the site's link, the PC not told yet
+        $st=tdbs_master()?tdbs_state_get($row['ref']):null;
+        if ($st && !empty($st['flags']['cancelled'])) {$v['status']='Annullata dal cliente · da sincronizzare';$v['pending']=true;}
+        elseif ($st && !empty($st['flags']['confirmed'])) $v['status'].=' · confermata dal cliente';
         $rid=(string)($v['resource']??'');
         if ($rid!=='' && !in_array($rid,$ids,true)) {$ids[]=$rid;$a['operators'][]=array('id'=>$rid,'name'=>(string)($v['operator']??''));}
         $out[]=$v;
@@ -411,6 +439,8 @@ function tdbs_pc_book(WP_REST_Request $request) {
     if (!preg_match('/^[0-9 +().\/-]{6,30}$/',$client['phone'])) return tdbs_pc_error('Numero di telefono non valido, per esempio 333 123 4567.');
     $client['notes']=mb_substr(sanitize_textarea_field((string)($p['notes']??'')),0,4000);
     $client['notices']=!empty($p['notices']);$client['marketing']=!empty($p['marketing']);
+    // 2.21.0: «mario rossi», «MARIO ROSSI» → «Mario Rossi»; as written when it has capitals of its own («Maria De Luca»)
+    foreach (array('first_name','last_name') as $k) $client[$k]=tdbs_name_case($client[$k]);
     // one request at a time: two clients on the same time, only the first gets it
     $wpdb->get_var("SELECT GET_LOCK('tdbs_book',10)");
     $free=tdbs_pc_free($snap,$sv,$option,$any?'':$resource);$hit=null;
@@ -421,6 +451,14 @@ function tdbs_pc_book(WP_REST_Request $request) {
     $wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");
     if (!$saved) return tdbs_pc_error('Non è stato possibile salvare la richiesta: riprova.',500);
     $who='';foreach ((array)($sv['resources']??array()) as $r) if (!$any && ($r['id']??'')===$hit[1]) $who=' con '.$r['name'];
+    if (tdbs_master()) {
+        // 2.21.0: the site in charge confirms it now (or takes the request, for a service the business confirms) and writes to the client
+        $pending=!empty($sv['approval']);$info=tdbs_site_info($snap,$sv,$option,$any?'':$hit[1],$date,$time,substr($hit[0],6,5),$client);
+        tdbs_state_put('wp-'.$id,$pending?'pending':'confirmed',$info['start'],$info,array(),time());
+        tdbs_tell($pending?'requested':'confirmed','wp-'.$id,$info);
+        tdbs_notify($pending?'Nuova richiesta dal sito':'Nuova prenotazione dal sito',$info);
+        return new WP_REST_Response(array('ok'=>true,'message'=>$pending?'Richiesta ricevuta: ti scriviamo appena la confermiamo.':'Prenotazione confermata: ti abbiamo mandato un’email con i dettagli.'),201);
+    }
     $day=DateTime::createFromFormat('Y-m-d',$date);
     wp_mail($client['email'],'Richiesta ricevuta · '.sanitize_text_field((string)($snap['name']??'')),
         'Ciao '.$client['first_name'].",\n\nabbiamo ricevuto la tua richiesta: ".sanitize_text_field((string)$sv['name']).$who.' il '.($day?$day->format('d/m/Y'):$date).' alle '.$time.".\nRiceverai la conferma per email.\n\n".sanitize_text_field((string)($snap['name']??'')));
@@ -596,6 +634,7 @@ function tdbs_agenda_book(WP_REST_Request $request) {
         if ($client[$k]==='' || strlen($client[$k])>100) return tdbs_pc_error('Scrivi nome, cognome e telefono del cliente.');
     }
     if (!preg_match('/^[0-9 +().\/-]{6,30}$/',$client['phone'])) return tdbs_pc_error('Numero di telefono non valido, per esempio 333 123 4567.');
+    foreach (array('first_name','last_name') as $k) $client[$k]=tdbs_name_case($client[$k]);
     $client['email']=strtolower(trim((string)($p['email']??'')));
     if ($client['email']!=='' && (!is_email($client['email']) || strlen($client['email'])>254)) return tdbs_pc_error('Email non valida.');
     $client['notes']=mb_substr(sanitize_textarea_field((string)($p['notes']??'')),0,4000);
@@ -607,9 +646,16 @@ function tdbs_agenda_book(WP_REST_Request $request) {
         foreach ((array)(tdbs_pc_free($snap,$sv,$option,$resource)[$date]??array()) as $x) if (substr($x[0],0,5)===$time) {$hit=$x;break;}
         if (!$hit) {$wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");return tdbs_pc_error('Questo orario non è più libero: scegline un altro o usa «Altro orario».',409,array('reload'=>true));}
     }
-    $saved=$wpdb->insert(tdbs_pc_table(),array('id'=>bin2hex(random_bytes(16)),'created'=>current_time('mysql',true),'slot'=>wp_json_encode(array('service'=>$sv['id'],'option'=>$option,'resource'=>$hit[1],'any'=>$any,'date'=>$date,'time'=>$time,'end'=>substr($hit[0],6,5),'source'=>'agenda','free'=>$other)),'data'=>tdbs_pc_seal($client)));
+    $id=bin2hex(random_bytes(16));
+    $saved=$wpdb->insert(tdbs_pc_table(),array('id'=>$id,'created'=>current_time('mysql',true),'slot'=>wp_json_encode(array('service'=>$sv['id'],'option'=>$option,'resource'=>$hit[1],'any'=>$any,'date'=>$date,'time'=>$time,'end'=>substr($hit[0],6,5),'source'=>'agenda','free'=>$other)),'data'=>tdbs_pc_seal($client)));
     $wpdb->get_var("SELECT RELEASE_LOCK('tdbs_book')");
     if (!$saved) return tdbs_pc_error('Non è stato possibile salvare l’appuntamento: riprova.',500);
+    if (tdbs_master()) {
+        // 2.21.0: on a free time the client gets the confirmation now; on «Altro orario» when the PC confirms it
+        $info=tdbs_site_info($snap,$sv,$option,$any?'':$hit[1],$date,$time,substr($hit[0],6,5),$client);
+        tdbs_state_put('wp-'.$id,$other?'pending':'confirmed',$info['start'],$info,array(),time());
+        if (!$other) tdbs_tell('confirmed','wp-'.$id,$info);
+    }
     $response=new WP_REST_Response(array('ok'=>true),201);
     $response->header('Cache-Control','no-store');
     return $response;
@@ -748,3 +794,20 @@ add_action('admin_post_tdbs_pc_save',function(){
     update_option('tdbs_pc',$new,false);
     tdbs_flash($new['on']?'Modalità PC attiva: il modulo usa i dati che manda il PC.':'Modalità PC salvata, spenta.','success');tdbs_back();
 });
+
+/** 2.21.0: a name typed all in small or all in capital letters, as names are written: «mario rossi», «D'AMICO» → «Mario
+    Rossi», «D'Amico»; one with capitals of its own stays as written («Maria DeLuca»). */
+function tdbs_name_case($name) {
+    if ($name!==mb_strtolower($name) && $name!==mb_strtoupper($name)) return $name;
+    return preg_replace_callback("/(^|[\\s'’-])(\\p{L})/u",function($m){return $m[1].mb_strtoupper($m[2]);},mb_strtolower($name));
+}
+/** 2.21.0: what an email needs of a booking made on the site. */
+function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client) {
+    $tz=tdbs_tz();$name=(string)$sv['name'];$who='';
+    foreach ((array)($sv['options']??array()) as $o) if (($o['id']??'')===$option) $name.=' · '.$o['name'];
+    foreach ((array)($sv['resources']??array()) as $r) if ($rid!=='' && ($r['id']??'')===$rid) $who=(string)$r['name'];
+    return array('first_name'=>$client['first_name'],'last_name'=>$client['last_name'],'email'=>$client['email'],'phone'=>$client['phone'],'notices'=>!empty($client['notices']),
+        'service'=>$name,'service_id'=>(string)$sv['id'],'operator'=>$who,'location'=>(string)($sv['location']??''),
+        'start'=>(new DateTime($date.' '.$time,$tz))->getTimestamp(),'end'=>(new DateTime($date.' '.$end,$tz))->getTimestamp());
+}
+require_once __DIR__.'/mails.php';

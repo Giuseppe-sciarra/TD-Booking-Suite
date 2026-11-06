@@ -92,8 +92,9 @@ def by_phone(tenant,phone,without_email=False):
         if not (without_email and c.data.get("email")):return c
     return None
 
-def find_or_create(tenant,d):
-    """The contact of a manual booking or of a client added by hand: by email, then by phone."""
+def find_or_create(tenant,d,named=False):
+    """The contact of a manual booking or of a client added by hand: by email, then by phone.
+    2.21.0 named: then by first and last name (by_name), before a new card."""
     c=Contact.objects.filter(email_index=email_index(tenant,d["email"])).first() if d.get("email") else None
     if c:return c,False
     known=by_phone(tenant,d.get("phone"))
@@ -102,9 +103,27 @@ def find_or_create(tenant,d):
     if known and not d.get("email"):
         mine=Contact.objects.filter(email_index=key_for(tenant,d,shared=True)).first()
         if mine:return mine,False
+    if named and (hit:=by_name(tenant,d)):return hit,False
     c=Contact(tenant=tenant,email_index=key_for(tenant,d,shared=bool(known)))
     seal_card(tenant,c,{k:d.get(k,"") for k in ("first_name","last_name","email","phone")});c.save()
     return c,True
+
+def by_name(tenant,d):
+    """2.21.0: the card with this first and last name however written (Mario Rossi, mario rossi, MARIO ROSSI, Rossi Mario,
+    without the accents), for a booking from the WordPress site that its email and phone did not find: the only card with
+    that name; with more than one, the one with the same phone or email; otherwise None, two people with one name."""
+    w=sorted(words(d.get("first_name","")+" "+d.get("last_name","")))
+    if len(w)<2:return None  # a first name alone is not a person
+    h=search_keys(tenant_key(tenant));rows=Contact.objects.exclude(email_index__startswith=ERASED).filter(merged_into__isnull=True)
+    for x in w:rows=rows.filter(name_index__contains=h("n:"+x[:20]))
+    read=opener(tenant);hits=[]
+    for c in rows.order_by("-created")[:50]:
+        cd=read(c)
+        if sorted(words(cd.get("first_name","")+" "+cd.get("last_name","")))==w:hits.append((c,cd))
+    if len(hits)==1:return hits[0][0]
+    phone=normalize_phone(d.get("phone") or "") if d.get("phone") else "";email=(d.get("email") or "").casefold()
+    same=[c for c,cd in hits if phone and normalize_phone(cd.get("phone") or "")==phone or email and (cd.get("email") or "").casefold()==email]
+    return same[0] if len(same)==1 else None
 
 def update(tenant,contact,fields=None,notes=None):
     """Edit the card. A new email or phone moves the contact's key, unless another client already has it."""

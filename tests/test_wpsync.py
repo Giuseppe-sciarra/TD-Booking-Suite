@@ -100,7 +100,7 @@ def test_settings_are_for_the_agency_only(sample):
     assert secret in page and secret not in c.get(f"/t/{t.slug}/setup/").content.decode()  # shown once
     assert secret not in t.wp_sync  # sealed
     c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_save","url":"https://www.salone.example/","days":"20","on":"1"})
-    t.refresh_from_db();assert {k:v for k,v in wpsync.conf(t).items() if k!="secret"}=={"url":"https://www.salone.example","days":20,"on":True}
+    t.refresh_from_db();assert {k:v for k,v in wpsync.conf(t).items() if k!="secret"}=={"url":"https://www.salone.example","days":20,"on":True,"mails":False}
     c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_save","url":"http://x.example/wp","days":"20"})
     t.refresh_from_db();assert wpsync.conf(t)["url"]=="https://www.salone.example"
 

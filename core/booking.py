@@ -584,7 +584,7 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
             if data.get("contact"):
                 contact=choice(Contact.objects.exclude(email_index__startswith="erased:"),data.get("contact"));new_contact=False
             elif walkin and not (pii["email"] or pii["phone"]):contact,new_contact=None,False  # passing by: no card
-            else:contact,new_contact=find_or_create(tenant,pii)
+            else:contact,new_contact=find_or_create(tenant,pii,named=origin=="agenda")  # 2.21.0: written in the site's agenda, also by name
             if not pii.get("email"):data={**data,"marketing":False}
         else:
             idx=index(pii["email"],tenant_key(tenant),"email")
@@ -593,6 +593,10 @@ def create_booking(tenant,data,actor=None,origin="public",source="",wait="",seri
             # one history. A card with another email stays another person. The card is never rewritten here
             from .clients import by_phone
             if contact is None:known_by_phone=by_phone(tenant,pii["phone"],without_email=True)
+            # 2.21.0: from the WordPress site, also the card with the same first and last name, however written
+            if contact is None and not known_by_phone and origin=="wordpress":
+                from .clients import by_name
+                known_by_phone=by_name(tenant,pii)
             contact=contact or known_by_phone
             # 2.14.0: Non prenotabile online, also with another email on the phone of a card the business marked
             from .clients import phone_index
