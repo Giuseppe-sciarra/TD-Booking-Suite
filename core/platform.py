@@ -100,7 +100,7 @@ def tenant_settings(request,slug):
 def smtp_view(request,slug):
     from .mailsetup import page,Target
     staff(request);tenant=request.tenant
-    return page(request,Target(tenant),"Invio email","La casella da cui partono le conferme delle prenotazioni, le notifiche e gli inviti di "+tenant.name+": Gmail, Microsoft 365 o l'email del suo dominio. Se il marketing è attivo, serve anche per le campagne. Senza, si usa l'invio dell'agenzia. Le credenziali restano cifrate e gli utenti dell'attività non le vedono")
+    return page(request,Target(tenant),"Invio email","La casella da cui partono le conferme delle prenotazioni, le notifiche e gli inviti di "+tenant.name+": Gmail, Microsoft 365 o l'email del suo dominio. Se il marketing è attivo, serve anche per le campagne. Senza, si usa l'invio dell'"+settings.AGENCY_NAMES["who"]+". Le credenziali restano cifrate e gli utenti dell'attività non le vedono")
 def texts_view(request,slug):
     """2.14.0: the reminders also by SMS (Twilio, Skebby) or WhatsApp Cloud API, set by the agency (texts.py)."""
     from . import texts
@@ -188,7 +188,7 @@ def members_view(request,slug):
                     # business it belongs to alone, never by the agency (the link or the password would be its own)
                     if not created and (request.POST.get("password") or not u.has_usable_password()):
                         if elsewhere(u,tenant):raise ValueError("Questa persona ha già un accesso in un'altra attività, non ancora attivato: deve attivarlo dal suo invito, poi puoi aggiungerla.")
-                    if u.pk==request.user.pk and not request.member:raise ValueError("L'agenzia entra nei contenuti con l'accesso di assistenza concesso dall'attività, non aggiungendo se stessa.")
+                    if u.pk==request.user.pk and not request.member:raise ValueError(("L'"+settings.AGENCY_NAMES["who"]).capitalize()+" entra nei contenuti con l'accesso di assistenza concesso dall'attività, non aggiungendo se stessa.")
                     member,_=Membership.objects.get_or_create(tenant=tenant,user=u)
                     if member.user_id==request.user.id and role!="owner":raise ValueError("Non puoi togliere a te stesso il ruolo di amministratore.")
                     if member.role=="owner" and role!="owner" and not Membership.objects.filter(tenant=tenant,role="owner").exclude(pk=member.pk).exists():raise ValueError("L'attività deve avere almeno un amministratore.")

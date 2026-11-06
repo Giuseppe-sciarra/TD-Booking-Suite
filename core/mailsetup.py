@@ -121,7 +121,7 @@ def page(request,target,title,description,saved_to=None):
                 public_addresses(data["host"],data["port"])
                 data["password"]=data["password"] or (current.get("password","") if method=="smtp" else "")
                 target.store(data,request.user)
-                messages.success(request,("SMTP salvato. Usa l'email di prova per controllarlo." if target.tenant else "SMTP dell'agenzia salvato: le email di servizio di tutte le attività senza un SMTP proprio partono da qui."))
+                messages.success(request,("SMTP salvato. Usa l'email di prova per controllarlo." if target.tenant else "SMTP dell'"+settings.AGENCY_NAMES["who"]+" salvato: le email di servizio di tutte le attività senza un SMTP proprio partono da qui."))
                 return done()
             except ValueError as ex:form.add_error(None,str(ex))
             except OSError:form.add_error("host","Server SMTP non trovato: controlla il nome, per esempio smtp.tuodominio.it.")

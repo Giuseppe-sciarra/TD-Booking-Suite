@@ -102,7 +102,7 @@ def setup(request,slug):
     agency=[
      {"title":"Persone e permessi","done":members>1,"text":f"{members} person{'a' if members==1 else 'e'} con accesso","link":"members" if request.user.is_staff else ""},
      # 2.6.0: the WordPress site has its own card below, with the connection code
-     {"title":"Invio email","done":mail_ready(t),"text":"Invio proprio dell'attività" if t.smtp else ("Invio dell'agenzia" if mail_ready() else "Nessun invio configurato: le email restano in attesa"),"link":"smtp" if request.user.is_staff else ""},
+     {"title":"Invio email","done":mail_ready(t),"text":"Invio proprio dell'attività" if t.smtp else ("Invio dell'"+settings.AGENCY_NAMES["who"] if mail_ready() else "Nessun invio configurato: le email restano in attesa"),"link":"smtp" if request.user.is_staff else ""},
     ]
     # site and email are set by the agency: business users do not even see them
     agency=[a for a in agency if a["link"]]
@@ -596,7 +596,7 @@ def attendees(request,slug,booking_id):
                     if r:b.resource=r;b.snapshot.update(substitute=r.name,resource=r.name)
                     else:
                         b.resource_id=b.snapshot["original_id"] or None;b.snapshot["resource"]=b.snapshot["original"]
-                        for k in ("substitute","original","original_id"):b.snapshot.pop(k)
+                        for k in ("substitute","original","original_id"):b.snapshot.pop(k,None)  # 2.20.11: no substitute yet: nothing to take off, not a crash
                     b.save(update_fields=["resource","snapshot"])
                     if r and request.POST.get("notify")=="on":substitute(request.tenant,b)
                 audit(request.tenant,request.user,"booking.substitute",ref.pk,resource=str(r.pk) if r else "",notified=bool(r and request.POST.get("notify")=="on"))

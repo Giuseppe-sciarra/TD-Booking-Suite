@@ -1,4 +1,5 @@
 import re,time
+from django.conf import settings
 from datetime import date
 from django.contrib.auth import logout
 from django.http import HttpResponse
@@ -18,7 +19,7 @@ def public_lang(request):
     lang=request.GET.get("lang","")
     return lang if lang in dict(settings.LANGUAGES) else translation.get_language_from_request(request)
 
-TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi","api","registratore"}
+TECHNICAL_SECTIONS={"settings","smtp","members","guida","setup","catalog","messaggi","api","registratore","notifications"}  # 2.20.11: notifications, in its menu, was a 403 without the owner's grant
 
 class GuardMiddleware:
     def __init__(self,get_response):self.get_response=get_response
@@ -65,7 +66,7 @@ class GuardMiddleware:
                     if section not in TECHNICAL_SECTIONS:
                         from .permissions import active_grant,support_mfa_fresh
                         with scope(tenant):grant=active_grant(tenant,request.user)
-                        if not grant:return denied(request,"Prenotazioni e clienti di questa attività sono riservati: serve un accesso di assistenza concesso dall'amministratore dell'attività, dalla sua pagina Accesso dell'agenzia.")
+                        if not grant:return denied(request,f"Prenotazioni e clienti di questa attività sono riservati: serve un accesso di assistenza concesso dall'amministratore dell'attività, dalla sua pagina {settings.AGENCY_NAMES['access']}.")
                         if not support_mfa_fresh(request):
                             from urllib.parse import urlencode
                             return redirect("/verify/confirm/?"+urlencode({"next":request.get_full_path()}))

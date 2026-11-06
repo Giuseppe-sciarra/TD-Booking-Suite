@@ -127,6 +127,9 @@ def test_attendees_tick_and_substitute(sample):
     assert "Zoe" in page and "Mario" in page and "Presente" in page
     owner.post(f"/t/{t.slug}/bookings/{a.pk}/iscritti/",{"action":"present","booking":str(a.pk)})
     owner.post(f"/t/{t.slug}/bookings/{a.pk}/iscritti/",{"action":"absent","booking":str(z.pk)})
+    # 2.20.11: «Nessun sostituto» before any substitute was a crash (500)
+    assert owner.post(f"/t/{t.slug}/bookings/{a.pk}/iscritti/",{"action":"substitute","resource":""}).status_code==302
+    with scope(t):assert all("substitute" not in b.snapshot and "original" not in b.snapshot for b in Booking.objects.all())
     owner.post(f"/t/{t.slug}/bookings/{a.pk}/iscritti/",{"action":"substitute","resource":str(r.pk)})
     with scope(t):
         assert Booking.objects.get(pk=a.pk).status=="completed" and Booking.objects.get(pk=z.pk).status=="no_show"

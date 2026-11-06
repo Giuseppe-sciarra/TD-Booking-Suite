@@ -86,7 +86,7 @@ Puoi chiedere di vedere, correggere, cancellare o esportare i tuoi dati, limitar
 
 def standard_policy(site):
     name=site.legal_name or site.owner_name or site.name
-    email=site.privacy_email or site.support_email or "l'indirizzo indicato dall'agenzia"
+    email=site.privacy_email or site.support_email or "l'indirizzo indicato dall'"+settings.AGENCY_NAMES["who"]
     return STANDARD.format(legal_name=name,email=email,address_part=", "+site.legal_address if site.legal_address else "",
         vat_part=", partita IVA "+site.vat_number if site.vat_number else "",location_part=", a "+site.data_location if site.data_location else "")
 

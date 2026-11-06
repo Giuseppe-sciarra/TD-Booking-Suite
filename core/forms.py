@@ -1,4 +1,5 @@
 import json,re,uuid,secrets
+from django.conf import settings
 from datetime import timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
@@ -356,7 +357,7 @@ class ServiceForm(ScopedForm):
         if agency:
             # the agency chooses the kind: every field says which kinds use it and the page shows only those
             self.fields["kind"].choices=SERVICE_KINDS
-            self.fields["kind"].help_text="Lo decide l'agenzia: l'attività non lo vede e non lo cambia"
+            self.fields["kind"].help_text="Lo decide l'"+settings.AGENCY_NAMES["who"]+": l'attività non lo vede e non lo cambia"
             self.fields["kind"].widget.attrs["data-field-kinds"]=json.dumps({k:sorted(v) for k,v in FIELD_KINDS.items()})
             for name,kinds in FIELD_KINDS.items():
                 f=self.fields[name];f.widget.attrs["data-kinds"]=" ".join(sorted(kinds))
@@ -378,7 +379,6 @@ class ServiceForm(ScopedForm):
         add_limits(self,"questo servizio")
         self.initial["private_on"]=bool(self.instance.secret)
         if self.instance.secret:
-            from django.conf import settings
             self.fields["private_on"].help_text="Il link da mandare: "+f"{settings.PUBLIC_ORIGIN}/book/{getattr(self.tenant,'slug','')}/?riservato={self.instance.secret}"
         else:del self.fields["private_new"]
         if "party_durations" in self.fields and not self.is_bound:self.initial["party_durations"]=", ".join(f"{n}:{m}" for n,m in self.instance.party_durations or [])

@@ -86,7 +86,7 @@ def test_every_page_for_platform_staff(world):
     for path in pages(t,ids):
         r=c.get(path)
         assert r.status_code in (200,302,403,404),(path,r.status_code)
-        if path.startswith(p) and path.split("/")[3] not in ("settings","smtp","members","guida","setup","catalog"):  # 2.6.0: the agency configures
+        if path.startswith(p) and path.split("/")[3] not in ("settings","smtp","members","guida","setup","catalog","notifications"):  # 2.6.0: the agency configures; 2.20.11: notifications, its own menu item
             assert r.status_code==403,(path,"contenuto senza concessione")
         if r.status_code==200 and r["Content-Type"].startswith("text/html"):check_markup(r.content.decode(),path)
     with scope(t):SupportGrant.objects.create(tenant=t,user=u,reason="Verifica completa",expires=timezone.now()+timedelta(hours=1),created_by="owner")

@@ -164,7 +164,7 @@ PROVIDERS=[
 def smtp_view(request):
     from .mailsetup import page,Target
     staff_only(request)
-    return page(request,Target(),"Invio email dell'agenzia","Serve per inviti, conferme, notifiche e richieste di prova, per tutte le attività che non hanno un invio proprio. Le campagne marketing usano sempre e solo l'invio dell'attività",saved_to="/platform/settings/")
+    return page(request,Target(),"Invio email dell'"+settings.AGENCY_NAMES["who"],"Serve per inviti, conferme, notifiche e richieste di prova, per tutte le attività che non hanno un invio proprio. Le campagne marketing usano sempre e solo l'invio dell'attività",saved_to="/platform/settings/")
 
 def _image(data):
     if not data:return HttpResponse(status=404)
