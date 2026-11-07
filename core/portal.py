@@ -2,6 +2,7 @@ import csv,io,re,secrets
 from datetime import date,datetime,time,timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
+from urllib.parse import quote
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError,PermissionDenied
@@ -493,7 +494,8 @@ def booking_peek(request,slug,booking_id):
     if editable and start.strftime("%H:%M") not in times:times.append(start.strftime("%H:%M"));times.sort()
     return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],
         "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),
-        "editable":editable,"operators":operators,"times":times,"day":start.date(),"hm":start.strftime("%H:%M"),"minutes":int((b.end-b.start).total_seconds()//60),**extras})
+        "editable":editable,"operators":operators,"times":times,"day":start.date(),"hm":start.strftime("%H:%M"),"minutes":int((b.end-b.start).total_seconds()//60),
+        "cancellable":can(request,"booking.cancel") and b.status in OPEN and not sales,**extras})  # 2.22.1: Annulla appuntamento from the panel
 def booking_detail(request,slug,booking_id):
     from .booking import visit_rows
     require(request,"booking.read")
@@ -557,6 +559,7 @@ def booking_detail(request,slug,booking_id):
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
         back=request.POST.get("back")=="dashboard"  # 2.14.0: the quick actions of the dashboard go back there
+        agenda=request.POST.get("back")=="agenda"  # 2.22.1: Annulla appuntamento from the agenda's panel goes back to that day
         try:
             if action=="notes":
                 pii=booking.data
@@ -573,10 +576,13 @@ def booking_detail(request,slug,booking_id):
                         change_status(request.tenant,other,"cancelled",request.user,reason=request.POST.get("reason",""),quiet=True)
             if back:
                 request.session["undo"]=str(booking.pk);return redirect("dashboard",slug)
+            if agenda:
+                messages.success(request,"Appuntamento annullato.");return redirect(reverse("bookings",args=[slug])+f"?data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
             return redirect("booking_detail",slug,booking_id)
         except BookingError as ex:
             messages.error(request,str(ex))
             if back:return redirect("dashboard",slug)
+            if agenda:return redirect(reverse("bookings",args=[slug])+f"?data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
     from .clients import mark
     mark(request,[booking])  # 2.14.0: VIP, tags, absences of the client, for who sees the client cards
     data=shown(request,booking.data)
@@ -945,7 +951,8 @@ def contact_history(request,slug,contact_id):
         "today":timezone.now().astimezone(tz).date(),**client_extras(request,contact)}
     ctx["credit"]=sum(g.balance for g in ctx["gifts"] if not g.expired)
     audit(request.tenant,request.user,"contact.history",contact.pk)
-    return render(request,"contact_history.html",ctx)
+    # 2.22.1: in the Cassa's Storico window: the sheet alone, the bill stays behind it
+    return render(request,"_client_history.html" if request.GET.get("modal") else "contact_history.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;
     Chiama, WhatsApp, Prenota, Fatta, Togli. Names and contacts as the role may see them, the entries of its scope."""
@@ -1019,14 +1026,14 @@ def wa_reminders(request,slug):
         require(request,"booking.write")
         from django.http import JsonResponse
         b=get_object_or_404(visible_bookings(request,Booking.objects.all()),pk=request.POST.get("booking"))
-        on=request.POST.get("sent")!="0"
+        on=request.POST.get("sent")!="0";flag="wa_thanked" if request.POST.get("kind")=="thanks" else "wa_reminded"  # 2.22.1: the thanks of the day after
         for x in (Booking.objects.filter(visit=b.visit) if b.visit else [b]):  # the whole visit: one message says all its services
-            if on:x.snapshot["wa_reminded"]=timezone.now().isoformat()
-            else:x.snapshot.pop("wa_reminded",None)
+            if on:x.snapshot[flag]=timezone.now().isoformat()
+            else:x.snapshot.pop(flag,None)
             x.save(update_fields=["snapshot"])
-        audit(request.tenant,request.user,"whatsapp.reminded" if on else "whatsapp.unmarked",b.pk)
+        audit(request.tenant,request.user,("whatsapp.thanked" if flag=="wa_thanked" else "whatsapp.reminded") if on else "whatsapp.unmarked",b.pk)
         return JsonResponse({"ok":True,"at":timezone.now().astimezone(tz).strftime("%H:%M") if on else ""})
-    from .client_mails import wa_window,WA_WHEN
+    from .client_mails import wa_window,WA_WHEN,current
     from django.utils.formats import date_format
     now=timezone.now();w=wa_window(request.tenant,now)
     try:day=date.fromisoformat(request.GET["giorno"]) if request.GET.get("giorno") else None
@@ -1043,9 +1050,32 @@ def wa_reminders(request,slug):
         days.append({"date":d,"label":("Oggi, " if d==today else "Domani, " if d==today+timedelta(days=1) else "")+date_format(d,"l j F"),"rows":rows,"todo":sum(1 for r in rows if not r.sent),"due":any(r.due for r in rows)})
     due_label={"d1":"da avvisare oggi","t0":"da avvisare adesso"}.get(request.tenant.wa_when) or "da avvisare adesso"
     start=span[0]
+    # 2.22.1: the day after: the thanks with the review link to who came yesterday (or the day chosen), the chat ready
+    try:thanks_day=date.fromisoformat(request.GET["grazie"]) if request.GET.get("grazie") else today-timedelta(days=1)
+    except ValueError:thanks_day=today-timedelta(days=1)
+    thanks=thanks_due(request,thanks_day)
     return render(request,"wa_reminders.html",{"days":days,"single":bool(day),"today":today,"prev":start-timedelta(days=1 if day else 7),"next":start+timedelta(days=1 if day else 7),
         "when":dict(WA_WHEN).get(request.tenant.wa_when,""),"due_label":due_label,
-        "todo":sum(x["todo"] for x in days),"writer":can(request,"booking.write")})
+        "todo":sum(x["todo"] for x in days),"writer":can(request,"booking.write"),
+        "thanks":thanks,"thanks_day":thanks_day,"thanks_label":("Ieri, " if thanks_day==today-timedelta(days=1) else "Oggi, " if thanks_day==today else "")+date_format(thanks_day,"l j F"),
+        "review_url":current(request.tenant)["review"].get("url",""),"thanks_todo":sum(1 for r in thanks if not r.sent and r.wa)})
+def thanks_due(request,d):
+    """2.22.1: who came on day d (arrived, in progress or done), one a visit, with the thanks chat ready when there is a
+    phone and the review link; nothing without the link."""
+    from .client_mails import whatsapp,values,fill,THANKS,current
+    t=request.tenant;tz=ZoneInfo(t.timezone);url=current(t)["review"].get("url","")
+    if not url:return []
+    a=datetime.combine(d,time.min,tz);b=a+timedelta(days=1)
+    rows=visible_bookings(request,Booking.objects.filter(start__gte=a,start__lt=b,status__in=("arrived","in_progress","completed"))).select_related("service","resource","contact").order_by("start")
+    out=[];seen=set()
+    for x in rows:
+        if x.visit and x.visit in seen:continue
+        if x.visit:seen.add(x.visit)
+        d=x.data;x.who=" ".join(v for v in (d.get("first_name",""),d.get("last_name","")) if v)
+        link=whatsapp(t,d.get("phone","")) if can(request,"pii.read") else ""
+        x.wa=link+"?text="+quote(fill(t.whatsapp_thanks or THANKS,{**values(t,x,d),"link":url})) if link else ""
+        x.sent=x.snapshot.get("wa_thanked","");out.append(x)
+    return out
 def recalls_view(request,slug):
     """2.14.0: Richiami: the clients whose recall is due (a week ahead), without a booking to come; Chiama, WhatsApp,
     Prenota, Fatto. For who sees the client cards."""

@@ -7,7 +7,7 @@
 @font-face{font-family:Poppins;font-style:normal;font-weight:700;font-display:swap;src:url(fonts/poppins-latin-700-normal.woff2) format("woff2")}
 
 :root{color-scheme:light;
- --bg:#f6f3fa;--paper:#fff;--ink:#2b2236;--muted:#6b6079;--line:#e5ddef;--soft:#f0e9f8;--pastel:#c5b4d9;
+ --bg:#f6f3fa;--paper:#fff;--ink:#2b2236;--muted:#574c66;--line:#d9cfe6;--soft:#f0e9f8;--pastel:#c5b4d9;
  --brand:#7a55ad;--brand-ink:#fff;--pink:#e0569b;--violet:#8b67b8;
  --ok:#2b7353;--ok-soft:#e4f3ec;--warn:#96590a;--warn-soft:#fbf0e1;--danger:#b3264a;--danger-soft:#fbe7ec;
  --side:#2b2236;--side-ink:#ede6f6;--side-muted:#a99dbb;--side-line:#3d3249;
@@ -37,8 +37,8 @@ button,.button{border:1px solid transparent;border-radius:var(--r-sm);padding:10
 button:hover,.button:hover{text-decoration:none}
 button:disabled{opacity:.45;cursor:not-allowed}
 .primary{background:var(--brand);color:var(--brand-ink)}.primary:hover{background:color-mix(in srgb,var(--brand) 88%,var(--ink))}
-.secondary{background:var(--paper);border-color:var(--line);color:var(--ink)}.secondary:hover{border-color:var(--pastel)}
-.ghost{background:transparent;color:var(--muted)}.ghost:hover{color:var(--ink);background:var(--soft)}
+.secondary{background:var(--paper);border-color:var(--pastel);color:var(--ink)}.secondary:hover{border-color:var(--brand);background:var(--soft)}
+.ghost{background:transparent;color:var(--ink);border-color:var(--line)}.ghost:hover{color:var(--ink);background:var(--soft);border-color:var(--pastel)}
 .danger{background:transparent;border-color:var(--danger);color:var(--danger)}.danger:hover{background:var(--danger-soft)}
 .small{font-size:13px;padding:6px 12px}
 button.wide,.button.wide{width:100%;margin-top:16px}
@@ -109,7 +109,7 @@ a.card{display:block;color:var(--ink)}a.card:hover{border-color:var(--pastel);te
 .clean-list li{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}.clean-list li:last-child{border-bottom:0}
 
 /* tables */
-.table-scroll{overflow-x:auto}
+.table-scroll{overflow-x:auto;position:relative}  /* relative: a .sr-only (absolute) inside a wide table stays clipped, not out of the phone */
 table{width:100%;border-collapse:collapse;text-align:left;font-size:14px}
 th{color:var(--muted);font-size:13px;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
@@ -1449,12 +1449,26 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .sheet td{padding:10px 12px;vertical-align:top;overflow-wrap:anywhere}.sheet td small{display:block;margin-top:2px}.sheet .num{text-align:center}
 .sheet-notes{min-width:180px;max-width:360px}.sheet-notes .allergy-chip{margin:0 6px 4px 0}
 /* 2.16.0: Cassa */
-.till{display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1.4fr);gap:20px;align-items:start}
+.till{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}.till>*{min-width:0}.till-client .section-heading{margin-bottom:6px}.till-client .field{margin:0}.till-client #till-client{max-width:520px}
 .till-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0 16px}
-.till-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:68px;padding:12px 14px;text-align:left;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;font-weight:600;line-height:1.3}
-.till-item:hover,.till-item:focus-visible{border-color:var(--brand)}.till-item span{font-size:13px;font-weight:400;color:var(--muted)}.till-item[hidden],[data-till-group][hidden]{display:none}
+.till-item{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:68px;padding:12px 36px 12px 14px;text-align:left;background:var(--paper);color:var(--ink);border:1.5px solid var(--pastel);border-radius:12px;font-weight:600;line-height:1.3}
+.till-item:hover,.till-item:focus-visible{border-color:var(--brand);background:var(--soft)}.till-item span{font-size:13px;font-weight:400;color:var(--muted)}
+/* 2.22.1: on the bill: the accent colour and the flag; the number says how many */
+.till-item.is-on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}.till-item.is-on span{color:var(--brand-ink);opacity:.85}
+.till-item.is-on::after{content:"✓";position:absolute;right:10px;top:10px;width:22px;height:22px;border-radius:50%;background:var(--brand-ink);color:var(--brand);font-size:14px;font-weight:800;display:grid;place-items:center}
+.till-item.is-on[data-n]:not([data-n="1"])::after{content:attr(data-n);font-size:12px}.till-item[hidden],[data-till-group][hidden]{display:none}
 #till-search{width:100%;margin:4px 0 8px}
-.till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-desc .till-staff{display:block;width:100%;margin-top:6px;min-height:34px;padding-top:4px;padding-bottom:4px;font-size:.9em}
+.till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-who{display:block;margin-top:4px;font-size:.85em;color:var(--muted);font-weight:600}
+/* 2.22.1: the operators beside the services (Exagon style); the current row of the bill is the one the operator goes to */
+.till-items-in{display:grid;grid-template-columns:minmax(0,1fr) 176px;gap:16px;align-items:start}
+.till-staff-bar{position:sticky;top:76px;display:grid;gap:6px}.till-staff-bar h3{margin:0;font-size:.95em}.till-staff-bar p{margin:0 0 4px}
+.till-op{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;text-align:left;background:var(--paper);color:var(--ink);border:1.5px solid var(--pastel);border-left:6px solid var(--op,var(--brand));border-radius:12px;font-weight:600}
+.till-op img,.till-op-face{width:32px;height:32px;border-radius:50%;object-fit:cover;flex:none}
+.till-op-face{display:grid;place-items:center;background:var(--op,var(--brand));color:#fff;font-size:.9em}
+.till-op[aria-pressed=true]{background:var(--op,var(--brand));border-color:var(--op,var(--brand));color:#fff}
+.till-op[aria-pressed=true] .till-op-face{background:#fff;color:var(--op,var(--brand))}
+.till-lines tr.is-current td{background:var(--soft)}.till-lines tr.is-current td:first-child{box-shadow:inset 4px 0 0 var(--brand)}
+@media(max-width:700px){.till-items-in{grid-template-columns:1fr}.till-staff-bar{position:static;order:-1;grid-auto-flow:column;grid-auto-columns:max-content;overflow-x:auto;padding-bottom:4px}.till-staff-bar h3,.till-staff-bar p{display:none}.till-op{width:auto}}
 .till-total{display:flex;justify-content:flex-end;align-items:baseline;gap:10px}.till-total strong{font-size:26px;line-height:1.2}
 .till-pay{border:0;padding:0;margin:12px 0}.till-pay legend{font-weight:600;margin-bottom:8px}
 /* 2.22.0: the way of paying as big rounded buttons, like the rest of the Cassa, not the browser's little circles */
@@ -1467,7 +1481,6 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-bill details{margin:10px 0}.till-found{margin-top:6px;display:grid;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper)}.till-found:empty{display:none}.till-found li+li{border-top:1px solid var(--line)}.till-found button{display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-radius:0;background:transparent;font-weight:600;cursor:pointer}.till-found button:hover,.till-found button:focus-visible{background:var(--soft);color:var(--ink)}
 .till-today li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}.till-today .actions{margin:0}
 .till-copy{max-width:440px}.till-copy li{padding:2px 0}
-@media (max-width:900px){.till{grid-template-columns:1fr}}
 @media print{
  @page{size:A4;margin:16mm 15mm}
  /* 2.22.0: !important, else the dark palette that follows Windows (prefers-color-scheme) won and the PDF came out black */
@@ -1552,7 +1565,6 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .floor-pick{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:6px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left;cursor:grab;touch-action:none;transform:translate(var(--dx,0),var(--dy,0))}
 .floor-pick.picked{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}.floor-pick.dragging{z-index:3;position:relative;cursor:grabbing}
 
-@media (max-width:1180px){.till{grid-template-columns:1fr}}  /* 2.20.5: the bill needs its width: services above it on smaller windows */
 /* 2.20.5: Report as a dashboard: the figures, the bars of the months and of the operators */
 .report-years{flex-wrap:wrap;gap:6px}.report-dash{margin:0 0 18px}.report-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:14px}
 .kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--r,14px);padding:16px 18px;display:flex;flex-direction:column;gap:6px}.kpi span{color:var(--muted);font-size:.9em}.kpi strong{font-size:1.7em;line-height:1.1}a.kpi{color:inherit;text-decoration:none}a.kpi:hover{border-color:var(--muted)}
@@ -1674,3 +1686,9 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 
 :root[data-theme=dark] .agenda-item.op-full,:root[data-theme=dark] .agenda-item.op-full strong{color:#1c1524}:root[data-theme=dark] .agenda-item.op-full small{color:rgba(28,21,36,.8)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .agenda-item.op-full,:root:not([data-theme=light]) .agenda-item.op-full strong{color:#1c1524}:root:not([data-theme=light]) .agenda-item.op-full small{color:rgba(28,21,36,.8)}}
+
+/* 2.22.1: Storico over the Cassa */
+.till-history{border:0;border-radius:16px;padding:0;width:min(960px,96vw);max-height:92vh;box-shadow:0 20px 60px rgba(0,0,0,.3);background:var(--bg);color:var(--ink)}.till-history::backdrop{background:rgba(20,12,30,.45)}
+.till-history-in{padding:18px 22px 22px;position:relative;overflow:auto;max-height:92vh}.till-history-close{position:absolute;right:10px;top:8px;font-size:22px;padding:2px 10px;border:0}
+.till-history .page-heading,.till-history .back{display:none}.till-history .filters.card{margin-top:8px}
+.peek-cancel{margin:0}.peek-cancel .button{width:100%}

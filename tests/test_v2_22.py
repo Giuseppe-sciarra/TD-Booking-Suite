@@ -11,7 +11,7 @@ from core.tenancy import scope
 from core import cassa,gift
 from core.booking import create_booking
 from tests.test_core import client_as,payload
-from tests.test_cassa import shop  # noqa: F401 (fixture)
+from tests.test_cassa import shop,register  # noqa: F401 (fixtures)
 
 pytestmark=pytest.mark.django_db
 def post(c,loc,**kw):
@@ -415,3 +415,98 @@ def test_site_visit_whose_time_went_is_kept_as_a_request_of_its_first_service(sh
     with scope(t):
         b=Booking.objects.get(origin="wordpress");assert b.status=="pending" and b.service_id==taglio.pk and not b.visit and "Dal sito con: Piega" in b.data["notes"]
     assert ack==["a"*32] and not errors
+
+def test_whatsapp_thanks_of_yesterday_with_the_review_link(shop):
+    """2.22.1: Promemoria WhatsApp, the day after: who came yesterday with the thanks chat ready and the review link,
+    only once the link is set (Configurazione promemoria, with the WhatsApp texts); marked apart from the reminders."""
+    from urllib.parse import unquote
+    t,loc,svc=shop
+    tz=ZoneInfo(t.timezone);yesterday=(timezone.now().astimezone(tz)-timedelta(days=1)).date()
+    with scope(t):
+        at=timezone.datetime.combine(yesterday,timezone.datetime.min.time().replace(hour=10),tz)
+        b,_=create_booking(t,{**payload(svc),"start":(at+timedelta(days=3)).isoformat()})
+        Booking.objects.filter(pk=b.pk).update(start=at,end=at+timedelta(hours=1),busy_start=at,busy_end=at+timedelta(hours=1),status="completed")
+        n,_=create_booking(t,{**payload(svc),"start":(at+timedelta(days=3,hours=1)).isoformat(),"first_name":"Nessuno","last_name":"Venuto"})
+        Booking.objects.filter(pk=n.pk).update(start=at+timedelta(hours=1),end=at+timedelta(hours=2),busy_start=at+timedelta(hours=1),busy_end=at+timedelta(hours=2),status="no_show")
+    c,_=client_as(t,role="reception")
+    page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
+    assert "Grazie e recensione" in page and "metti il link" in page and "Da ringraziare" not in page
+    owner,_=client_as(t)
+    r=owner.post("/t/salone/notifications/",{"action":"whatsapp","whatsapp_text":"","whatsapp_reminder":"","whatsapp_thanks":"Grazie {nome}! Recensione: {link}","review_url":"https://g.page/r/abc/review"})
+    assert r.status_code==302
+    t.refresh_from_db();assert t.whatsapp_thanks=="Grazie {nome}! Recensione: {link}" and t.client_mails["review"]["url"]=="https://g.page/r/abc/review"
+    page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
+    assert "Da ringraziare: 1" in page and "Ieri, " in page and "Nessuno Venuto" not in page
+    assert "Grazie Mario! Recensione: https://g.page/r/abc/review" in unquote(page) and 'data-wa-kind="thanks"' in page
+    r=c.post("/t/salone/promemoria-whatsapp/",{"booking":str(b.pk),"sent":"1","kind":"thanks"})
+    assert r.json()["ok"]
+    with scope(t):
+        b.refresh_from_db();assert b.snapshot.get("wa_thanked") and not b.snapshot.get("wa_reminded")
+    assert "Tutti ringraziati" in c.get("/t/salone/promemoria-whatsapp/").content.decode()
+    # the review link must be a web address
+    r=owner.post("/t/salone/notifications/",{"action":"whatsapp","whatsapp_text":"","whatsapp_reminder":"","whatsapp_thanks":"","review_url":"g.page/x"})
+    assert "deve iniziare con https" in r.content.decode()
+
+def test_annulla_appuntamento_from_the_agenda_panel(shop):
+    """2.22.1: the agenda's panel has Annulla appuntamento: it cancels and goes back to that day of the agenda."""
+    t,loc,svc=shop
+    tz=ZoneInfo(t.timezone);day=(timezone.now().astimezone(tz)+timedelta(days=2)).date()
+    with scope(t):b,_=create_booking(t,{**payload(svc),"start":timezone.datetime.combine(day,timezone.datetime.min.time().replace(hour=10),tz).isoformat()})
+    c,_=client_as(t,role="owner")
+    page=c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
+    assert "Annulla appuntamento" in page and 'name="back" value="agenda"' in page
+    r=c.post(f"/t/salone/bookings/{b.pk}/",{"action":"cancelled","back":"agenda"})
+    assert r.status_code==302 and r.url.endswith(f"/t/salone/bookings/?data={day.isoformat()}"),r.url
+    with scope(t):b.refresh_from_db();assert b.status=="cancelled"
+    assert "Annulla appuntamento" not in c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
+
+def test_riepilogo_di_cassa_pdf_of_a_day_and_of_a_period(shop,register,settings,django_capture_on_commit_callbacks,monkeypatch):
+    """2.22.1: beside the closure, Riepilogo di cassa in PDF: the receipts of the day with lines, who paid and how,
+    the totals by payment and by operator; a period day by day with its total. A real PDF file, made by hand."""
+    import re,zlib
+    from tests.test_cassa import Fake,RCH_OK,sell
+    t,loc,svc=shop;settings.TILL_DIRECT=True;monkeypatch.setattr(cassa.time,"sleep",lambda s:None)
+    with scope(t):
+        loc.till={**loc.till,"address":f"127.0.0.1:{register}","link":"direct"};loc.save()
+        b,_=create_booking(t,{**payload(svc),"first_name":"Lucia","last_name":"Mattei"});Booking.objects.filter(pk=b.pk).update(status="arrived")
+    c,_=client_as(t,role="reception");Fake.answers=[RCH_OK]
+    with django_capture_on_commit_callbacks(execute=True):assert sell(c,loc,b,svc=str(svc.pk),staff=["Cristina","Anna"]).status_code==302
+    today=timezone.now().astimezone(ZoneInfo(t.timezone)).date()
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
+    assert "Riepilogo di oggi (PDF)" in page and f"riepilogo.pdf?sede={loc.pk}&amp;dal={today.isoformat()}" in page and "Riepilogo del periodo (PDF)" in page
+    assert "Lucia Mattei" in page.split("Scontrini di oggi")[1].split("Chiusura e annulli")[0]  # who paid, in the list of the day
+    r=c.get(f"/t/salone/cassa/riepilogo.pdf?sede={loc.pk}&dal={today.isoformat()}")
+    assert r.status_code==200 and r["Content-Type"]=="application/pdf" and r["Content-Disposition"]==f'attachment; filename="riepilogo-cassa-{today.isoformat()}.pdf"'
+    pdf=r.content;assert pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF") and b"/Type /Page " in pdf and b"xref" in pdf
+    text=b"\n".join(re.findall(rb"\((.*?)\) Tj",pdf)).decode("cp1252")
+    assert "Riepilogo di cassa" in text and "Scontrino n." in text and "Lucia Mattei" in text and "2 x Taglio donna · Cristina" in text and "1 x Shampoo · Anna" in text
+    assert "Sconto sul totale" in text and "Pagamento: Contanti 55,00 €" in text and "Scontrini: 1" in text and "Totale 55,00 €" in text
+    assert "Operatore Cristina" in text and "Operatore Anna" in text and "Pagina 1 di 1" in text
+    # the xref offsets point at the objects: a reader can open it
+    at=[int(m) for m in re.findall(rb"\n(\d{10}) 00000 n",pdf)]
+    assert all(pdf[a:a+len(f"{i+1} 0 obj".encode())]==f"{i+1} 0 obj".encode() for i,a in enumerate(at))
+    # a period: each day with its own heading, then the total of the period; from and to swapped are put right
+    r=c.get(f"/t/salone/cassa/riepilogo.pdf?sede={loc.pk}&dal={today.isoformat()}&al={(today-timedelta(days=2)).isoformat()}")
+    text=b"\n".join(re.findall(rb"\((.*?)\) Tj",r.content)).decode("cp1252")
+    assert f"dal {today-timedelta(days=2):%d/%m/%Y} al {today:%d/%m/%Y}" in text and "Totale del periodo" not in text  # one day has receipts
+    assert r["Content-Disposition"].endswith(f'-{(today-timedelta(days=2)).isoformat()}-{today.isoformat()}.pdf"')
+    assert "Nessuno scontrino" in b"\n".join(re.findall(rb"\((.*?)\) Tj",c.get(f"/t/salone/cassa/riepilogo.pdf?sede={loc.pk}&dal=2020-01-01").content)).decode("cp1252")
+    with scope(t):assert Audit.objects.filter(action="sale.summary").count()==3
+
+def test_cassa_operators_bar_and_the_desk_quarters(shop):
+    """2.22.1: the Cassa's operators as a bar beside the services (colour of the agenda, photo link), the row's operator
+    as a hidden field with its chip, no dropdown; at the desk the times of an appointment go every quarter."""
+    t,loc,svc=shop
+    with scope(t):
+        cut=Service.objects.create(tenant=t,location=loc,name="Taglio",kind="resource",duration=30,interval=30,lead_minutes=0)
+        for n in ("Bea","Anna"):ServiceResource.objects.create(tenant=t,service=cut,resource=Resource.objects.create(tenant=t,location=loc,name=n))
+    c,_=client_as(t,role="owner")
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
+    bar=page.split('data-till-staff')[1].split("</aside>")[0]
+    assert bar.index('data-till-op="Anna"')<bar.index('data-till-op="Bea"') and 'class="till-op op-1" data-till-op="Anna"' in bar and 'class="till-op op-2" data-till-op="Bea"' in bar
+    assert '<input type="hidden" name="staff" value="">' in page and 'data-till-who>Operatore?' in page and 'class="till-staff"' not in page and "<select name=\"staff\"" not in page
+    day=(timezone.now().astimezone(ZoneInfo(t.timezone))+timedelta(days=3)).date()
+    times=[x["start"][11:16] for x in c.get(f"/t/salone/booking-api/slots/?service={cut.pk}&date={day.isoformat()}").json()["slots"]]
+    assert "09:15" in times and "09:45" in times, times
+    public=[x["start"][11:16] for x in c.get(f"/book/salone/api/slots/?service={cut.pk}&date={day.isoformat()}").json()["slots"]]
+    assert "09:15" not in public and "09:30" in public, public

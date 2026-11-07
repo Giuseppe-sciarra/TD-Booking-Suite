@@ -244,7 +244,7 @@ def candidates(tenant,service,day,option=None,resource=None,desk=False,force=Fal
             end=b-after if whole else tick+duration
             if tick.astimezone(tz).date()==day and lead<=tick<=horizon and tick-before>=a and end+after<=b and tick<=b-last:
                 yield tick,end,None
-            tick+=timedelta(minutes=service.interval)
+            tick+=timedelta(minutes=min(service.interval,15) if desk and service.kind=="resource" else service.interval)  # 2.22.1: the desk books on the agenda's quarters
 def available(tenant,service_id,day,option_id=None,resource_id=None,party=1,exclude=None,allowed=None,desk=False,force=False,prefer=None,area=None):
     """Free slots of a day. allowed: resource ids a scoped staff member may book ("Il primo disponibile" stays among them).
     desk and force: see candidates; the desk also books groups bigger than the online limit (max_party), within the places.

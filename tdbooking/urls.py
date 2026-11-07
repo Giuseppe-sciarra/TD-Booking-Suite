@@ -80,6 +80,7 @@ urlpatterns=[
  path("t/<slug:slug>/attesa/",portal.waitlist_view,name="waitlist"),
  path("t/<slug:slug>/richiami/",portal.recalls_view,name="recalls"),
  path("t/<slug:slug>/cassa/",cassa.till_view,name="till"),
+ path("t/<slug:slug>/cassa/riepilogo.pdf",cassa.summary,name="till_summary"),
  path("t/<slug:slug>/cassa/gift-card/",gift.page,name="gift_cards"),
  path("t/<slug:slug>/cassa/gift-card/codice/",gift.lookup,name="gift_lookup"),
  path("t/<slug:slug>/preventivi/",quotes.index,name="quotes"),

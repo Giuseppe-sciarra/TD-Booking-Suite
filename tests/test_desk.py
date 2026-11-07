@@ -151,7 +151,7 @@ def test_desk_books_inside_the_lead_time_the_public_does_not(sample,clock):
     today=clock[0].date();owner,u=client_as(t)
     with scope(t):
         assert available(t,svc.pk,today)[0]["start"][11:16]=="12:30"
-        assert available(t,svc.pk,today,desk=True)[0]["start"][11:16]=="10:30"
+        assert available(t,svc.pk,today,desk=True)[0]["start"][11:16]=="10:15"  # 2.22.1: the desk books every quarter, from now
         with pytest.raises(BookingError,match="Orario non disponibile"):create_booking(t,payload(svc,start=at(today,11),resource=str(marco.pk)),None)
         assert create_booking(t,staff_payload(svc,start=at(today,11),resource=str(marco.pk)),actor=u)[0].origin=="desk"
         # horizon and the people of one booking are the online page's too
@@ -159,7 +159,7 @@ def test_desk_books_inside_the_lead_time_the_public_does_not(sample,clock):
         far=(clock[0]+timedelta(days=10)).date()
         assert available(t,s.pk,far)==[] and available(t,s.pk,far,desk=True)
         assert create_booking(t,staff_payload(s,start=at(far,10),party=8),actor=u)[0].party==8
-    assert owner.get(f"/t/{t.slug}/booking-api/slots/?service={svc.pk}&date={today}").json()["slots"][0]["start"][11:16]=="10:30"
+    assert owner.get(f"/t/{t.slug}/booking-api/slots/?service={svc.pk}&date={today}").json()["slots"][0]["start"][11:16]=="10:15"
     assert Client().get(f"/book/{t.slug}/api/slots/?service={svc.pk}&date={today}").json()["slots"][0]["start"][11:16]=="12:30"
 
 def test_force_names_what_it_exceeds_and_needs_the_role(sample,clock):

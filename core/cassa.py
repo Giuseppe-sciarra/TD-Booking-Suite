@@ -599,11 +599,12 @@ def till_view(request,slug):
     groups={}
     for i in items:groups.setdefault(i["group"],[]).append(i)
     top=favourites(t,loc,items)
-    rows=Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created")
+    rows=list(Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created"))
     busy=any(s.status in ("queued","sending") for s in rows)
     due=list(owed(location=loc).select_related("contact").order_by("created"))  # 2.20.9: Da incassare, of every day
     names_ok=can(request,"pii.read")
     for s in due:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else "Cliente"
+    for s in rows:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else ""  # 2.22.1: who paid, in Scontrini di oggi
     who=booking.data if booking and names_ok else {}
     lines=prefill(booking) if booking else []
     # 2.22.0: suspended bills and a quote taken into this bill; their client when the booking has none
@@ -624,7 +625,10 @@ def till_view(request,slug):
             lines.append({"desc":"GIFT CARD","qty":1,"price":money(int(v*100)),"svc":"gift:"+exp,"staff":""})
         if not contact and re.fullmatch(r"[0-9a-f-]{36}",request.GET.get("cliente","")):contact=Contact.objects.filter(pk=request.GET["cliente"]).first()
     if contact and not who and names_ok:who=contact.data
-    names=list(Resource.objects.filter(location=loc,active=True).order_by("name").values_list("name",flat=True))
+    ops=list(Resource.objects.filter(location=loc,active=True).order_by("name"));names=[o.name for o in ops]
+    # 2.22.1: the operators as a bar beside the services, Exagon style: tap the service, tap who did it; the agenda's colours and faces
+    from .agenda import operators,colors
+    tone=colors(operators(request,loc));staff=[{"name":o.name,"color":tone.get(o.pk,0),"photo":o.photo_link(t.slug)} for o in ops]
     parked=list(Parked.objects.filter(location=loc).select_related("contact","booking").order_by("-created"))
     for x in parked:
         d=x.data;x.lines=d.get("lines",[]);x.note=d.get("note","");x.who=" ".join(v for v in (x.contact.data.get("first_name",""),x.contact.data.get("last_name","")) if v) if x.contact_id and names_ok else ("Cliente" if x.contact_id else "")
@@ -640,8 +644,8 @@ def till_view(request,slug):
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"top":top,"count":len(items),"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),
         "gifts":[c for c in gift.of(contact) if c.status=="active" and c.balance>0 and not (c.expires and c.expires<today_d)] if contact else [],
-        "missing_close":missing_close(t,loc),
-        "staff_names":names,"default_staff":booking.resource.name if booking and booking.resource_id else "",
+        "missing_close":missing_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),
+        "staff_names":names,"staff":staff,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"settle":SETTLE,"due":due,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":contact if contact and names_ok else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"counted":loc.till["device"]=="rch","can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(contact.data) if contact and names_ok else ""})
@@ -655,6 +659,73 @@ def missing_close(t,loc):
     s=q.order_by("-printed").values_list("printed",flat=True).first()
     return s.astimezone(tz).date() if s else None
 
+def summary(request,slug):
+    """2.22.1: Riepilogo di cassa in PDF, beside the closure: one day, or a period (?dal=&al=), everything the register
+    did day by day: the receipts with lines, who paid and how, the annulli, the closures, then the day's totals by
+    payment and by operator, the «Da pagare» collected and what was done «non nello scontrino». A download, nothing
+    the window waits on."""
+    require(request,"sale.write")
+    t=request.tenant;tz=ZoneInfo(t.timezone);today=timezone.now().astimezone(tz).date()
+    loc=next((l for l in places() if str(l.pk)==request.GET.get("sede","")),None) or places()[0]
+    def day(k,default):
+        try:return date.fromisoformat(request.GET.get(k,""))
+        except ValueError:return default
+    a=day("dal",today);b=day("al",a)
+    if b<a:a,b=b,a
+    b=min(b,a+timedelta(days=366))
+    start=datetime.combine(a,datetime.min.time(),tz);end=datetime.combine(b+timedelta(days=1),datetime.min.time(),tz)
+    names_ok=can(request,"pii.read")
+    who=lambda s:(" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok else "Cliente") if s.contact_id else ""
+    sales=list(Sale.objects.filter(location=loc,kind__in=("sale","void","close"),status__in=("done","void","unknown"),created__gte=start,created__lt=end).select_related("contact","voids").order_by("created"))
+    paid=list(Sale.objects.filter(location=loc,kind="sale",settled__gte=start,settled__lt=end).select_related("contact").order_by("settled"))
+    parked=list(Parked.objects.filter(location=loc,created__gte=start,created__lt=end).select_related("contact").order_by("created"))
+    from .pdf import Doc,A4,MARGIN
+    from django.utils.formats import date_format
+    L,R=MARGIN,A4[0]-MARGIN;period=f"{a:%d/%m/%Y}" if a==b else f"dal {a:%d/%m/%Y} al {b:%d/%m/%Y}"
+    doc=Doc(f"Riepilogo di cassa {period}");doc.page()
+    doc.line([(L,f"Riepilogo di cassa · {period}")],16,True,gap=18);doc.line([(L,f"{t.name} · {loc.name} · stampato il {timezone.now().astimezone(tz):%d/%m/%Y %H:%M}")],9);doc.space()
+    e=lambda c:euro(Decimal(c)/100);total_all={"n":0,"cents":0,"pay":{},"staff":{}}
+    days=sorted({x.created.astimezone(tz).date() for x in sales}|{x.settled.astimezone(tz).date() for x in paid}|{x.created.astimezone(tz).date() for x in parked})
+    for d in days:
+        doc.rule();doc.line([(L,date_format(d,"l j F Y").capitalize())],12,True,gap=16)
+        tot={"n":0,"cents":0,"pay":{},"staff":{}}
+        for s in [x for x in sales if x.created.astimezone(tz).date()==d]:
+            when=(s.printed or s.created).astimezone(tz).strftime("%H:%M");state={"void":"annullato","unknown":"da verificare"}.get(s.status,"")
+            if s.kind=="close":doc.line([(L,when),(L+40,"Chiusura giornaliera"+(" fatta dalla cassa" if s.error=="Fatta dalla cassa" else ""))],10,True);continue
+            if s.kind=="void":
+                v=s.voids;doc.line([(L,when),(L+40,f"Annullo del n. {(v.z+'-' if v.z else '')+v.number if v and v.number else s.data.get('number','')}"),(R,"-"+euro(s.total),True)],10,True);continue
+            doc.line([(L,when),(L+40,f"Scontrino n. {(s.z+'-' if s.z else '')+s.number}" if s.number else "Scontrino"),(L+170,who(s)),(R,euro(s.total)+(f" ({state})" if state else ""),True)],10,True)
+            dd=s.data
+            for l in dd.get("lines",[]):doc.line([(L+40,f"{l['qty']} x {l['desc']}"+(f" · {l['staff']}" if l.get("staff") else "")),(R,e(l["qty"]*l["cents"]-l.get("off",0)),True)],9,gap=12)
+            if dd.get("discount"):doc.line([(L+40,"Sconto sul totale"),(R,"-"+e(dd["discount"]),True)],9,gap=12)
+            if gift_cents(dd):doc.line([(L+40,"Pagato con gift card"),(R,"-"+e(gift_cents(dd)),True)],9,gap=12)
+            doc.line([(L+40,"Pagamento: "+", ".join(f"{dict(PAYMENTS).get(k,k)} {e(c)}" for k,c in dd.get("payments",[])))],9,gap=12)
+            if s.status=="void":continue
+            tot["n"]+=1;cents=int(s.total*100);tot["cents"]+=cents
+            for k,c in dd.get("payments",[]):tot["pay"][k]=tot["pay"].get(k,0)+c
+            if gift_cents(dd):tot["pay"]["gift"]=tot["pay"].get("gift",0)+gift_cents(dd)
+            for k,c in shares(dd,cents+gift_cents(dd)).items():tot["staff"][k or "Senza operatore"]=tot["staff"].get(k or "Senza operatore",0)+c
+        for s in [x for x in paid if x.settled.astimezone(tz).date()==d]:
+            doc.line([(L,s.settled.astimezone(tz).strftime("%H:%M")),(L+40,f"Incassato il Da pagare dello scontrino n. {(s.z+'-' if s.z else '')+s.number} del {s.printed.astimezone(tz):%d/%m}" if s.number else "Incassato un Da pagare"),(L+300,who(s)),(R,euro(s.due)+" "+dict(SETTLE).get(s.settled_with,"").lower(),True)],9)
+            tot["pay"]["settled"]=tot["pay"].get("settled",0)+int(s.due*100)
+        for x in [x for x in parked if x.created.astimezone(tz).date()==d]:
+            doc.line([(L,x.created.astimezone(tz).strftime("%H:%M")),(L+40,"Non nello scontrino"),(L+170,who(x)),(R,euro(x.total),True)],9)
+            for l in x.data.get("lines",[]):doc.line([(L+40,f"{l['qty']} x {l['desc']}"+(f" · {l['staff']}" if l.get("staff") else "")),(R,e(l["qty"]*l["cents"]-l.get("off",0)),True)],9,gap=12)
+        doc.space(0.5);doc.line([(L+40,f"Scontrini: {tot['n']}"),(R,"Totale "+e(tot["cents"]),True)],10,True)
+        labels={**dict(PAYMENTS),"gift":"Gift card","settled":"Da pagare incassati"}
+        for k,c in tot["pay"].items():doc.line([(L+40,labels.get(k,k)),(R,e(c),True)],9,gap=12)
+        for k,c in sorted(tot["staff"].items(),key=lambda i:-i[1]):doc.line([(L+40,"Operatore "+k),(R,e(c),True)],9,gap=12)
+        total_all["n"]+=tot["n"];total_all["cents"]+=tot["cents"]
+        for k in ("pay","staff"):
+            for kk,c in tot[k].items():total_all[k][kk]=total_all[k].get(kk,0)+c
+    if not days:doc.line([(L,"Nessuno scontrino in questi giorni.")],10)
+    if len(days)>1:
+        doc.space();doc.rule();doc.line([(L,f"Totale del periodo · scontrini: {total_all['n']}"),(R,e(total_all["cents"]),True)],12,True,gap=16)
+        for k,c in total_all["pay"].items():doc.line([(L+40,labels.get(k,k)),(R,e(c),True)],9,gap=12)
+        for k,c in sorted(total_all["staff"].items(),key=lambda i:-i[1]):doc.line([(L+40,"Operatore "+k),(R,e(c),True)],9,gap=12)
+    audit(t,request.user,"sale.summary",None,day=str(a),until=str(b))
+    from django.http import HttpResponse
+    r=HttpResponse(doc.render(),content_type="application/pdf");r["Content-Disposition"]=f'attachment; filename="riepilogo-cassa-{a:%Y-%m-%d}{"" if a==b else f"-{b:%Y-%m-%d}"}.pdf"';return r
 def favourites(t,loc,items,n=12):
     """2.20.8: the services this location uses most, from the last receipts and the bookings of the last months,
     so the bill is there without scrolling; with no history yet, the first ones of the list."""

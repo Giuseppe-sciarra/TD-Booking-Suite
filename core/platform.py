@@ -324,7 +324,14 @@ def notifications_view(request,slug):
                 from .client_mails import REMINDER
                 again=request.POST.get("whatsapp_reminder","").replace("\r\n","\n").strip()
                 if len(again)>1000 or any(ord(c)<32 and c!="\n" for c in again):raise ValueError("Promemoria WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
-                Tenant.objects.filter(pk=tenant.pk).update(whatsapp_text="" if text==WHATSAPP else text,whatsapp_reminder="" if again==REMINDER else again)
+                from .client_mails import THANKS
+                thanks=request.POST.get("whatsapp_thanks","").replace("\r\n","\n").strip()
+                if len(thanks)>1000 or any(ord(c)<32 and c!="\n" for c in thanks):raise ValueError("Grazie WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
+                # 2.22.1: the review link, the same the email Dopo la visita uses
+                url=request.POST.get("review_url","").strip()[:500]
+                if url and not url.startswith(("https://","http://")):raise ValueError("Link alla recensione: deve iniziare con https://")
+                own=dict(tenant.client_mails or {});own["review"]={**(own.get("review") or {}),"url":url}
+                Tenant.objects.filter(pk=tenant.pk).update(whatsapp_text="" if text==WHATSAPP else text,whatsapp_reminder="" if again==REMINDER else again,whatsapp_thanks="" if thanks==THANKS else thanks,client_mails=own)
                 audit(tenant,request.user,"whatsapp.saved",tenant.pk)
                 messages.success(request,"Messaggio WhatsApp salvato.")
                 return redirect(reverse("notifications",args=[slug])+"#whatsapp")
@@ -354,7 +361,7 @@ def notifications_view(request,slug):
     mails={k:{"key":k,"label":label,"help":help,**now[k],"default":cm.DEFAULTS[k],"choices":cm.TIMING.get(k),"free":k not in cm.STANDARD,"locked":k in cm.ADMIN and not (request.user.is_staff or getattr(settings,"SHOP_MAILS",False))} for k,label,help in cm.KINDS}
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
-        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"whatsapp_reminder":tenant.whatsapp_reminder or cm.REMINDER,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
+        "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"whatsapp_reminder":tenant.whatsapp_reminder or cm.REMINDER,"whatsapp_thanks":tenant.whatsapp_thanks or cm.THANKS,"review_url":cm.current(tenant)["review"].get("url",""),"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
         "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant),"site_mails":by_site(tenant),
         # 2.22.0: the owner sees WhatsApp and, only once the administrator has set them up, the email and Telegram parts
         "admin":shop,"mail_ok":smtp_config(tenant) is not None,"telegram_ok":bool(tenant.telegram)})

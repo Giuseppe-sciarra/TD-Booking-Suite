@@ -531,13 +531,28 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
-  else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
-  sum();}));
+  else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;if(active)r.querySelector("[name=staff]").value=active;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
+  current(same||body.lastElementChild);sum();}));
+ // 2.22.1: the operators as a bar beside the services, Exagon style: the row touched last is the current one (the last added,
+ // or the one tapped); tap an operator and it is his; the operator stays pressed for the next services until another is tapped
+ let active=document.querySelector("[data-till-op][aria-pressed=true]")?.dataset.tillOp||"";
+ const ops=[...document.querySelectorAll("[data-till-op]")];
+ const current=r=>{body.querySelectorAll("tr.is-current").forEach(x=>x.classList.remove("is-current"));if(r)r.classList.add("is-current");paint();};
+ const paint=()=>{const r=body.querySelector("tr.is-current"),who=r?r.querySelector("[name=staff]").value:active;
+  body.querySelectorAll("tr").forEach(x=>{x.querySelector("[data-till-who]").textContent=x.querySelector("[name=staff]").value||"Operatore?";});
+  ops.forEach(b=>b.setAttribute("aria-pressed",String(!!who&&b.dataset.tillOp===who)));};
+ ops.forEach(b=>b.addEventListener("click",()=>{active=b.dataset.tillOp;const r=body.querySelector("tr.is-current")||body.lastElementChild;if(r)r.querySelector("[name=staff]").value=active;paint();document.dispatchEvent(new Event("till-changed"));}));
+ body.addEventListener("click",e=>{const r=e.target.closest("tr");if(r&&r.isConnected)current(r);});
+ if(body.lastElementChild)current(body.lastElementChild);else paint();
  body.addEventListener("click",e=>{const q=e.target.closest("[data-till-qty]"),x=e.target.closest("[data-till-remove]"),k=e.target.closest("[data-till-park]");
   if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
   if(k){const r=k.closest("tr"),f=r.querySelector("[name=park]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));r.classList.toggle("is-parked",on);}
   if(x)x.closest("tr").remove();sum();});
- form.addEventListener("input",sum);sum();
+ // 2.22.1: the tiles of the services on the bill light up, with how many
+ const tiles=[...document.querySelectorAll(".till-item[data-till-add]")],lit=()=>{const on=new Map();body.querySelectorAll("tr").forEach(r=>{const k=r.querySelector("[name=svc]").value||"desc:"+r.querySelector("[name=desc]").value.trim().toLowerCase();on.set(k,(on.get(k)||0)+num(r.querySelector("[name=qty]").value));});
+  tiles.forEach(b=>{const n=on.get(b.dataset.svc||"desc:"+(b.dataset.desc||"").trim().toLowerCase())||0;b.classList.toggle("is-on",n>0);b.setAttribute("aria-pressed",String(n>0));if(n>0)b.dataset.n=String(n);else delete b.dataset.n;});};
+ const changed=()=>{sum();lit();paint();document.dispatchEvent(new Event("till-changed"));};
+ form.addEventListener("input",changed);body.addEventListener("click",()=>setTimeout(changed,0));tiles.forEach(b=>b.addEventListener("click",()=>setTimeout(changed,0)));changed();
  // 2.22.0: sell a gift card: an amount (preset or free) and the expiry, as a row of the bill
  const box=document.querySelector("[data-till-gift]"),opener=document.querySelector("[data-till-gift-open]");
  if(box){const value=box.querySelector("[data-till-gift-value]"),err=box.querySelector("[data-till-gift-error]"),show=on=>{box.hidden=!on;opener.setAttribute("aria-expanded",String(on));if(on)value.focus();};
@@ -565,18 +580,53 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   const top=document.querySelector("[data-till-top]"),all=document.querySelector("[data-till-all]");if(top)top.hidden=!!q;if(all&&q)all.open=true;
   document.querySelectorAll("[data-till-all] .till-item,.till-items>.till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
- const who=form.querySelector("[data-till-client]"),id=form.querySelector("[data-till-contact]"),found=form.querySelector("[data-till-found]");let timer;
- who?.addEventListener("input",()=>{id.value="";clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
+ // 2.22.1: the client is in his own card above the bill (the hidden id is bound to the form by form=)
+ const who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]"),found=document.querySelector("[data-till-found]"),history=document.querySelector("[data-till-history]");let timer;
+ const showHistory=()=>{if(history&&!history.dataset.tillHistoryId)history.hidden=!id?.value;};showHistory();
+ who?.addEventListener("input",()=>{id.value="";showHistory();document.dispatchEvent(new Event("till-changed"));clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
   timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?cassa=1&q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
    found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="till-pick";
-    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();
+    b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();showHistory();document.dispatchEvent(new Event("till-changed"));
      const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}
      // 2.22.0: his gift cards with credit, and what he has in Preventivo pagamenti cassa
-     const extra=form.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
+     const extra=document.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
       (c.gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small";x.textContent="Usa gift card "+g.code+" · "+g.balance+" €";x.addEventListener("click",()=>use(g.code));extra.append(x);});
       // 2.22.0: what the client has outside a receipt is not reminded here: it is in his record, the owner decides
 
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
+})();
+// 2.22.1: the bill stays while you go and look at something else: every change is kept on this device (sessionStorage,
+// per register) and comes back when the Cassa opens again empty; sending it, or Svuota, forgets it
+(()=>{const form=document.querySelector("form[data-till]");if(!form||!window.sessionStorage)return;
+ const sede=form.querySelector("[name=sede]")?.value||"",key="tdbs-till-"+sede,who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]");
+ const rows=()=>[...form.querySelectorAll(".till-lines tbody tr")];
+ const read=()=>({lines:rows().map(tr=>Object.fromEntries([...tr.querySelectorAll("input,select")].filter(i=>i.name).map(i=>[i.name,i.value]))).filter(l=>l.desc||l.price),
+  contact:id?.value||"",who:who?.value||"",cf:form.querySelector("[data-till-cf]")?.value||""});
+ const save=()=>{try{const d=read();if(d.lines.length||d.contact)sessionStorage.setItem(key,JSON.stringify(d));else sessionStorage.removeItem(key);}catch{}};
+ document.addEventListener("till-changed",save);form.addEventListener("change",save);
+ form.addEventListener("submit",()=>{try{sessionStorage.removeItem(key);}catch{}});
+ // back with nothing on the bill (no booking, quote or parked rows asked, no refused send): what was there comes back
+ const tpl=document.getElementById("till-row"),body=form.querySelector(".till-lines tbody");
+ const fresh=tpl&&body&&!rows().length&&!form.querySelector("[name=booking]")&&!form.querySelector("[name=parked]")&&!(id&&id.value);
+ if(!fresh)return;
+ let d=null;try{d=JSON.parse(sessionStorage.getItem(key)||"null");}catch{}
+ if(!d||!(d.lines||[]).length&&!d.contact)return;
+ (d.lines||[]).forEach(l=>{const tr=tpl.content.firstElementChild.cloneNode(true);[...tr.querySelectorAll("input,select")].forEach(i=>{if(i.name in l)i.value=l[i.name];});
+  if(l.park==="1"){tr.classList.add("is-parked");tr.querySelector("[data-till-park]")?.setAttribute("aria-pressed","true");}body.append(tr);});
+ if(d.contact&&id){id.value=d.contact;if(who)who.value=d.who||"";const h=document.querySelector("[data-till-history]");if(h&&!h.dataset.tillHistoryId)h.hidden=false;}
+ const cf=form.querySelector("[data-till-cf]");if(cf&&d.cf)cf.value=d.cf;
+ form.dispatchEvent(new Event("input",{bubbles:true}));
+})();
+// 2.22.1: Storico in the Cassa: the client's record in a window over the bill, with the period to choose, the bill untouched
+(()=>{const btn=document.querySelector("[data-till-history]");if(!btn)return;
+ const id=document.querySelector("[data-till-contact]");let box=null,base="";  // base: the sheet's address, its links and filters are relative to it, not to the Cassa
+ const open=async(url)=>{base=new URL(url,location.href).href;if(!box){box=document.createElement("dialog");box.className="till-history";box.innerHTML='<div class="till-history-in"><button type="button" class="ghost small till-history-close" data-close aria-label="Chiudi">×</button><div data-history-body><p class="muted">Un attimo…</p></div></div>';document.body.append(box);
+   box.addEventListener("click",e=>{if(e.target===box||e.target.closest("[data-close]"))box.close();});
+   box.addEventListener("submit",e=>{const f=e.target.closest("form");if(!f||f.method.toLowerCase()!=="get")return;e.preventDefault();const u=new URL(f.getAttribute("action")||base,base);new FormData(f).forEach((v,k)=>{if(v)u.searchParams.set(k,v);else u.searchParams.delete(k);});u.searchParams.set("modal","1");open(u.toString());});
+   box.addEventListener("click",e=>{const a=e.target.closest("a[data-history-link]");if(!a)return;e.preventDefault();const u=new URL(a.getAttribute("href"),base);u.searchParams.set("modal","1");open(u.toString());});}
+  if(!box.open)box.showModal();const body=box.querySelector("[data-history-body]");
+  try{const r=await fetch(url,{credentials:"same-origin",headers:{"X-Requested-With":"fetch"}});body.innerHTML=r.ok?await r.text():'<p class="notice error">Storico non disponibile.</p>';}catch{body.innerHTML='<p class="notice error">Storico non disponibile.</p>';}};
+ btn.addEventListener("click",()=>{const c=btn.dataset.tillHistoryId||id?.value;if(!c)return;open(btn.dataset.tillHistory.replace("00000000-0000-0000-0000-000000000000",c)+"?modal=1");});
 })();
 // 2.22.0: a client chosen by typing (gift card, quote): the id in the hidden field, «client-picked» for who wants the rest
 document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.closest(".field")||who.parentElement,id=box.querySelector("[data-client-id]"),found=box.querySelector("[data-client-found]");let timer,ask="";
@@ -629,11 +679,13 @@ document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.cl
 })();
 // 2.22.0: Promemoria WhatsApp: the chat opened is marked as sent (the desk presses Invio in WhatsApp); undone by hand
 (()=>{const lists=document.querySelectorAll(".wa-list");if(!lists.length)return;const csrf=document.querySelector("#wa-mark [name=csrfmiddlewaretoken]")?.value||"";
- const todo=document.querySelector("[data-wa-todo]"),count=li=>{const n=document.querySelectorAll(".wa-list li:not(.is-sent)").length;if(todo)todo.textContent=n?"Da avvisare in questi giorni: "+n:"Tutti avvisati";
+ const todo=document.querySelector("[data-wa-todo]"),count=li=>{const thanks=li.closest(".wa-thanks");
+  if(thanks){const t=document.querySelector("[data-wa-thanks-todo]"),m=thanks.querySelectorAll("li:not(.is-sent)").length;if(t)t.textContent=m?"Da ringraziare: "+m:"Tutti ringraziati";return;}
+  const n=document.querySelectorAll(".wa-list:not(.wa-thanks) li:not(.is-sent)").length;if(todo)todo.textContent=n?"Da avvisare in questi giorni: "+n:"Tutti avvisati";
   const day=li.closest(".wa-day"),t=day?.querySelector("[data-wa-day-todo]"),m=day?day.querySelectorAll("li:not(.is-sent)").length:0;if(t)t.textContent=m?"Da avvisare: "+m:"Tutti avvisati";};
- const mark=async(li,on)=>{const body=new URLSearchParams({booking:li.dataset.waRow,sent:on?"1":"0"});
+ const mark=async(li,on)=>{const thanks=li.dataset.waKind==="thanks",body=new URLSearchParams({booking:li.dataset.waRow,sent:on?"1":"0",kind:li.dataset.waKind||""});
   try{const r=await fetch(location.pathname,{method:"POST",credentials:"same-origin",headers:{"X-CSRFToken":csrf},body});const d=await r.json();if(!d.ok)return;
-   li.classList.toggle("is-sent",on);li.querySelector("[data-wa-state]").textContent=on?"Avvisato alle "+d.at:"Da avvisare";
+   li.classList.toggle("is-sent",on);li.querySelector("[data-wa-state]").textContent=on?(thanks?"Mandato alle ":"Avvisato alle ")+d.at:(thanks?"Da ringraziare":"Da avvisare");
    const open=li.querySelector("[data-wa-open]");if(open){open.classList.toggle("primary",!on);open.classList.toggle("secondary",on);}
    const undo=li.querySelector("[data-wa-undo]"),done=li.querySelector("[data-wa-done]");if(undo)undo.hidden=!on;if(done)done.hidden=on;count(li);}catch{}};
  lists.forEach(list=>list.addEventListener("click",e=>{const li=e.target.closest("li");if(!li)return;

@@ -100,6 +100,7 @@ class Tenant(models.Model):
     # 2.14.0: the text of the WhatsApp button on a booking and on the client card (client_mails.whatsapp); empty = standard
     whatsapp_text=models.TextField(blank=True)
     whatsapp_reminder=models.TextField(blank=True)  # 2.22.0: the text of Promemoria WhatsApp, the day before
+    whatsapp_thanks=models.TextField(blank=True)  # 2.22.1: the thanks of the day after, with the review link
     wa_when=models.CharField(max_length=4,blank=True)  # 2.22.0: when the banner asks to remind on WhatsApp (client_mails.WA_WHEN); empty: never
     # 2.14.0: the retention the worker runs once a day (privacy.run_retention): when it last went through, and why not
     retention_at=models.DateTimeField(null=True,blank=True)
