@@ -60,9 +60,10 @@
 .tdbs-ag-sheet dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15px}.tdbs-ag-sheet dt{color:#777;font-size:13px;padding-top:2px}.tdbs-ag-sheet dd{margin:0}
 .tdbs-ag-close{position:absolute;right:8px;top:6px;border:0;background:transparent;font-size:24px;padding:4px 10px;cursor:pointer;color:#555}
 @media(min-width:900px){.tdbs-ag-sheet{margin:auto;border-radius:16px}}
-@media(max-width:600px){.tdbs-ag{--col:108px;--hours:36px;--row:22px}.tdbs-ag.is-week{--col:104px}.tdbs-ag-th{padding:6px 6px;font-size:12px}.tdbs-ag-avatar.is-small{width:24px;height:24px;font-size:10px;margin-right:5px}.tdbs-ag-hours span{font-size:10px;padding:0 4px 0 2px}.tdbs-ag-scroll{max-height:calc(100dvh - 150px)}
- /* the phone: overlapping blocks one over the other, each a step to the right, the later on top, so the words stay readable */
- .tdbs-ag-item{padding:3px 5px;font-size:12px;left:calc(2px + var(--lane)*12px);width:calc(100% - 4px - var(--lane)*12px);z-index:calc(1 + var(--lane));box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 1px 4px rgba(0,0,0,.25)}}
+@media(max-width:600px){.tdbs-ag{--hours:36px;--row:22px}.tdbs-ag-th{padding:6px 8px;font-size:13px}.tdbs-ag-hours span{font-size:10px;padding:0 4px 0 2px}.tdbs-ag-scroll{max-height:calc(100dvh - 150px);scroll-snap-type:x mandatory;scroll-padding-left:36px}
+ /* the phone, the day: one operator per screen, a swipe for the next one (the drop-down jumps); the week: seven narrow days, overlapping blocks one over the other a step to the right */
+ .tdbs-ag:not(.is-week){--col:calc(100vw - 24px - var(--hours) - 2px)}.tdbs-ag:not(.is-week) .tdbs-ag-th,.tdbs-ag:not(.is-week) .tdbs-ag-col{scroll-snap-align:start}
+ .tdbs-ag.is-week{--col:104px}.tdbs-ag.is-week .tdbs-ag-item{padding:3px 5px;font-size:12px;left:calc(2px + var(--lane)*12px);width:calc(100% - 4px - var(--lane)*12px);z-index:calc(1 + var(--lane));box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 1px 4px rgba(0,0,0,.25)}}
 .tdbs-agenda-new{margin:8px 0 16px}.tdbs-agenda-new>summary{display:inline-block;cursor:pointer;list-style:none}.tdbs-agenda-new>summary::-webkit-details-marker{display:none}
 .tdbs-agenda-form{max-width:720px;margin-top:12px}.tdbs-agenda-form select,.tdbs-agenda-form input:not([type=checkbox]),.tdbs-agenda-form textarea{width:100%;max-width:100%;box-sizing:border-box}.tdbs-agenda-status{font-weight:600}
 /* 2.22.1 the agenda as an app (?tdbs_app=1): no theme, the site's colour on top, the agenda full width, buttons of its own */
