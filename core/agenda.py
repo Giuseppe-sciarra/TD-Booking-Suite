@@ -172,7 +172,7 @@ def day_view(request):
                 c["cells"].append({"row":n+1,"time":a.strftime("%H:%M")})
         for r in mine:
             x=item(request,r,tz,color)
-            x["row"]=row_of(max(x["start"],frame_a));x["row_end"]=max(x["row"]+1,row_of(min(x["end"],frame_b)))
+            x["row"]=row_of(max(x["start"],frame_a));x["row_end"]=max(x["row"]+1,row_of(min(x["end"],frame_b)));x["short"]=x["row_end"]-x["row"]<=1  # 2.22.0: one row: one line
             c["items"].append(x)
         c["lanes"]=lanes(c["items"])  # 2.14.0: forced or cancelled over another appointment, side by side as in the week
         for a,b,blk in (blocks.get(c["op"].pk,[]) if c["op"] else []):
@@ -253,7 +253,7 @@ def week_view(request):
             elif writer and a>=now and any(not any(x<b and a<y for x,y in busy[op.pk]) for op in free):
                 c["cells"].append({"row":n+1,"time":a.strftime("%H:%M")})
         for x in c["items"]:
-            x["row"]=row_of(max(minutes(x["start"],d),first));x["row_end"]=max(x["row"]+1,row_of(min(minutes(x["end"],d),last)))
+            x["row"]=row_of(max(minutes(x["start"],d),first));x["row_end"]=max(x["row"]+1,row_of(min(minutes(x["end"],d),last)));x["short"]=x["row_end"]-x["row"]<=1
         c["lanes"]=lanes(c["items"])
         if c["today"] and first<=minutes(now,d)<last:c["now_row"]=(minutes(now,d)-first)/STEP
     hours=[{"row":n+1,"end":min(n+1+60//STEP,count+1),"label":f"{(first+n*STEP)//60:02d}:00"} for n in range(count) if (n*STEP)%60==0]

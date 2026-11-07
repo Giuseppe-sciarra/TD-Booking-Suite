@@ -934,7 +934,7 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .day-pick{display:flex;gap:8px;align-items:center;margin:0}.day-pick button{margin:0}.day-pick input,.day-pick select{width:auto;min-height:36px;padding:5px 10px}
 .agenda-bar .segmented{margin-left:auto}
 .card.agenda-card{padding:0;overflow:visible}
-.agenda{--row:22px;--hours:58px;--lane:minmax(130px,1fr)}
+.agenda{--row:26px;--hours:58px;--lane:minmax(130px,1fr)}  /* 2.22.0: 26px a quarto d'ora (era 22): un appuntamento da 15 minuti ha una riga leggibile, uno da 30 due */
 .agenda-head,.agenda-body{display:grid;grid-template-columns:var(--hours) repeat(var(--cols,1),var(--lane))}
 .agenda-head{position:sticky;top:0;z-index:3;background:var(--paper);border-bottom:1px solid var(--line);border-radius:var(--r) var(--r) 0 0}
 .agenda-head strong{padding:10px 12px;font-size:14px;border-left:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -949,9 +949,8 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .agenda-item{position:relative;z-index:2;margin:1px 3px;padding:3px 8px;border-radius:7px;background:var(--soft);border-left:3px solid var(--brand);color:var(--ink);overflow:hidden;font-size:12.5px;line-height:1.3;display:flex;flex-direction:column}
 .agenda-item:hover{text-decoration:none;box-shadow:0 4px 14px -6px color-mix(in srgb,var(--brand) 60%,transparent)}
 .agenda-item strong{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.agenda-item small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 2.22.0: a short appointment (10-15 minutes, one row) shows one readable line: time and client, the service on hover */
-.agenda-item{container-type:size}
-@container (max-height:26px){.agenda-item{padding:0 8px;justify-content:center;font-size:12px}.agenda-item strong{line-height:1.2}.agenda-item small{display:none}}
+/* 2.22.0: a short appointment (10-15 minutes, one row) shows one readable line: time, client and service */
+.agenda-item.short{padding:0 8px;flex-direction:row;align-items:center;gap:8px;font-size:12px}.agenda-item.short strong{line-height:1.2;flex:none;max-width:70%}.agenda-item.short small{line-height:1.2;min-width:0}
 .agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}
 .wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}

@@ -293,7 +293,7 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
   if(card&&card.scrollWidth>card.clientWidth){const dx=d.px<r.left+44?-12:d.px>r.right-44?12:0;if(dx){card.scrollLeft+=dx;track();}}
   requestAnimationFrame(edge);};
  const lift=()=>{const d=drag;if(!d||d.live)return;d.live=true;
-  d.body=d.agenda.querySelector(".agenda-body");d.row=parseFloat(getComputedStyle(d.agenda).getPropertyValue("--row"))||22;
+  d.body=d.agenda.querySelector(".agenda-body");d.row=parseFloat(getComputedStyle(d.agenda).getPropertyValue("--row"))||26;
   d.first=+d.agenda.dataset.first;d.last=d.first+ +d.agenda.dataset.rows*15;d.snap=d.resize?15:+d.item.dataset.snap||15;
   d.dy=d.y-d.item.getBoundingClientRect().top;
   d.ghost=d.item.cloneNode(true);d.ghost.className+=" agenda-ghost"+(d.resize?" is-resize":"");["href","data-move","data-row","data-col","data-lane"].forEach(a=>d.ghost.removeAttribute(a));
