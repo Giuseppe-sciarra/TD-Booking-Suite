@@ -485,8 +485,15 @@ def booking_peek(request,slug,booking_id):
     paid=sum(x.total for x in sales if x.status in ("done","queued","sending","unknown"))
     parked=list(Parked.objects.filter(booking__in=rows))
     extras=client_extras(request,b.contact) if b.contact_id and can(request,"pii.read") else {}
+    # 2.22.0: Modifica prenotazione in the panel itself: day, time, operator and length, with the desk's rules (agenda_drop)
+    tz=ZoneInfo(request.tenant.timezone);start=b.start.astimezone(tz)
+    editable=can(request,"booking.write") and b.status in ("pending","confirmed","arrived","in_progress") and not sales
+    operators=list(Resource.objects.filter(serviceresource__service=b.service,active=True).order_by("name")) if editable else []
+    times=[f"{h:02d}:{m:02d}" for h in range(6,24) for m in (0,15,30,45)]
+    if editable and start.strftime("%H:%M") not in times:times.append(start.strftime("%H:%M"));times.sort()
     return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],
-        "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),**extras})
+        "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),
+        "editable":editable,"operators":operators,"times":times,"day":start.date(),"hm":start.strftime("%H:%M"),"minutes":int((b.end-b.start).total_seconds()//60),**extras})
 def booking_detail(request,slug,booking_id):
     from .booking import visit_rows
     require(request,"booking.read")

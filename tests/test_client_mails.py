@@ -29,13 +29,17 @@ def test_standard_emails_without_the_agencys_switch(sample):
     assert [m["subject"].split(" · ")[0] for m in sent]==["Prenotazione confermata","Prenotazione annullata"]
     assert "/action/"+t.slug+"/" in sent[0]["body"] and " alle " in sent[0]["body"]
 
-def test_the_business_writes_its_emails(sample):
+def test_the_business_writes_its_emails(sample,settings):
     t,o,s=sample
     owner,u=client_as(t)
     url=f"/t/{t.slug}/notifications/"
+    # 2.22.0: without a mail server set up by the administrator the owner sees WhatsApp only
+    page=owner.get(url).content.decode()
+    assert "Messaggio WhatsApp" in page and "Email ai clienti" not in page and "Avvisi per voi" not in page and "Riepilogo serale" not in page
+    settings.EMAIL_HOST="smtp.example.invalid";settings.DEFAULT_FROM_EMAIL="agenzia@example.invalid"
     page=owner.get(url).content.decode()
     # 2.16.2: the owner sees the reminders' timing, only the agency changes it; the words stay the standard ones
-    assert "chiedi all" in page and 'name="confirmed_subject"' not in page and 'name="reminder_hours" disabled' in page
+    assert "Avvisi per voi" not in page and "Riepilogo serale" in page and "chiedi all" in page and 'name="confirmed_subject"' not in page and 'name="reminder_hours" disabled' in page
     assert owner.post(url,{"action":"client_mails","reminder_hours":"48","reminder_autocancel":"2","confirmed_subject":"Mio"}).status_code==302
     t.refresh_from_db();assert t.client_mails["reminder"]=={} and "on" not in t.client_mails["confirmed"] and current(t)["reminder"]["on"]
     agency,_=client_as(t,staff=True)

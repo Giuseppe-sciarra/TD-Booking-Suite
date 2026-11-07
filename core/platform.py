@@ -278,12 +278,15 @@ def notifications_view(request,slug):
     # 2.16.2: the agency opens it too, it alone sets when the reminders go
     if not (can(request,"users.manage") or request.user.is_staff):raise PermissionDenied
     tenant=request.tenant;error=""
+    # 2.22.0: the administrator's settings; in the Windows program (SHOP_MAILS) the shop is its own administrator
+    shop=request.user.is_staff or getattr(settings,"SHOP_MAILS",False)
     current=decrypt(tenant,tenant.telegram,"telegram") if tenant.telegram else {}
     if request.method=="POST":
         fresh(request)
         try:
             action=request.POST.get("action","save")
             if action=="save":
+                if not shop:raise PermissionDenied  # 2.22.0: the administrator's settings
                 email=request.POST.get("notify_email","").strip()
                 if email:validate_email(email)
                 token=request.POST.get("telegram_token","").strip() or current.get("token","")
@@ -297,7 +300,7 @@ def notifications_view(request,slug):
                     t.notify_operators=request.POST.get("notify_operators")=="on"  # 2.14.0
                     t.save(update_fields=["notify_email","telegram","notify_operators"])
                     audit(t,request.user,"notifications.saved",telegram=bool(token),email=bool(email),operators=t.notify_operators)
-                messages.success(request,"Notifiche salvate.")
+                messages.success(request,"Avvisi salvati.")
             elif action=="client_mails":
                 # 2.13.0: which emails reach the clients and with which words, once the agency allows it;
                 # 2.14.0: reminders and the other messages, and when they go, also without it; 2.16.2: these by the agency only
@@ -342,6 +345,7 @@ def notifications_view(request,slug):
             return redirect("notifications",slug)
         except (ValueError,ValidationError) as ex:error=" ".join(ex.messages) if isinstance(ex,ValidationError) else str(ex)
     from . import client_mails as cm
+    from .mail import smtp_config
     from .notify import operators
     from .texts import TEXT as SMS_TEXT
     from .wpsync import by_site
@@ -350,5 +354,7 @@ def notifications_view(request,slug):
     groups=[(name,[mails[k] for k in keys]) for name,keys in cm.GROUPS]
     return render(request,"notifications.html",{"notify_email":tenant.notify_email,"chat":current.get("chat",""),"has_token":bool(current.get("token")),"error":error,
         "groups":groups,"mail_fields":cm.FIELDS,"autocancel":cm.AUTOCANCEL,"sample":cm.sample(tenant),"whatsapp_text":tenant.whatsapp_text or cm.WHATSAPP,"whatsapp_reminder":tenant.whatsapp_reminder or cm.REMINDER,"sms_text":((tenant.client_mails or {}).get("texts") or {}).get("sms") or SMS_TEXT,"wa_text":((tenant.client_mails or {}).get("texts") or {}).get("wa",""),
-        "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant),"site_mails":by_site(tenant)})
+        "summary_hours":SUMMARY_HOURS,"operators":len(operators(tenant)) if tenant.notify_operators else None,"mails_free":cm.free(tenant),"site_mails":by_site(tenant),
+        # 2.22.0: the owner sees WhatsApp and, only once the administrator has set them up, the email and Telegram parts
+        "admin":shop,"mail_ok":smtp_config(tenant) is not None,"telegram_ok":bool(tenant.telegram)})
 SUMMARY_HOURS=range(16,23)

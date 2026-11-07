@@ -311,7 +311,7 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
   try{d.item.setPointerCapture(d.id);}catch{}
   if(d.touch)navigator.vibrate?.(12);  // the long press took
   d.to={lane:d.lane,start:d.start,minutes:d.minutes};paint();requestAnimationFrame(edge);};
- document.addEventListener("pointerdown",e=>{const item=e.target.closest("[data-move]");if(!item||e.button>0||drag||!dialog)return;
+ document.addEventListener("pointerdown",e=>{const item=e.target.closest("[data-move]");if(!item||e.button>0||drag)return;
   const agenda=item.closest("[data-agenda]"),resize=!!e.target.closest(".agenda-grip");
   const [h,m]=item.dataset.start.split(":");
   drag={item,agenda,resize,touch:e.pointerType!=="mouse",id:e.pointerId,x:e.clientX,y:e.clientY,px:e.clientX,py:e.clientY,start:h*60+ +m,minutes:+item.dataset.minutes,
@@ -363,7 +363,7 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
   const card=$(".agenda-card"),left=card?.scrollLeft,x=scrollX,y=scrollY,focus=document.activeElement?.closest?.("[data-refresh]")&&document.activeElement.getAttribute("href");
   const seen=new Set([...document.querySelectorAll(".agenda-item")].map(a=>a.getAttribute("href")));
   parts().forEach(p=>{const fresh=page.querySelector('[data-refresh="'+p.dataset.refresh+'"]');if(fresh)p.replaceChildren(...fresh.childNodes);});
-  lay();filter();veil();
+  lay();filter();
   if(seen.size)document.querySelectorAll(".agenda-item").forEach(a=>{if(!seen.has(a.getAttribute("href")))a.classList.add("is-new");});
   if(focus)document.querySelector('[data-refresh] [href="'+CSS.escape(focus)+'"]')?.focus({preventScroll:true});
   const again=$(".agenda-card");if(again&&left)again.scrollLeft=left;scrollTo(x,y);}
@@ -613,6 +613,19 @@ document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.cl
   let r;try{r=await fetch(a.getAttribute("href")+"riepilogo/",{credentials:"same-origin"});}catch{r=null;}
   if(!r||!r.ok||r.redirected){location.href=a.href;return;}
   box.innerHTML=await r.text();if(!box.open)box.showModal();box.querySelector(".peek-actions a")?.focus();});
+ // 2.22.0: Modifica prenotazione in the panel: day, time, operator, length; the desk's rules answer, Forza asks once more
+ document.addEventListener("click",e=>{const o=e.target.closest("[data-peek-edit-open]"),c=e.target.closest("[data-peek-edit-cancel]");if(!o&&!c||!box)return;
+  const f=box.querySelector("[data-peek-edit]");if(!f)return;const on=!!o;f.hidden=!on;box.querySelector("[data-peek-edit-open]")?.setAttribute("aria-expanded",String(on));if(on)f.querySelector("select,input")?.focus();});
+ document.addEventListener("submit",async e=>{const f=e.target;if(!(f instanceof HTMLFormElement)||!f.hasAttribute("data-peek-edit"))return;e.preventDefault();
+  const err=f.querySelector("[data-peek-error]"),btn=f.querySelector("button.primary");err.hidden=true;btn.disabled=true;
+  const body={date:f.date.value,time:f.time.value,resource:f.resource?f.resource.value:"",minutes:+f.minutes.value||undefined,force:false};
+  const csrf=f.querySelector("[name=csrfmiddlewaretoken]")?.value||"";
+  for(;;){let r=null,out={};
+   try{r=await fetch(f.action,{method:"POST",headers:{"Content-Type":"application/json","X-CSRFToken":csrf},body:JSON.stringify(body),credentials:"same-origin"});out=await r.json();}catch{out={error:"Non riesco a salvare: riprova."};}
+   if(r?.ok){try{sessionStorage.setItem("tdbs-scroll",location.pathname+"|"+Math.round(scrollY));}catch{}
+    const t=document.createElement("div");t.className="toast";t.setAttribute("role","status");t.textContent="Prenotazione modificata";document.body.append(t);setTimeout(()=>location.reload(),500);return;}
+   if(r?.status===409&&out.force){if(await window.tdAsk("Forzare la modifica?",[out.error],"Forza",true)){body.force=true;body.force_ok=true;continue;}btn.disabled=false;return;}
+   err.textContent=out.error||"Operazione non consentita.";err.hidden=false;btn.disabled=false;return;}});
 })();
 // 2.22.0: Promemoria WhatsApp: the chat opened is marked as sent (the desk presses Invio in WhatsApp); undone by hand
 (()=>{const lists=document.querySelectorAll(".wa-list");if(!lists.length)return;const csrf=document.querySelector("#wa-mark [name=csrfmiddlewaretoken]")?.value||"";

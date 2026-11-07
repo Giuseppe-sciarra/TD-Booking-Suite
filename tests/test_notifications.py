@@ -95,6 +95,9 @@ def test_notifications_page(sample):
     t,o,s=sample
     c,owner=client_as(t,role="owner")
     assert c.get(f"/t/{t.slug}/notifications/").status_code==200
+    # 2.22.0: the email address and Telegram are the administrator's settings: the owner neither sees nor saves them
+    assert c.post(f"/t/{t.slug}/notifications/",{"notify_email":"staff@example.invalid"}).status_code==403
+    c,_=client_as(t,staff=True)
     r=c.post(f"/t/{t.slug}/notifications/",{"notify_email":"staff@example.invalid","telegram_token":"non-un-token","telegram_chat":"-100"})
     assert "non validi" in r.content.decode()
     r=c.post(f"/t/{t.slug}/notifications/",{"notify_email":"staff@example.invalid","telegram_token":TOKEN,"telegram_chat":"-1001234567890"})

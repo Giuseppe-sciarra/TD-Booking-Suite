@@ -952,6 +952,7 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 /* 2.22.0: a short appointment (10-15 minutes, one row) shows one readable line: time, client and service */
 .agenda-item.short{padding:0 8px;flex-direction:row;align-items:center;gap:8px;font-size:12px}.agenda-item.short strong{line-height:1.2;flex:none;max-width:70%}.agenda-item.short small{line-height:1.2;min-width:0}
 .agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}
+.peek-edit{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.peek-edit .form-grid{gap:10px}.peek-edit .actions{margin-top:10px}
 .wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}

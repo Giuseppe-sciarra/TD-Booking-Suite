@@ -51,20 +51,22 @@ def test_no_email_from_the_program_with_the_site_in_charge(sample,monkeypatch):
         create_booking(t,payload(s,hour=12,email="z@example.invalid",phone="+393330000009"))
         assert Delivery.objects.count()==2  # the switch off: the program writes again
 
-def test_notifiche_and_invio_email_say_the_site_writes(sample,monkeypatch):
-    """2.22.0: with the site in charge the client emails are off in Notifiche (disabled, saving refused), the mailbox page says what it still sends."""
+def test_notifiche_and_invio_email_say_the_site_writes(sample,monkeypatch,settings):
+    """2.22.0: with the site in charge the client emails are off in Configurazione promemoria (disabled, saving refused), the mailbox page says what it still sends."""
     from tests.test_core import client_as
     t,o,s=sample
+    settings.EMAIL_HOST="smtp.example.invalid";settings.DEFAULT_FROM_EMAIL="agenzia@example.invalid"
     owner,_=client_as(t,role="owner")
     page=owner.get(f"/t/{t.slug}/notifications/").content.decode()
     assert "Le email le manda il sito" not in page and '<fieldset class="mail-set">' in page and "Salva le email ai clienti" in page
     in_charge(t,Site(),monkeypatch)
     page=owner.get(f"/t/{t.slug}/notifications/").content.decode()
-    assert "Le email le manda il sito" in page and '<fieldset class="mail-set" disabled>' in page and "Salva le email ai clienti" not in page and "riepilogo serale e la prova" in page
+    assert "Le email le manda il sito" in page and '<fieldset class="mail-set" disabled>' in page and "Salva le email ai clienti" not in page
     r=owner.post(f"/t/{t.slug}/notifications/",{"action":"client_mails","confirmed_on":"on"})
     assert "le manda il sito" in r.content.decode()
     from tests.test_phase2 import staff_client
     c,_=staff_client()
+    assert "riepilogo serale e la prova" in c.get(f"/t/{t.slug}/notifications/").content.decode()
     assert "Le email delle prenotazioni le manda il sito" in c.get(f"/t/{t.slug}/smtp/").content.decode()
 
 def test_the_site_bookings_cancellations_and_confirmations_reach_the_program(sample,monkeypatch):
