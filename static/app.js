@@ -1,3 +1,11 @@
+// 2.22.0: a field the browser refuses (empty, not an email, too long) says it under the field: never the browser's
+// bubble, a Windows window in the program after which the page took no more typing
+document.addEventListener("invalid",e=>{const el=e.target;if(!(el instanceof HTMLElement))return;e.preventDefault();
+ let note=el.nextElementSibling;if(!note||!note.hasAttribute("data-invalid")){note=document.createElement("small");note.setAttribute("data-invalid","");note.className="field-invalid";el.insertAdjacentElement("afterend",note);}
+ note.textContent=el.validationMessage||"Controlla questo campo";el.setAttribute("aria-invalid","true");
+ if(!document.querySelector("[aria-invalid=true]:focus")){el.scrollIntoView({block:"center"});el.focus({preventScroll:true});}
+ const clear=()=>{note.remove();el.removeAttribute("aria-invalid");el.removeEventListener("input",clear);el.removeEventListener("change",clear);};
+ el.addEventListener("input",clear);el.addEventListener("change",clear);},true);
 // 2.22.0: the one question dialog of every page (base.html): title, text parts, the yes button (none: a message with Chiudi)
 window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
  const dialog=document.querySelector("[data-ask-dialog]");
@@ -377,7 +385,7 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
  // only the paper sheets (agenda of the day, copy of the receipt): a Report table has its own id and its PDF below.
  // 2.20.10: it was on every [data-print], so in the Windows program the print dialog opened next to the PDF into Download
  // 2.20.11: in the Windows program (2.20.11 on) the Windows print dialog, not the browser's
- document.querySelectorAll('[data-print=""]').forEach(b=>b.addEventListener("click",()=>{if(window.tdwinPrint&&window.chrome&&window.chrome.webview)window.chrome.webview.postMessage("tdwin-print:");else print();}));
+ document.querySelectorAll('[data-print=""]').forEach(b=>b.addEventListener("click",()=>{if(window.tdwinPrint&&window.chrome&&window.chrome.webview)window.chrome.webview.postMessage("tdwin-pdf:"+(document.title.split(" - ")[0]||"Agenda"));else print();}));  // 2.22.0: in the program a PDF into Download, no Windows print dialog
 
  const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0));
  const encoded=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
