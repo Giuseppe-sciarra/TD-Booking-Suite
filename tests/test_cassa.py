@@ -307,19 +307,6 @@ def test_discount_on_the_total_in_euro_or_percent():
     d,total=bill("5,00");assert (d["discount"],total)==(500,4200)
     with pytest.raises(ValueError):bill("120%")
 
-def test_the_most_used_services_come_first(shop):
-    # 2.20.8: the Cassa shows the services used most, the whole list one click away
-    t,loc,svc=shop
-    with scope(t):
-        others=[Service.objects.create(tenant=t,location=loc,name=f"Servizio {i:02d}",kind="capacity",capacity=1,max_party=1,lead_minutes=0,price=Decimal("10")) for i in range(14)]
-        items=[{"name":s.name,"svc":str(s.pk)} for s in [svc,*others]]
-        Sale.objects.create(tenant=t,location=loc,kind="sale",key="k"*24,total=Decimal("10"),pii=encrypt(t,{"lines":[{"desc":"Servizio 09","qty":3,"cents":1000,"svc":str(others[9].pk)}]},"sale:x"))
-        s=Sale.objects.get();s.pii=encrypt(t,{"lines":[{"desc":"Servizio 09","qty":3,"cents":1000,"svc":str(others[9].pk)}]},"sale:"+str(s.pk));s.save()
-        top=cassa.favourites(t,loc,items)
-    assert top[0]["name"]=="Servizio 09" and len(top)==12
-    c,_=client_as(t);page=c.get("/t/salone/cassa/").content.decode()
-    assert "Più usati" in page and "Tutti i servizi e prodotti (15)" in page
-
 def test_da_pagare_open_then_paid_in_the_reports(shop):
     """2.20.9: «Da pagare» goes to the register as non riscosso (a register saved before has no code for it), needs the
     client, stays in Da incassare and on his card, is not money in until he pays; paid later, it is money of that day."""

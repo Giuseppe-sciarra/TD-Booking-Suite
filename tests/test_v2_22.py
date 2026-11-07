@@ -353,7 +353,9 @@ def test_rch_counts_the_numbers_and_voids_without_asking(shop):
         cl=cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{});loc.refresh_from_db();assert loc.till["last_z"]==2026
         s=sell_one();assert (s.z,s.number)==("2027","4")  # after the closure: next closure, the numbers go on (2.22.2)
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert f'id="d-{s.pk}" name="doc" value="2027-0004"' in page and "contato il programma" in page and 'name="doc" value="2027-0004" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
+    # 2.22.2: on RCH the field is empty: the number typed is the one read at the foot of the receipt; the list shows the count
+    assert f'id="d-{s.pk}" name="doc" value="" placeholder="Numero in fondo allo scontrino, es. 2039-0013" maxlength="12" inputmode="numeric" required>' in page and "n. 2027-0004" in page and "stampato in fondo allo scontrino" in page
+    r=c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":""},follow=True);assert "Scrivi il numero stampato in fondo" in r.content.decode()
     c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":"2027-4"})
     with scope(t):
         v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0004"

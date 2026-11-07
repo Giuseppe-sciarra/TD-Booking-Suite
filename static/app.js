@@ -270,6 +270,7 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
  // 2.22.0: every confirmation is a dialog of the page, never one of Windows: in the Windows program the browser's
  // confirm() became a Windows window that could stay behind, and the page waited for it with everything dead
  document.addEventListener("click",e=>{const button=e.target.closest("[data-confirm]");if(!button||button.dataset.confirmed)return;e.preventDefault();
+  if(button.form&&!button.form.checkValidity()){button.form.reportValidity();return;}  // 2.22.2: a field missing is said under the field, before the question
   window.tdAsk("Confermi?",[button.dataset.confirm],button.textContent.trim().replace(/\s+/g," ").slice(0,40)||"OK",button.classList.contains("danger-text")||button.classList.contains("danger")).then(ok=>{if(!ok)return;
    button.dataset.confirmed="1";try{if(button.form)button.form.requestSubmit(button);else button.click();}finally{delete button.dataset.confirmed;}});});
  const csrf=()=>document.querySelector("[name=csrfmiddlewaretoken]")?.value||"";
@@ -576,9 +577,8 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  if(code?.value)check();
  const search=document.querySelector("[data-till-search]");
  search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();
-  // 2.20.8: a search looks in all the services: the list opens, the most used step aside meanwhile
-  const top=document.querySelector("[data-till-top]"),all=document.querySelector("[data-till-all]");if(top)top.hidden=!!q;if(all&&q)all.open=true;
-  document.querySelectorAll("[data-till-all] .till-item,.till-items>.till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
+  // 2.22.2: all the services are in view; a search leaves only the ones that match
+  document.querySelectorAll(".till-items .till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
  // 2.22.2: the client is in his own card above the bill (the hidden id is bound to the form by form=)
  const who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]"),found=document.querySelector("[data-till-found]"),history=document.querySelector("[data-till-history]");let timer;

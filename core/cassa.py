@@ -403,7 +403,7 @@ def bill(post,conf,credit=0):
         # 2.22.0: a product (p:id) or a gift card sold (gift:expiry) on their own department
         dept=conf.get("product_dept") if svc.startswith("p:") else conf.get("gift_dept") if svc.startswith("gift:") else (deps.get(svc) or {}).get("dept")
         line={"desc":desc,"qty":qty,"cents":c,"dept":int(dept or default)}
-        if svc:line["svc"]=svc[:44]  # 2.20.8: which service, for the ones most used on top of the Cassa
+        if svc:line["svc"]=svc[:44]  # 2.20.8: which service, for the tiles lit in the Cassa (2.22.2)
         who=text(staff[i] if i<len(staff) else "")[:100]
         if who:line["staff"]=who  # 2.20.5: who did it, for the client's record only: never on the receipt
         o,pct=row_off(offs[i] if i<len(offs) else "",qty*c,desc)
@@ -615,7 +615,6 @@ def till_view(request,slug):
     items+=[{"group":"Prodotti","name":text(p.name),"price":str(p.price or "").replace(".",","),"svc":"p:"+str(p.pk)} for p in Product.objects.filter(active=True).order_by("name")]  # 2.22.0
     groups={}
     for i in items:groups.setdefault(i["group"],[]).append(i)
-    top=favourites(t,loc,items)
     rows=list(Sale.objects.filter(location=loc,kind__in=("sale","void","close"),created__gte=today).select_related("booking","contact","voids").order_by("-created"))
     busy=any(s.status in ("queued","sending") for s in rows)
     due=list(owed(location=loc).select_related("contact").order_by("created"))  # 2.20.9: Da incassare, of every day
@@ -658,7 +657,7 @@ def till_view(request,slug):
         discount=again.get("discount","");taken=[]
         if again.get("contact") and can(request,"contacts.read"):contact=Contact.objects.filter(pk=again["contact"]).first() or contact
     today_d=timezone.now().astimezone(tz).date()
-    return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"top":top,"count":len(items),"booking":booking,"who":who,"lines":lines,
+    return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),
         "gifts":[c for c in gift.of(contact) if c.status=="active" and c.balance>0 and not (c.expires and c.expires<today_d)] if contact else [],
         "missing_close":missing_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),
@@ -749,21 +748,6 @@ def summary(request,slug):
     audit(t,request.user,"sale.summary",None,day=str(a),until=str(b))
     from django.http import HttpResponse
     r=HttpResponse(doc.render(),content_type="application/pdf");r["Content-Disposition"]=f'attachment; filename="riepilogo-cassa-{a:%Y-%m-%d}{"" if a==b else f"-{b:%Y-%m-%d}"}.pdf"';return r
-def favourites(t,loc,items,n=12):
-    """2.20.8: the services this location uses most, from the last receipts and the bookings of the last months,
-    so the bill is there without scrolling; with no history yet, the first ones of the list."""
-    from collections import Counter
-    from .crypto import open_seal,tenant_key
-    used=Counter();key=tenant_key(t)
-    for sale in Sale.objects.filter(location=loc,kind="sale").order_by("-created")[:300]:
-        try:lines=open_seal(sale.pii,key,f"{t.pk}:sale:{sale.pk}").get("lines",[])
-        except Exception:continue
-        for l in lines:used[(l.get("svc") or "",l.get("desc",""))]+=l.get("qty",1)
-    since=timezone.now()-timedelta(days=120)
-    for svc,k in Booking.objects.filter(location=loc,start__gte=since).exclude(status="cancelled").values_list("service_id").annotate(k=models.Count("pk")):used[(str(svc),"")]+=k
-    score=lambda i:used.get((i["svc"],i["name"]),0)+used.get((i["svc"],""),0)
-    ranked=sorted((i for i in items if score(i)),key=lambda i:-score(i))
-    return (ranked+[i for i in items if not score(i)])[:n]  # the used ones first, then the list fills the rest
 DOC=re.compile(r"\s*(?:(\d{1,4})\s*-)?\s*(\d{1,4})\s*")  # 2.22.0: «2026-0012» or just «12» (RCH, no closure number)
 def void(request,t,loc,sale):
     """The annullo of a documento commerciale: of one in the list, or of any other written by hand (day and «Documento n.»,
@@ -777,6 +761,8 @@ def void(request,t,loc,sale):
         sale.status="void";sale.save(update_fields=["status"]);audit(t,request.user,"sale.void",sale.pk)
         gift.give_back(t,sale);gift.sold(t,sale,"void")
         messages.success(request,"Segnato come annullato.");return
+    # 2.22.2: on RCH the number is the one read at the foot of the receipt, typed every time: the program's count is only a guide
+    if loc.till["device"]=="rch" and not request.POST.get("doc","").strip():raise ValueError("Scrivi il numero stampato in fondo allo scontrino, per esempio 2039-0013: la cassa annulla quello.")
     if not (m and day) or day>timezone.now().astimezone(ZoneInfo(t.timezone)).date():raise ValueError("Scrivi la data e il «Documento n.» dello scontrino, come sono stampati in fondo: per esempio 2026-0012.")
     if loc.till["device"]=="epson" and not (sale and sale.serial or loc.till.get("serial")):raise ValueError("Manca la matricola della cassa: scrivila in Registratore di cassa.")
     if loc.till["device"]=="epson" and not (m[1] or sale and sale.z):raise ValueError("Su Epson serve anche il numero della chiusura, come stampato in fondo: per esempio 2026-0012.")
