@@ -351,30 +351,30 @@ def test_rch_counts_the_numbers_and_voids_without_asking(shop):
         loc.till={**loc.till,"last_z":2025,"rch_void":"=k/&{data}/[{z}/]{numero}"};loc.save()
         s=sell_one();assert (s.z,s.number)==("2026","3")
         cl=cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{});loc.refresh_from_db();assert loc.till["last_z"]==2026
-        s=sell_one();assert (s.z,s.number)==("2027","1")  # after the closure: next closure, documents from 1
+        s=sell_one();assert (s.z,s.number)==("2027","4")  # after the closure: next closure, the numbers go on (2.22.2)
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert f'id="d-{s.pk}" name="doc" value="2027-0001"' in page and "contato il programma" in page and 'name="doc" value="2027-0001" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
-    c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":"2027-1"})
+    assert f'id="d-{s.pk}" name="doc" value="2027-0004"' in page and "contato il programma" in page and 'name="doc" value="2027-0004" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
+    c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":"2027-4"})
     with scope(t):
-        v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0001"
+        v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0004"
         cassa.finish(t,cassa.claim(loc),"done",{});assert Sale.objects.get(pk=s.pk).status=="void"
-        s2=sell_one();assert (s2.z,s2.number)==("2027","3")  # the annullo counted too
+        s2=sell_one();assert (s2.z,s2.number)==("2027","6")  # the annullo counted too
     # the closure done on the register's keys, marked here: the counter moves too
     c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
     with scope(t):
         loc.refresh_from_db();assert loc.till["last_z"]==2027
-        s3=sell_one();assert (s3.z,s3.number)==("2028","1")
+        s3=sell_one();assert (s3.z,s3.number)==("2028","7")
         # no closure number: the void command without the [z/] part; typed by hand «5-0007» wins
-        v=cassa.enqueue(t,loc,kind="void",voids=s3,total=s3.total,data={"z":"","number":"4","day":date.today().isoformat()})
-        assert cassa.rch(v,v.data,loc.till)[-1].endswith("/0004") and "[" not in cassa.rch(v,v.data,loc.till)[-1]
+        v=cassa.enqueue(t,loc,kind="void",voids=s3,total=s3.total,data={"z":"","number":"7","day":date.today().isoformat()})
+        assert cassa.rch(v,v.data,loc.till)[-1].endswith("/0007") and "[" not in cassa.rch(v,v.data,loc.till)[-1]
     r=c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s3.pk),"doc":"5-0007"},follow=True)
     assert "già stato inviato" in r.content.decode()  # one annullo a receipt
     with scope(t):cassa.finish(t,cassa.claim(loc),"done",{});s4=sell_one();assert s4.kind=="sale"  # the queued annullo first, then a new receipt
     c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s4.pk),"doc":"5-0007"})
     with scope(t):
         v=Sale.objects.filter(kind="void").order_by("-created").first();assert v.voids_id==s4.pk and v.data["z"]=="5" and v.data["number"]=="0007" and "[0005/]" in cassa.rch(v,v.data,loc.till)[-1]
-        # 2.22.2: the pair typed by hand teaches: closure 5, four documents the register made on its own; the day renumbered
-        loc.refresh_from_db();s4.refresh_from_db();s3.refresh_from_db();assert loc.till["last_z"]==4 and loc.till["doc_offset"]==4 and (s4.z,s4.number)==("5","7") and (s3.z,s3.number)==("5","5")
+        # 2.22.2: the pair typed by hand teaches: closure 5, two documents short (s4 was 9); the day renumbered
+        loc.refresh_from_db();s4.refresh_from_db();s3.refresh_from_db();assert loc.till["last_z"]==4 and loc.till["doc_offset"]==-2 and (s4.z,s4.number)==("5","7") and (s3.z,s3.number)==("5","5")
     # the settings page takes the closure number, and refuses a bad one
     owner,_=client_as(t);Tenant.objects.filter(pk=t.pk).update(till_self=True)
     base={"location":str(loc.pk),"action":"save","device":"rch","connection":"net","address":"192.168.1.50","serial":"1","default_dept":"1","rch_off":"=V-/${importo}","rch_void":"=k/&{data}/[{z}/]{numero}","rch_close":"=C3 =C10 =C1"}
@@ -539,12 +539,12 @@ def test_a_corrected_document_number_teaches_the_rch_count(shop):
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode();assert "n. 2039-0016" in page and "n. 2039-0013" in page and "n. 3" not in page.split("Scontrini di oggi")[1].split("Chiusura e annulli")[0]
     with scope(t):
         cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{})
-        loc.refresh_from_db();assert loc.till["last_z"]==2039 and loc.till["doc_offset"]==0
+        loc.refresh_from_db();assert loc.till["last_z"]==2039 and loc.till["doc_offset"]==10  # the closure moves, the numbers go on
         cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s6=mk()
-        assert (s6.z,s6.number,s6.doc)==("2040","1","2040-0001")
+        assert (s6.z,s6.number,s6.doc)==("2040","17","2040-0017")
         # È uscito with the pair as printed: the number is the register's, the count learns
         cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});u=cassa.finish(t,cassa.claim(loc),"unknown",{"error":"persa"})
-    r=c.post("/t/salone/cassa/",{"action":"printed","sede":str(loc.pk),"sale":str(u.pk),"number":"2040-0005"});assert r.status_code==302
+    r=c.post("/t/salone/cassa/",{"action":"printed","sede":str(loc.pk),"sale":str(u.pk),"number":"2040-0021"});assert r.status_code==302
     with scope(t):
-        u.refresh_from_db();loc.refresh_from_db();assert (u.z,u.number,u.status)==("2040","5","done") and loc.till["doc_offset"]==3
-        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s7=mk();assert s7.doc=="2040-0006"
+        u.refresh_from_db();loc.refresh_from_db();assert (u.z,u.number,u.status)==("2040","21","done") and loc.till["doc_offset"]==13
+        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s7=mk();assert s7.doc=="2040-0022"

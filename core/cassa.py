@@ -236,41 +236,35 @@ def finish(tenant,sale,state,info,attempt_id=None):
 def counted(sale):
     """2.22.0: the «chiusura-documento» pair of a document emitted on a register that does not say it (RCH), as printed
     at its foot: the closure it will belong to (the last closure's number, written once in Registratore di cassa and
-    raised at each closure, plus one) and its number, 1 for the first after the closure, then 2, 3… counting the
-    receipts and annulli this program emitted here. Receipts made on the register's own keys are not seen: the desk
-    corrects the number then. Without the closure number the pair is ("", n)."""
+    raised at each closure, plus one) and its number. 2.22.2: the register numbers its documents one after the other
+    and does not start again at the closure, so the program counts all the receipts and annulli it emitted here, plus
+    the documents the register made on its own keys (doc_offset, learned from the first number the desk corrects).
+    Without the closure number the pair is ("", n)."""
     location=Location.objects.get(pk=sale.location_id);conf=location.till  # fresh: the one on the sale was read before the register was called
-    last=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__lt=sale.printed).order_by("-printed").values_list("printed",flat=True).first()
     # the ones printed before it, and the ones sent before it still «Da verificare» (printed, as far as anyone knows)
     q=Sale.objects.filter(location=location,kind__in=("sale","void")).exclude(pk=sale.pk).filter(models.Q(status__in=("done","void"),printed__lt=sale.printed)|models.Q(status="unknown",claimed__lt=sale.printed))
-    if last:q=q.filter(models.Q(printed__gt=last)|models.Q(status="unknown",claimed__gt=last))
     return (str(int(conf["last_z"])+1) if conf.get("last_z") is not None else ""),str(q.count()+1+int(conf.get("doc_offset") or 0))
 def learn(location,sale,z,number):
-    """2.22.2: the desk typed the «Documento n.» as printed on a receipt of the open day (Annulla, or È uscito with the
-    number): the program learns the closure number and how many documents the register made on its own keys since the
-    closure (doc_offset), and renumbers the others of the open closure the same way (the register's own documents
-    are taken as made before the program's, the usual case: the morning on the keys). The next closure starts from zero again."""
+    """2.22.2: the desk typed the «Documento n.» as printed on a receipt (Annulla, or È uscito with the number): the
+    program learns the closure number and how many documents the register made on its own keys (doc_offset), and
+    renumbers the documents of that day and after the same way (the register's own are taken as made before them)."""
     location=Location.objects.get(pk=location.pk);conf=location.till
     if conf.get("device")!="rch" or not (number or "").isdigit() or not sale.printed:return
-    last=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__lt=sale.printed).order_by("-printed").values_list("printed",flat=True).first()
-    nxt=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__gt=sale.printed).order_by("printed").values_list("printed",flat=True).first()
-    if nxt:return  # a receipt of a day already closed: nothing to learn for today's
     delta=int(number)-int(counted(sale)[1])
     if z and z.isdigit():conf["last_z"]=int(z)-1
     conf["doc_offset"]=int(conf.get("doc_offset") or 0)+delta;location.till=conf;location.save(update_fields=["till"])
-    q=Sale.objects.filter(location=location,kind__in=("sale","void"),status__in=("done","void","unknown"),printed__isnull=False).exclude(pk=sale.pk)
-    if last:q=q.filter(printed__gt=last)
-    for s in list(q)+[sale]:
+    tz=ZoneInfo(location.tenant.timezone);day=datetime.combine(sale.printed.astimezone(tz).date(),datetime.min.time(),tz)
+    for s in list(Sale.objects.filter(location=location,kind__in=("sale","void"),status__in=("done","void","unknown"),printed__gte=day).exclude(pk=sale.pk))+[sale]:
         if s.pk==sale.pk:s.number=str(int(number))
         elif s.number.isdigit():s.number=str(int(s.number)+delta)
         if z and z.isdigit():s.z=str(int(z))
         s.save(update_fields=["number","z"])
 def closed(location):
-    """A daily closure done on an RCH (emitted here or on its keys): the next documents belong to the closure after."""
+    """A daily closure done on an RCH (emitted here or on its keys): the next documents belong to the closure after;
+    their numbers go on (2.22.2)."""
     location=Location.objects.get(pk=location.pk);conf=location.till  # fresh, never the copy read before the register was called
     if conf.get("device")=="rch" and conf.get("last_z") is not None:
-        conf["last_z"]=int(conf["last_z"])+1
-    if conf.get("device")=="rch":conf["doc_offset"]=0;location.till=conf;location.save(update_fields=["till"])  # 2.22.2: the documents start from 1 again
+        conf["last_z"]=int(conf["last_z"])+1;location.till=conf;location.save(update_fields=["till"])
 def shares(d,total):
     """{operator: cents} of a bill: each line net of its discount, the discount on the total spread over the lines."""
     nets=[(l.get("staff",""),l["qty"]*l["cents"]-l.get("off",0)) for l in d.get("lines",[])];gross=sum(c for _,c in nets) or 1
