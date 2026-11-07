@@ -92,7 +92,7 @@ def snapshot(tenant,days):
     questions the site does not ask, each operator's free times per variant as "HH:MM-HH:MM" of each day."""
     from .booking import available,linked
     from .client_mails import current
-    tz=ZoneInfo(tenant.timezone);today=timezone.now().astimezone(tz).date();out=[]
+    tz=ZoneInfo(tenant.timezone);today=timezone.now().astimezone(tz).date();out=[];memo={}  # 2.22.3: the hours read once for the whole month
     for s in Service.objects.filter(active=True,location__active=True,secret="",kind="resource").select_related("location").order_by("name"):
         if any(f.get("required") for f in s.fields):continue  # shortcut: the service's own questions are not on the site, a service that needs one stays off it
         options=list(Option.objects.filter(service=s,active=True));people=list(linked(s))
@@ -101,7 +101,7 @@ def snapshot(tenant,days):
             for r in people:
                 for n in range(days):
                     d=today+timedelta(days=n)
-                    if t:=[f"{datetime.fromisoformat(x['start']).strftime('%H:%M')}-{datetime.fromisoformat(x['end']).strftime('%H:%M')}" for x in available(tenant,s.pk,d,o and o.pk,r.pk)]:
+                    if t:=[f"{datetime.fromisoformat(x['start']).strftime('%H:%M')}-{datetime.fromisoformat(x['end']).strftime('%H:%M')}" for x in available(tenant,s.pk,d,o and o.pk,r.pk,memo=memo)]:
                         slots.setdefault(str(o.pk) if o else "",{}).setdefault(str(r.pk),{})[d.isoformat()]=t
         out.append({"id":str(s.pk),"name":s.name,"description":s.description,"location":s.location.name,"picks":s.client_picks,
             # 2.22.0: more services in one visit on the site: of the same location, with the same operator or not, waiting at most this
