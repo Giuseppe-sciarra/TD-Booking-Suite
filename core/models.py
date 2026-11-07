@@ -100,7 +100,7 @@ class Tenant(models.Model):
     # 2.14.0: the text of the WhatsApp button on a booking and on the client card (client_mails.whatsapp); empty = standard
     whatsapp_text=models.TextField(blank=True)
     whatsapp_reminder=models.TextField(blank=True)  # 2.22.0: the text of Promemoria WhatsApp, the day before
-    whatsapp_thanks=models.TextField(blank=True)  # 2.22.1: the thanks of the day after, with the review link
+    whatsapp_thanks=models.TextField(blank=True)  # 2.22.2: the thanks of the day after, with the review link
     wa_when=models.CharField(max_length=4,blank=True)  # 2.22.0: when the banner asks to remind on WhatsApp (client_mails.WA_WHEN); empty: never
     # 2.14.0: the retention the worker runs once a day (privacy.run_retention): when it last went through, and why not
     retention_at=models.DateTimeField(null=True,blank=True)
@@ -678,6 +678,11 @@ class Sale(Scoped):
         indexes=[models.Index(fields=["location","status","created"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"sale:"+str(self.pk))
+    @property
+    def doc(self):
+        """2.22.2: the «Documento n.» as printed at the foot of the receipt: closure-number, four digits each (2039-0013)."""
+        if self.z.isdigit() and self.number.isdigit():return f"{int(self.z):04d}-{int(self.number):04d}"
+        return f"{self.z}-{self.number}" if self.z and self.number else self.number
 class Product(Scoped):
     """2.22.0: what the shop sells besides its services (a shampoo, a brush): sold at the Cassa, written in the quotes."""
     name=models.CharField(max_length=80)

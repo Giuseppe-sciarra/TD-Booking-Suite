@@ -533,7 +533,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
   else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;if(active)r.querySelector("[name=staff]").value=active;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
   current(same||body.lastElementChild);sum();}));
- // 2.22.1: the operators as a bar beside the services, Exagon style: the row touched last is the current one (the last added,
+ // 2.22.2: the operators as a bar beside the services, Exagon style: the row touched last is the current one (the last added,
  // or the one tapped); tap an operator and it is his; the operator stays pressed for the next services until another is tapped
  let active=document.querySelector("[data-till-op][aria-pressed=true]")?.dataset.tillOp||"";
  const ops=[...document.querySelectorAll("[data-till-op]")];
@@ -548,7 +548,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
   if(k){const r=k.closest("tr"),f=r.querySelector("[name=park]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));r.classList.toggle("is-parked",on);}
   if(x)x.closest("tr").remove();sum();});
- // 2.22.1: the tiles of the services on the bill light up, with how many
+ // 2.22.2: the tiles of the services on the bill light up, with how many
  const tiles=[...document.querySelectorAll(".till-item[data-till-add]")],lit=()=>{const on=new Map();body.querySelectorAll("tr").forEach(r=>{const k=r.querySelector("[name=svc]").value||"desc:"+r.querySelector("[name=desc]").value.trim().toLowerCase();on.set(k,(on.get(k)||0)+num(r.querySelector("[name=qty]").value));});
   tiles.forEach(b=>{const n=on.get(b.dataset.svc||"desc:"+(b.dataset.desc||"").trim().toLowerCase())||0;b.classList.toggle("is-on",n>0);b.setAttribute("aria-pressed",String(n>0));if(n>0)b.dataset.n=String(n);else delete b.dataset.n;});};
  const changed=()=>{sum();lit();paint();document.dispatchEvent(new Event("till-changed"));};
@@ -580,7 +580,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   const top=document.querySelector("[data-till-top]"),all=document.querySelector("[data-till-all]");if(top)top.hidden=!!q;if(all&&q)all.open=true;
   document.querySelectorAll("[data-till-all] .till-item,.till-items>.till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
- // 2.22.1: the client is in his own card above the bill (the hidden id is bound to the form by form=)
+ // 2.22.2: the client is in his own card above the bill (the hidden id is bound to the form by form=)
  const who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]"),found=document.querySelector("[data-till-found]"),history=document.querySelector("[data-till-history]");let timer;
  const showHistory=()=>{if(history&&!history.dataset.tillHistoryId)history.hidden=!id?.value;};showHistory();
  who?.addEventListener("input",()=>{id.value="";showHistory();document.dispatchEvent(new Event("till-changed"));clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
@@ -595,7 +595,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
 
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
 })();
-// 2.22.1: the bill stays while you go and look at something else: every change is kept on this device (sessionStorage,
+// 2.22.2: the bill stays while you go and look at something else: every change is kept on this device (sessionStorage,
 // per register) and comes back when the Cassa opens again empty; sending it, or Svuota, forgets it
 (()=>{const form=document.querySelector("form[data-till]");if(!form||!window.sessionStorage)return;
  const sede=form.querySelector("[name=sede]")?.value||"",key="tdbs-till-"+sede,who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]");
@@ -617,7 +617,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  const cf=form.querySelector("[data-till-cf]");if(cf&&d.cf)cf.value=d.cf;
  form.dispatchEvent(new Event("input",{bubbles:true}));
 })();
-// 2.22.1: Storico in the Cassa: the client's record in a window over the bill, with the period to choose, the bill untouched
+// 2.22.2: Storico in the Cassa: the client's record in a window over the bill, with the period to choose, the bill untouched
 (()=>{const btn=document.querySelector("[data-till-history]");if(!btn)return;
  const id=document.querySelector("[data-till-contact]");let box=null,base="";  // base: the sheet's address, its links and filters are relative to it, not to the Cassa
  const open=async(url)=>{base=new URL(url,location.href).href;if(!box){box=document.createElement("dialog");box.className="till-history";box.innerHTML='<div class="till-history-in"><button type="button" class="ghost small till-history-close" data-close aria-label="Chiudi">×</button><div data-history-body><p class="muted">Un attimo…</p></div></div>';document.body.append(box);

@@ -222,7 +222,7 @@
   if(config.editing.extra)service.disabled=true;  // 2.14.0: a visit moves with its services
   loadSlots();
  }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
- // 2.22.1: from a free space of the agenda the appointment opens already at that time: the first service of that
+ // 2.22.2: from a free space of the agenda the appointment opens already at that time: the first service of that
  // operator is chosen for it, the times load and the one clicked is pressed; the service is changed after, if it is another
  else if(config.prefill?.time){const p=config.prefill,first=config.services.find(s=>s.kind==="resource"&&(!p.resource||s.resources.some(r=>r.id===p.resource)))||config.services.find(s=>s.kind==="resource");if(first){service.value=first.id;changeService();}}
  // 2.14.0: from the waiting list's link: how many, the departure and who, then the times of that day

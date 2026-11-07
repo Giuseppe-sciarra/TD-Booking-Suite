@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.22.1
+Stable tag: 2.22.2
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -67,7 +67,7 @@ coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sin
 la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
 L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
 
-Aggiornamenti dalla vetrina pubblica (2.22.1). Lo zip del plugin (td-booking-suite-<versione>.zip) sta nei rilasci di
+Aggiornamenti dalla vetrina pubblica (2.22.2). Lo zip del plugin (td-booking-suite-<versione>.zip) sta nei rilasci di
 github.com/Giuseppe-sciarra/TD-Booking-Suite-per-Windows, accanto all'MSI: ce lo mette il rilascio di Windows. Il plugin
 controlla ogni 12 ore l'ultimo rilascio (senza chiavi: sono pubblici) e, se c'è una versione più nuova con lo zip, WordPress la
 mostra in Plugin e la installa come ogni altro aggiornamento; "Controlla di nuovo" in Aggiornamenti forza il controllo. Senza

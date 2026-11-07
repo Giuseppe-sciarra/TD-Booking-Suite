@@ -126,7 +126,7 @@ def wa_window(tenant,now):
     last=(open_days(tenant,today+timedelta(days=1)) or [today+timedelta(days=1)])[0]
     return mid(today+timedelta(days=1)),mid(last+timedelta(days=1))
 REMINDER="Ciao {nome}, ti ricordiamo l'appuntamento da {attivita} {quando}: {servizio}. Se non puoi venire, rispondi a questo messaggio. A presto!"
-# 2.22.1: Promemoria WhatsApp, the day after: the thanks with the review link (Configurazione promemoria, Link alla recensione)
+# 2.22.2: Promemoria WhatsApp, the day after: the thanks with the review link (Configurazione promemoria, Link alla recensione)
 THANKS="Ciao {nome}, grazie di essere passato da {attivita}! Se ti va, lasciaci una recensione: {link}. A presto!"
 def whatsapp(tenant,phone,booking=None,text=None):
     """The wa.me link to this phone (an Italian number without prefix is +39), empty without a usable number.

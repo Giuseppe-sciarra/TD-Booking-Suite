@@ -327,7 +327,7 @@ def notifications_view(request,slug):
                 from .client_mails import THANKS
                 thanks=request.POST.get("whatsapp_thanks","").replace("\r\n","\n").strip()
                 if len(thanks)>1000 or any(ord(c)<32 and c!="\n" for c in thanks):raise ValueError("Grazie WhatsApp: al massimo 1000 caratteri, senza caratteri speciali.")
-                # 2.22.1: the review link, the same the email Dopo la visita uses
+                # 2.22.2: the review link, the same the email Dopo la visita uses
                 url=request.POST.get("review_url","").strip()[:500]
                 if url and not url.startswith(("https://","http://")):raise ValueError("Link alla recensione: deve iniziare con https://")
                 own=dict(tenant.client_mails or {});own["review"]={**(own.get("review") or {}),"url":url}

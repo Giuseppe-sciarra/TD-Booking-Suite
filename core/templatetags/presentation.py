@@ -162,7 +162,7 @@ def iso_day(iso):
 
 @register.filter
 def add_days(d,n):
-    """2.22.1: the date n days later (or earlier), as yyyy-mm-dd for a link."""
+    """2.22.2: the date n days later (or earlier), as yyyy-mm-dd for a link."""
     from datetime import date,timedelta
     return (d if isinstance(d,date) else date.fromisoformat(str(d))) + timedelta(days=int(n))
 @register.filter

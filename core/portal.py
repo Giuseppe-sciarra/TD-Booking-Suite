@@ -495,7 +495,7 @@ def booking_peek(request,slug,booking_id):
     return render(request,"_booking_peek.html",{"b":b,"d":shown(request,b.data),"lines":lines,"total":total,"sales":sales,"paid":paid,"parked_here":sum(x.total for x in parked),"parked_ids":[x.pk for x in parked],
         "till":can(request,"sale.write") and b.status!="cancelled" and bool(b.location.till.get("device")),
         "editable":editable,"operators":operators,"times":times,"day":start.date(),"hm":start.strftime("%H:%M"),"minutes":int((b.end-b.start).total_seconds()//60),
-        "cancellable":can(request,"booking.cancel") and b.status in OPEN and not sales,**extras})  # 2.22.1: Annulla appuntamento from the panel
+        "cancellable":can(request,"booking.cancel") and b.status in OPEN and not sales,**extras})  # 2.22.2: Annulla appuntamento from the panel
 def booking_detail(request,slug,booking_id):
     from .booking import visit_rows
     require(request,"booking.read")
@@ -559,7 +559,7 @@ def booking_detail(request,slug,booking_id):
         action=request.POST.get("action")
         require(request,*(("booking.write","notes.read") if action=="notes" else ("booking.cancel",)))
         back=request.POST.get("back")=="dashboard"  # 2.14.0: the quick actions of the dashboard go back there
-        agenda=request.POST.get("back")=="agenda"  # 2.22.1: Annulla appuntamento from the agenda's panel goes back to that day
+        agenda=request.POST.get("back")=="agenda"  # 2.22.2: Annulla appuntamento from the agenda's panel goes back to that day
         try:
             if action=="notes":
                 pii=booking.data
@@ -951,7 +951,7 @@ def contact_history(request,slug,contact_id):
         "today":timezone.now().astimezone(tz).date(),**client_extras(request,contact)}
     ctx["credit"]=sum(g.balance for g in ctx["gifts"] if not g.expired)
     audit(request.tenant,request.user,"contact.history",contact.pk)
-    # 2.22.1: in the Cassa's Storico window: the sheet alone, the bill stays behind it
+    # 2.22.2: in the Cassa's Storico window: the sheet alone, the bill stays behind it
     return render(request,"_client_history.html" if request.GET.get("modal") else "contact_history.html",ctx)
 def waitlist_view(request,slug):
     """2.14.0: Lista d'attesa: who waits for a place, from the booking page or added here, with what freed for each;
@@ -1026,7 +1026,7 @@ def wa_reminders(request,slug):
         require(request,"booking.write")
         from django.http import JsonResponse
         b=get_object_or_404(visible_bookings(request,Booking.objects.all()),pk=request.POST.get("booking"))
-        on=request.POST.get("sent")!="0";flag="wa_thanked" if request.POST.get("kind")=="thanks" else "wa_reminded"  # 2.22.1: the thanks of the day after
+        on=request.POST.get("sent")!="0";flag="wa_thanked" if request.POST.get("kind")=="thanks" else "wa_reminded"  # 2.22.2: the thanks of the day after
         for x in (Booking.objects.filter(visit=b.visit) if b.visit else [b]):  # the whole visit: one message says all its services
             if on:x.snapshot[flag]=timezone.now().isoformat()
             else:x.snapshot.pop(flag,None)
@@ -1050,7 +1050,7 @@ def wa_reminders(request,slug):
         days.append({"date":d,"label":("Oggi, " if d==today else "Domani, " if d==today+timedelta(days=1) else "")+date_format(d,"l j F"),"rows":rows,"todo":sum(1 for r in rows if not r.sent),"due":any(r.due for r in rows)})
     due_label={"d1":"da avvisare oggi","t0":"da avvisare adesso"}.get(request.tenant.wa_when) or "da avvisare adesso"
     start=span[0]
-    # 2.22.1: the day after: the thanks with the review link to who came yesterday (or the day chosen), the chat ready
+    # 2.22.2: the day after: the thanks with the review link to who came yesterday (or the day chosen), the chat ready
     try:thanks_day=date.fromisoformat(request.GET["grazie"]) if request.GET.get("grazie") else today-timedelta(days=1)
     except ValueError:thanks_day=today-timedelta(days=1)
     thanks=thanks_due(request,thanks_day)
@@ -1060,7 +1060,7 @@ def wa_reminders(request,slug):
         "thanks":thanks,"thanks_day":thanks_day,"thanks_label":("Ieri, " if thanks_day==today-timedelta(days=1) else "Oggi, " if thanks_day==today else "")+date_format(thanks_day,"l j F"),
         "review_url":current(request.tenant)["review"].get("url",""),"thanks_todo":sum(1 for r in thanks if not r.sent and r.wa)})
 def thanks_due(request,d):
-    """2.22.1: who came on day d (arrived, in progress or done), one a visit, with the thanks chat ready when there is a
+    """2.22.2: who came on day d (arrived, in progress or done), one a visit, with the thanks chat ready when there is a
     phone and the review link; nothing without the link."""
     from .client_mails import whatsapp,values,fill,THANKS,current
     t=request.tenant;tz=ZoneInfo(t.timezone);url=current(t)["review"].get("url","")

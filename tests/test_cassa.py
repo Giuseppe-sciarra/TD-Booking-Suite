@@ -350,7 +350,7 @@ def test_da_pagare_open_then_paid_in_the_reports(shop):
     with scope(t):
         s=Sale.objects.get(pk=s.pk);assert s.settled and s.settled_with=="card" and not cassa.owed().exists() and cassa.paid(s)==5500
         pay=[x.data for x in Treatment.objects.filter(contact_id=b.contact_id) if x.data.get("kind")=="payment"]
-        assert len(pay)==1 and pay[0]["amount"]==3500 and pay[0]["by"]=={"Cristina":3500} and pay[0]["service"].startswith("Pagamento dello scontrino n. 12-7 del")
+        assert len(pay)==1 and pay[0]["amount"]==3500 and pay[0]["by"]=={"Cristina":3500} and pay[0]["service"].startswith("Pagamento dello scontrino n. 0012-0007 del")
     c.post("/t/salone/cassa/",{"action":"settle","sede":str(loc.pk),"sale":str(s.pk),"how":"cash"})  # twice: once
     with scope(t):assert Treatment.objects.filter(contact_id=b.contact_id).count()==2
     rep=owner.get("/t/salone/report/?xlsx=lavori_mese")

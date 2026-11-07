@@ -1,4 +1,4 @@
-"""2.22.1: a PDF of text, written here by hand: A4 pages, Helvetica, the letters of the receipts (Latin-1 and €).
+"""2.22.2: a PDF of text, written here by hand: A4 pages, Helvetica, the letters of the receipts (Latin-1 and €).
 Enough for the Cassa's summaries; a table is lines with columns at fixed positions. No library: nothing to install
 on Windows, nothing that can hang, a few KB per page."""
 A4=(595.28,841.89);MARGIN=48;LINE=14
@@ -18,6 +18,7 @@ class Doc:
         if right:x-=width(s,size)
         self.pages[-1].append(b"BT /F%d %d Tf %.1f %.1f Td (" % (2 if bold else 1,size,x,y)+_esc(s)+b") Tj ET")
     def room(self,n=1):
+        """A new page unless n more lines fit on this one."""
         if not self.pages or self.y-n*LINE<MARGIN+LINE:self.page()
     def line(self,cells,size=10,bold=False,gap=LINE):
         """One row: cells as (x,text) or (x,text,right); a new page when the one in hand is full."""

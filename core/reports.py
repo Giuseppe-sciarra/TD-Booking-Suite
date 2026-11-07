@@ -143,7 +143,7 @@ def record_tables(request,first,last):
         if s.contact_id and s.contact_id not in people and names_ok:
             c=open_seal(s.contact.pii,key,f"{tid}:contact:{s.contact_id}");people[s.contact_id]=" ".join(x for x in (c.get("first_name",""),c.get("last_name","")) if x) or "Cliente"
     out["da_incassare"]=(["Cliente","Scontrino del","Numero","Da pagare (€)","Da giorni"],[[people.get(s.contact_id,"Cliente"),s.printed.astimezone(ZoneInfo(request.tenant.timezone)).strftime("%d/%m/%Y"),
-        f"{s.z}-{s.number}" if s.z else s.number,s.due,(today-s.printed.astimezone(ZoneInfo(request.tenant.timezone)).date()).days] for s in open_])
+        s.doc,s.due,(today-s.printed.astimezone(ZoneInfo(request.tenant.timezone)).date()).days] for s in open_])
     # 2.22.0: Preventivo pagamenti cassa, to this day: done and not paid, with no receipt yet
     from .models import Parked,GiftCard
     name=lambda c:(people.setdefault(c.pk," ".join(x for x in (open_seal(c.pii,key,f"{tid}:contact:{c.pk}").get(k,"") for k in ("first_name","last_name")) if x) or "Cliente") if names_ok else "Cliente") if c else ""

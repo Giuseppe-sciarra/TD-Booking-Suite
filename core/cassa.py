@@ -244,12 +244,33 @@ def counted(sale):
     # the ones printed before it, and the ones sent before it still «Da verificare» (printed, as far as anyone knows)
     q=Sale.objects.filter(location=location,kind__in=("sale","void")).exclude(pk=sale.pk).filter(models.Q(status__in=("done","void"),printed__lt=sale.printed)|models.Q(status="unknown",claimed__lt=sale.printed))
     if last:q=q.filter(models.Q(printed__gt=last)|models.Q(status="unknown",claimed__gt=last))
-    return (str(int(conf["last_z"])+1) if conf.get("last_z") is not None else ""),str(q.count()+1)
+    return (str(int(conf["last_z"])+1) if conf.get("last_z") is not None else ""),str(q.count()+1+int(conf.get("doc_offset") or 0))
+def learn(location,sale,z,number):
+    """2.22.2: the desk typed the «Documento n.» as printed on a receipt of the open day (Annulla, or È uscito with the
+    number): the program learns the closure number and how many documents the register made on its own keys since the
+    closure (doc_offset), and renumbers the others of the open closure the same way (the register's own documents
+    are taken as made before the program's, the usual case: the morning on the keys). The next closure starts from zero again."""
+    location=Location.objects.get(pk=location.pk);conf=location.till
+    if conf.get("device")!="rch" or not (number or "").isdigit() or not sale.printed:return
+    last=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__lt=sale.printed).order_by("-printed").values_list("printed",flat=True).first()
+    nxt=Sale.objects.filter(location=location,kind="close",status="done",printed__isnull=False,printed__gt=sale.printed).order_by("printed").values_list("printed",flat=True).first()
+    if nxt:return  # a receipt of a day already closed: nothing to learn for today's
+    delta=int(number)-int(counted(sale)[1])
+    if z and z.isdigit():conf["last_z"]=int(z)-1
+    conf["doc_offset"]=int(conf.get("doc_offset") or 0)+delta;location.till=conf;location.save(update_fields=["till"])
+    q=Sale.objects.filter(location=location,kind__in=("sale","void"),status__in=("done","void","unknown"),printed__isnull=False).exclude(pk=sale.pk)
+    if last:q=q.filter(printed__gt=last)
+    for s in list(q)+[sale]:
+        if s.pk==sale.pk:s.number=str(int(number))
+        elif s.number.isdigit():s.number=str(int(s.number)+delta)
+        if z and z.isdigit():s.z=str(int(z))
+        s.save(update_fields=["number","z"])
 def closed(location):
     """A daily closure done on an RCH (emitted here or on its keys): the next documents belong to the closure after."""
     location=Location.objects.get(pk=location.pk);conf=location.till  # fresh, never the copy read before the register was called
     if conf.get("device")=="rch" and conf.get("last_z") is not None:
-        conf["last_z"]=int(conf["last_z"])+1;location.till=conf;location.save(update_fields=["till"])
+        conf["last_z"]=int(conf["last_z"])+1
+    if conf.get("device")=="rch":conf["doc_offset"]=0;location.till=conf;location.save(update_fields=["till"])  # 2.22.2: the documents start from 1 again
 def shares(d,total):
     """{operator: cents} of a bill: each line net of its discount, the discount on the total spread over the lines."""
     nets=[(l.get("staff",""),l["qty"]*l["cents"]-l.get("off",0)) for l in d.get("lines",[])];gross=sum(c for _,c in nets) or 1
@@ -284,7 +305,7 @@ def settle(tenant,user,sale,how):
         from .clients import save_treatment
         tz=ZoneInfo(tenant.timezone);c=int(sale.due*100);lines=sale.data.get("lines",[])
         staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff")))
-        doc=f"n. {sale.z+'-' if sale.z else ''}{sale.number} " if sale.number else ""
+        doc=f"n. {sale.doc} " if sale.number else ""
         save_treatment(tenant,sale.contact,{"date":sale.settled.astimezone(tz).date(),"service":f"Pagamento dello scontrino {doc}del {sale.printed.astimezone(tz):%d/%m/%Y}"[:120],
             "staff":staff[:100],"details":f"Pagato {euro(sale.due)} con {dict(SETTLE)[how].lower()}","amount":c,"by":shares(sale.data,c),"kind":"payment"},user,booking=sale.booking)
     return sale
@@ -332,7 +353,7 @@ def copy_lines(tenant,sale,who=False):
     if gift_cents(d):rows.append(f"Gift card {d['gift'].get('code','')}  -{euro(Decimal(gift_cents(d))/100)}")
     rows.append(f"Totale  {euro(sale.total)}")
     rows+=[f"{dict(PAYMENTS).get(k,k)}  {euro(Decimal(c)/100)}" for k,c in d.get("payments",[])]
-    head=[f"Documento commerciale n. {sale.z+'-' if sale.z else ''}{sale.number}" if sale.number else "Documento commerciale",
+    head=[f"Documento commerciale n. {sale.doc}" if sale.number else "Documento commerciale",
         f"del {sale.printed.astimezone(tz):%d/%m/%Y %H:%M}" if sale.printed else "",f"Registratore telematico {sale.serial}" if sale.serial else ""]
     return [x for x in head if x],rows
 def send_copy(tenant,sale):
@@ -575,7 +596,9 @@ def till_view(request,slug):
                 if loc.till.get("link")=="direct" and settings.TILL_DIRECT:transaction.on_commit(lambda:kick(t.pk,loc.pk))
                 audit(t,request.user,"sale.retry",sale.pk)
             elif action=="printed" and sale.status=="unknown":
-                finish(t,sale,"done",{"number":re.sub(r"\D","",request.POST.get("number",""))[:20]})
+                m=DOC.fullmatch(request.POST.get("number","") or "")  # 2.22.2: «2039-0013» as printed, or just the number
+                finish(t,sale,"done",{"number":m[2] if m else "","z":m[1] or "" if m else ""})
+                if m:learn(loc,Sale.objects.get(pk=sale.pk),m[1],m[2])
                 audit(t,request.user,"sale.printed_by_hand",sale.pk)
             elif action=="void" and sale.kind=="sale" and sale.status=="done":void(request,t,loc,sale)
             elif action=="settle":
@@ -604,7 +627,7 @@ def till_view(request,slug):
     due=list(owed(location=loc).select_related("contact").order_by("created"))  # 2.20.9: Da incassare, of every day
     names_ok=can(request,"pii.read")
     for s in due:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else "Cliente"
-    for s in rows:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else ""  # 2.22.1: who paid, in Scontrini di oggi
+    for s in rows:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else ""  # 2.22.2: who paid, in Scontrini di oggi
     who=booking.data if booking and names_ok else {}
     lines=prefill(booking) if booking else []
     # 2.22.0: suspended bills and a quote taken into this bill; their client when the booking has none
@@ -626,7 +649,7 @@ def till_view(request,slug):
         if not contact and re.fullmatch(r"[0-9a-f-]{36}",request.GET.get("cliente","")):contact=Contact.objects.filter(pk=request.GET["cliente"]).first()
     if contact and not who and names_ok:who=contact.data
     ops=list(Resource.objects.filter(location=loc,active=True).order_by("name"));names=[o.name for o in ops]
-    # 2.22.1: the operators as a bar beside the services, Exagon style: tap the service, tap who did it; the agenda's colours and faces
+    # 2.22.2: the operators as a bar beside the services, Exagon style: tap the service, tap who did it; the agenda's colours and faces
     from .agenda import operators,colors
     tone=colors(operators(request,loc));staff=[{"name":o.name,"color":tone.get(o.pk,0),"photo":o.photo_link(t.slug)} for o in ops]
     parked=list(Parked.objects.filter(location=loc).select_related("contact","booking").order_by("-created"))
@@ -660,7 +683,7 @@ def missing_close(t,loc):
     return s.astimezone(tz).date() if s else None
 
 def summary(request,slug):
-    """2.22.1: Riepilogo di cassa in PDF, beside the closure: one day, or a period (?dal=&al=), everything the register
+    """2.22.2: Riepilogo di cassa in PDF, beside the closure: one day, or a period (?dal=&al=), everything the register
     did day by day: the receipts with lines, who paid and how, the annulli, the closures, then the day's totals by
     payment and by operator, the «Da pagare» collected and what was done «non nello scontrino». A download, nothing
     the window waits on."""
@@ -689,13 +712,25 @@ def summary(request,slug):
     for d in days:
         doc.rule();doc.line([(L,date_format(d,"l j F Y").capitalize())],12,True,gap=16)
         tot={"n":0,"cents":0,"pay":{},"staff":{}}
-        for s in [x for x in sales if x.created.astimezone(tz).date()==d]:
-            when=(s.printed or s.created).astimezone(tz).strftime("%H:%M");state={"void":"annullato","unknown":"da verificare"}.get(s.status,"")
+        # the day's events in the order they happened: receipts, annulli and closures, the Da pagare collected, the rows left out
+        events=[((x.printed or x.created).astimezone(tz),"sale",x) for x in sales if x.created.astimezone(tz).date()==d]
+        events+=[(x.settled.astimezone(tz),"paid",x) for x in paid if x.settled.astimezone(tz).date()==d]+[(x.created.astimezone(tz),"park",x) for x in parked if x.created.astimezone(tz).date()==d]
+        for when_at,what,s in sorted(events,key=lambda e:e[0]):
+            when=when_at.strftime("%H:%M")
+            if what=="paid":
+                doc.line([(L,when),(L+40,f"Incassato il Da pagare dello scontrino n. {s.doc} del {s.printed.astimezone(tz):%d/%m}" if s.number else "Incassato un Da pagare"),(L+320,who(s)),(R,euro(s.due)+" "+dict(SETTLE).get(s.settled_with,"").lower(),True)],9)
+                tot["pay"]["settled"]=tot["pay"].get("settled",0)+int(s.due*100);continue
+            if what=="park":
+                lines=s.data.get("lines",[]);doc.room(1+len(lines))
+                doc.line([(L,when),(L+40,"Non nello scontrino"),(L+170,who(s)),(R,euro(s.total),True)],9)
+                for l in lines:doc.line([(L+40,f"{l['qty']} x {l['desc']}"+(f" · {l['staff']}" if l.get("staff") else "")),(R,e(l["qty"]*l["cents"]-l.get("off",0)),True)],9,gap=12)
+                continue
+            state={"void":"annullato","unknown":"da verificare"}.get(s.status,"")
             if s.kind=="close":doc.line([(L,when),(L+40,"Chiusura giornaliera"+(" fatta dalla cassa" if s.error=="Fatta dalla cassa" else ""))],10,True);continue
             if s.kind=="void":
-                v=s.voids;doc.line([(L,when),(L+40,f"Annullo del n. {(v.z+'-' if v.z else '')+v.number if v and v.number else s.data.get('number','')}"),(R,"-"+euro(s.total),True)],10,True);continue
-            doc.line([(L,when),(L+40,f"Scontrino n. {(s.z+'-' if s.z else '')+s.number}" if s.number else "Scontrino"),(L+170,who(s)),(R,euro(s.total)+(f" ({state})" if state else ""),True)],10,True)
-            dd=s.data
+                v=s.voids;doc.line([(L,when),(L+40,f"Annullo del n. {v.doc if v and v.number else s.data.get('number','')}"),(R,"-"+euro(s.total),True)],10,True);continue
+            dd=s.data;doc.room(3+len(dd.get("lines",[])))  # a receipt stays on one page
+            doc.line([(L,when),(L+40,f"Scontrino n. {s.doc}" if s.number else "Scontrino"),(L+170,who(s)),(R,euro(s.total)+(f" ({state})" if state else ""),True)],10,True)
             for l in dd.get("lines",[]):doc.line([(L+40,f"{l['qty']} x {l['desc']}"+(f" · {l['staff']}" if l.get("staff") else "")),(R,e(l["qty"]*l["cents"]-l.get("off",0)),True)],9,gap=12)
             if dd.get("discount"):doc.line([(L+40,"Sconto sul totale"),(R,"-"+e(dd["discount"]),True)],9,gap=12)
             if gift_cents(dd):doc.line([(L+40,"Pagato con gift card"),(R,"-"+e(gift_cents(dd)),True)],9,gap=12)
@@ -705,12 +740,6 @@ def summary(request,slug):
             for k,c in dd.get("payments",[]):tot["pay"][k]=tot["pay"].get(k,0)+c
             if gift_cents(dd):tot["pay"]["gift"]=tot["pay"].get("gift",0)+gift_cents(dd)
             for k,c in shares(dd,cents+gift_cents(dd)).items():tot["staff"][k or "Senza operatore"]=tot["staff"].get(k or "Senza operatore",0)+c
-        for s in [x for x in paid if x.settled.astimezone(tz).date()==d]:
-            doc.line([(L,s.settled.astimezone(tz).strftime("%H:%M")),(L+40,f"Incassato il Da pagare dello scontrino n. {(s.z+'-' if s.z else '')+s.number} del {s.printed.astimezone(tz):%d/%m}" if s.number else "Incassato un Da pagare"),(L+300,who(s)),(R,euro(s.due)+" "+dict(SETTLE).get(s.settled_with,"").lower(),True)],9)
-            tot["pay"]["settled"]=tot["pay"].get("settled",0)+int(s.due*100)
-        for x in [x for x in parked if x.created.astimezone(tz).date()==d]:
-            doc.line([(L,x.created.astimezone(tz).strftime("%H:%M")),(L+40,"Non nello scontrino"),(L+170,who(x)),(R,euro(x.total),True)],9)
-            for l in x.data.get("lines",[]):doc.line([(L+40,f"{l['qty']} x {l['desc']}"+(f" · {l['staff']}" if l.get("staff") else "")),(R,e(l["qty"]*l["cents"]-l.get("off",0)),True)],9,gap=12)
         doc.space(0.5);doc.line([(L+40,f"Scontrini: {tot['n']}"),(R,"Totale "+e(tot["cents"]),True)],10,True)
         labels={**dict(PAYMENTS),"gift":"Gift card","settled":"Da pagare incassati"}
         for k,c in tot["pay"].items():doc.line([(L+40,labels.get(k,k)),(R,e(c),True)],9,gap=12)
@@ -746,7 +775,7 @@ def void(request,t,loc,sale):
     """The annullo of a documento commerciale: of one in the list, or of any other written by hand (day and «Documento n.»,
     closure and number as printed at its foot). On RCH with no annullo command the desk does it on the register and it is
     only marked here."""
-    m=DOC.fullmatch(request.POST.get("doc","") or (f"{sale.z}-{sale.number}" if sale and sale.z and sale.number else sale.number if sale and sale.number else ""))
+    m=DOC.fullmatch(request.POST.get("doc","") or (sale.doc if sale else ""))
     try:day=date.fromisoformat(request.POST.get("day","")) if request.POST.get("day") else sale.printed.astimezone(ZoneInfo(t.timezone)).date()
     except (ValueError,AttributeError):day=None
     if loc.till["device"]=="rch" and not rch_cmd(loc.till,"rch_void"):
@@ -758,6 +787,8 @@ def void(request,t,loc,sale):
     if loc.till["device"]=="epson" and not (sale and sale.serial or loc.till.get("serial")):raise ValueError("Manca la matricola della cassa: scrivila in Registratore di cassa.")
     if loc.till["device"]=="epson" and not (m[1] or sale and sale.z):raise ValueError("Su Epson serve anche il numero della chiusura, come stampato in fondo: per esempio 2026-0012.")
     if sale and sale.voided_by.exclude(status="failed").exists():raise ValueError("L'annullo è già stato inviato.")
+    num=lambda v:int(v) if (v or "").isdigit() else v or ""
+    if sale and request.POST.get("doc") and (num(m[1]),num(m[2]))!=(num(sale.z),num(sale.number)):learn(loc,sale,m[1],m[2])  # 2.22.2: the number corrected by hand teaches the count
     v=enqueue(t,loc,kind="void",voids=sale,total=sale.total if sale else 0,actor=str(request.user.pk),data={"z":m[1] or "","number":m[2],"day":day.isoformat()})
     audit(t,request.user,"sale.void",sale.pk if sale else v.pk);messages.success(request,"Annullo inviato alla cassa.")
 def allowed(request):

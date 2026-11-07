@@ -353,7 +353,7 @@ def test_rch_counts_the_numbers_and_voids_without_asking(shop):
         cl=cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{});loc.refresh_from_db();assert loc.till["last_z"]==2026
         s=sell_one();assert (s.z,s.number)==("2027","1")  # after the closure: next closure, documents from 1
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert f'id="d-{s.pk}" name="doc" value="2027-1"' in page and "contato il programma" in page and 'name="doc" value="2027-1" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
+    assert f'id="d-{s.pk}" name="doc" value="2027-0001"' in page and "contato il programma" in page and 'name="doc" value="2027-0001" placeholder="Documento n., es. 2026-0012" maxlength="12" inputmode="numeric">' in page
     c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s.pk),"doc":"2027-1"})
     with scope(t):
         v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0001"
@@ -371,12 +371,15 @@ def test_rch_counts_the_numbers_and_voids_without_asking(shop):
     assert "già stato inviato" in r.content.decode()  # one annullo a receipt
     with scope(t):cassa.finish(t,cassa.claim(loc),"done",{});s4=sell_one();assert s4.kind=="sale"  # the queued annullo first, then a new receipt
     c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s4.pk),"doc":"5-0007"})
-    with scope(t):v=Sale.objects.filter(kind="void").order_by("-created").first();assert v.voids_id==s4.pk and v.data["z"]=="5" and v.data["number"]=="0007" and "[0005/]" in cassa.rch(v,v.data,loc.till)[-1]
+    with scope(t):
+        v=Sale.objects.filter(kind="void").order_by("-created").first();assert v.voids_id==s4.pk and v.data["z"]=="5" and v.data["number"]=="0007" and "[0005/]" in cassa.rch(v,v.data,loc.till)[-1]
+        # 2.22.2: the pair typed by hand teaches: closure 5, four documents the register made on its own; the day renumbered
+        loc.refresh_from_db();s4.refresh_from_db();s3.refresh_from_db();assert loc.till["last_z"]==4 and loc.till["doc_offset"]==4 and (s4.z,s4.number)==("5","7") and (s3.z,s3.number)==("5","5")
     # the settings page takes the closure number, and refuses a bad one
     owner,_=client_as(t);Tenant.objects.filter(pk=t.pk).update(till_self=True)
     base={"location":str(loc.pk),"action":"save","device":"rch","connection":"net","address":"192.168.1.50","serial":"1","default_dept":"1","rch_off":"=V-/${importo}","rch_void":"=k/&{data}/[{z}/]{numero}","rch_close":"=C3 =C10 =C1"}
     owner.post("/t/salone/registratore/",{**base,"last_z":"abc"})
-    with scope(t):loc.refresh_from_db();assert loc.till["last_z"]==2027
+    with scope(t):loc.refresh_from_db();assert loc.till["last_z"]==4
     owner.post("/t/salone/registratore/",{**base,"last_z":"3000"})
     with scope(t):loc.refresh_from_db();assert loc.till["last_z"]==3000
 
@@ -417,7 +420,7 @@ def test_site_visit_whose_time_went_is_kept_as_a_request_of_its_first_service(sh
     assert ack==["a"*32] and not errors
 
 def test_whatsapp_thanks_of_yesterday_with_the_review_link(shop):
-    """2.22.1: Promemoria WhatsApp, the day after: who came yesterday with the thanks chat ready and the review link,
+    """2.22.2: Promemoria WhatsApp, the day after: who came yesterday with the thanks chat ready and the review link,
     only once the link is set (Configurazione promemoria, with the WhatsApp texts); marked apart from the reminders."""
     from urllib.parse import unquote
     t,loc,svc=shop
@@ -448,7 +451,7 @@ def test_whatsapp_thanks_of_yesterday_with_the_review_link(shop):
     assert "deve iniziare con https" in r.content.decode()
 
 def test_annulla_appuntamento_from_the_agenda_panel(shop):
-    """2.22.1: the agenda's panel has Annulla appuntamento: it cancels and goes back to that day of the agenda."""
+    """2.22.2: the agenda's panel has Annulla appuntamento: it cancels and goes back to that day of the agenda."""
     t,loc,svc=shop
     tz=ZoneInfo(t.timezone);day=(timezone.now().astimezone(tz)+timedelta(days=2)).date()
     with scope(t):b,_=create_booking(t,{**payload(svc),"start":timezone.datetime.combine(day,timezone.datetime.min.time().replace(hour=10),tz).isoformat()})
@@ -461,7 +464,7 @@ def test_annulla_appuntamento_from_the_agenda_panel(shop):
     assert "Annulla appuntamento" not in c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
 
 def test_riepilogo_di_cassa_pdf_of_a_day_and_of_a_period(shop,register,settings,django_capture_on_commit_callbacks,monkeypatch):
-    """2.22.1: beside the closure, Riepilogo di cassa in PDF: the receipts of the day with lines, who paid and how,
+    """2.22.2: beside the closure, Riepilogo di cassa in PDF: the receipts of the day with lines, who paid and how,
     the totals by payment and by operator; a period day by day with its total. A real PDF file, made by hand."""
     import re,zlib
     from tests.test_cassa import Fake,RCH_OK,sell
@@ -494,7 +497,7 @@ def test_riepilogo_di_cassa_pdf_of_a_day_and_of_a_period(shop,register,settings,
     with scope(t):assert Audit.objects.filter(action="sale.summary").count()==3
 
 def test_cassa_operators_bar_and_the_desk_quarters(shop):
-    """2.22.1: the Cassa's operators as a bar beside the services (colour of the agenda, photo link), the row's operator
+    """2.22.2: the Cassa's operators as a bar beside the services (colour of the agenda, photo link), the row's operator
     as a hidden field with its chip, no dropdown; at the desk the times of an appointment go every quarter."""
     t,loc,svc=shop
     with scope(t):
@@ -510,3 +513,38 @@ def test_cassa_operators_bar_and_the_desk_quarters(shop):
     assert "09:15" in times and "09:45" in times, times
     public=[x["start"][11:16] for x in c.get(f"/book/salone/api/slots/?service={cut.pk}&date={day.isoformat()}").json()["slots"]]
     assert "09:15" not in public and "09:30" in public, public
+
+def test_a_corrected_document_number_teaches_the_rch_count(shop):
+    """2.22.2: the register made receipts on its own keys: the desk voids the program's n. 3 writing 2039-0013 as printed;
+    the program learns the closure (2039) and the 10 documents it did not see, renumbers the ones after, counts the next
+    ones right, shows the pair as printed (2039-0013), and starts from zero at the closure. «È uscito» teaches the same."""
+    t,loc,svc=shop
+    with scope(t):
+        loc.till={**loc.till,"rch_void":"=k/&{data}/[{z}/]{numero}"};loc.save()
+        mk=lambda:cassa.finish(t,cassa.claim(loc),"done",{}) and None or Sale.objects.latest("created")
+        for _ in range(4):cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});mk()
+        s1,s2,s3,s4=Sale.objects.filter(kind="sale").order_by("created")
+        assert [x.number for x in (s1,s2,s3,s4)]==["1","2","3","4"] and s3.z=="" and s3.doc=="3"
+    c,_=client_as(t,role="owner")
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode();assert "n. 3</small>" in page or "n. 3 " in page
+    r=c.post("/t/salone/cassa/",{"action":"void","sede":str(loc.pk),"sale":str(s3.pk),"doc":"2039-0013"});assert r.status_code==302
+    with scope(t):
+        loc.refresh_from_db();assert loc.till["last_z"]==2038 and loc.till["doc_offset"]==10
+        s1.refresh_from_db();s3.refresh_from_db();s4.refresh_from_db()
+        assert (s3.z,s3.number,s3.doc)==("2039","13","2039-0013") and (s4.z,s4.number)==("2039","14") and (s1.z,s1.number)==("2039","11")  # before it too: the register's own came first
+        v=Sale.objects.get(kind="void");assert v.data["z"]=="2039" and v.data["number"]=="0013"
+        cassa.finish(t,cassa.claim(loc),"done",{});v.refresh_from_db();assert (v.z,v.number)==("","")  # the annullo is counted as a document
+        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s5=mk()
+        assert (s5.z,s5.number,s5.doc)==("2039","16","2039-0016")  # 4 receipts + the annullo + 10 of the register, +1
+    page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode();assert "n. 2039-0016" in page and "n. 2039-0013" in page and "n. 3" not in page.split("Scontrini di oggi")[1].split("Chiusura e annulli")[0]
+    with scope(t):
+        cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{})
+        loc.refresh_from_db();assert loc.till["last_z"]==2039 and loc.till["doc_offset"]==0
+        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s6=mk()
+        assert (s6.z,s6.number,s6.doc)==("2040","1","2040-0001")
+        # È uscito with the pair as printed: the number is the register's, the count learns
+        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});u=cassa.finish(t,cassa.claim(loc),"unknown",{"error":"persa"})
+    r=c.post("/t/salone/cassa/",{"action":"printed","sede":str(loc.pk),"sale":str(u.pk),"number":"2040-0005"});assert r.status_code==302
+    with scope(t):
+        u.refresh_from_db();loc.refresh_from_db();assert (u.z,u.number,u.status)==("2040","5","done") and loc.till["doc_offset"]==3
+        cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s7=mk();assert s7.doc=="2040-0006"

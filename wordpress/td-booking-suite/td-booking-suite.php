@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
- * Version: 2.22.1
+ * Version: 2.22.2
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.22.1';
+const TDBS_VERSION='2.22.2';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -1035,7 +1035,7 @@ function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client,$pieces=
         'service'=>$name,'service_id'=>(string)$sv['id'],'operator'=>$who,'location'=>(string)($sv['location']??''),
         'start'=>(new DateTime($date.' '.$time,$tz))->getTimestamp(),'end'=>(new DateTime($date.' '.$end,$tz))->getTimestamp());
 }
-/* ---------- 2.22.1 updates from the public showcase (github.com/Giuseppe-sciarra/TD-Booking-Suite-per-Windows): the
+/* ---------- 2.22.2 updates from the public showcase (github.com/Giuseppe-sciarra/TD-Booking-Suite-per-Windows): the
    Windows release attaches td-booking-suite-<versione>.zip there with the MSI; WordPress shows the new version in Plugin
    and installs it like any other update. Asked at most every 12 hours, without any key: the releases are public. */
 const TDBS_REPO='Giuseppe-sciarra/TD-Booking-Suite-per-Windows';
