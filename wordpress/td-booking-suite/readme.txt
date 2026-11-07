@@ -67,10 +67,11 @@ coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sin
 la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
 L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
 
-Aggiornamenti dal repository pubblico (2.22.1). Il plugin controlla ogni 12 ore l'ultimo rilascio di
-github.com/Giuseppe-sciarra/TD-Booking-Suite (senza chiavi: i rilasci sono pubblici) e, se c'è una versione più nuova con il
-suo zip allegato, WordPress la mostra in Plugin e la installa come ogni altro aggiornamento; "Controlla di nuovo" in
-Aggiornamenti forza il controllo. Senza licenza il plugin resta inutile: lo zip pubblico non dà niente a chi non ha il programma.
+Aggiornamenti dalla vetrina pubblica (2.22.1). Lo zip del plugin (td-booking-suite-<versione>.zip) sta nei rilasci di
+github.com/Giuseppe-sciarra/TD-Booking-Suite-per-Windows, accanto all'MSI: ce lo mette il rilascio di Windows. Il plugin
+controlla ogni 12 ore l'ultimo rilascio (senza chiavi: sono pubblici) e, se c'è una versione più nuova con lo zip, WordPress la
+mostra in Plugin e la installa come ogni altro aggiornamento; "Controlla di nuovo" in Aggiornamenti forza il controllo. Senza
+licenza il plugin resta inutile: lo zip pubblico non dà niente a chi non ha il programma.
 
 Prima dell'arrivo, Dopo la visita, Richiamo e Si è liberato un posto (2.22.1). Con il sito che gestisce le email, anche queste
 quattro le decide e le manda il sito da solo, ogni 5 minuti con gli altri promemoria, dai dati che il PC sincronizza: le

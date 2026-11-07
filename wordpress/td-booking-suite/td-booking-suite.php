@@ -1035,10 +1035,10 @@ function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client,$pieces=
         'service'=>$name,'service_id'=>(string)$sv['id'],'operator'=>$who,'location'=>(string)($sv['location']??''),
         'start'=>(new DateTime($date.' '.$time,$tz))->getTimestamp(),'end'=>(new DateTime($date.' '.$end,$tz))->getTimestamp());
 }
-/* ---------- 2.22.1 updates from the public releases (github.com/Giuseppe-sciarra/TD-Booking-Suite): the repository's
-   workflow attaches td-booking-suite-<versione>.zip to each release; WordPress shows the new version in Plugin and installs
-   it like any other update. Asked at most every 12 hours, without any key: the releases are public. */
-const TDBS_REPO='Giuseppe-sciarra/TD-Booking-Suite';
+/* ---------- 2.22.1 updates from the public showcase (github.com/Giuseppe-sciarra/TD-Booking-Suite-per-Windows): the
+   Windows release attaches td-booking-suite-<versione>.zip there with the MSI; WordPress shows the new version in Plugin
+   and installs it like any other update. Asked at most every 12 hours, without any key: the releases are public. */
+const TDBS_REPO='Giuseppe-sciarra/TD-Booking-Suite-per-Windows';
 function tdbs_latest() {
     $hit=get_site_transient('tdbs_latest');
     if (is_array($hit) && (int)($hit['at']??0)>time()-12*HOUR_IN_SECONDS) return $hit;
