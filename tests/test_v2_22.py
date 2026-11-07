@@ -67,7 +67,7 @@ def test_rows_in_sospeso_go_on_the_card_and_come_back(shop):
     card=owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
     assert "Preventivo pagamenti cassa" not in card and "sospeso" not in card and 'title="Fatto, non ancora in uno scontrino">*</abbr>' in card
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert "Non nello scontrino" in page and "Piega (Cristina)" in page and "Preventivo pagamenti cassa" not in page and "In sospeso" not in page
+    assert "Piega (Cristina)" not in page and 'id="preventivo-cassa"' not in page and "till-waiting" not in page and "Preventivo pagamenti cassa" not in page and "In sospeso" not in page  # nothing reminds it in the Cassa: the owner decides
     rep=owner.get("/t/salone/report/").content.decode()
     assert "Trattamenti non nello scontrino" in rep and "<td>Piega</td>" in rep and "Preventivo pagamenti cassa" not in rep
     assert "<td>Cristina</td><td>1</td><td>20,00</td>" in rep.replace("</td>\n<td>","</td><td>") or "Cristina" in rep  # her work of today, with its money
@@ -80,13 +80,8 @@ def test_rows_in_sospeso_go_on_the_card_and_come_back(shop):
     with scope(t):
         assert not Parked.objects.exists() and Sale.objects.count()==2
         s2=Sale.objects.order_by("-created").first();assert s2.contact_id==b.contact_id and s2.total==Decimal("20.00")
-        assert s2.data["done_before"]=={"cents":2000,"by":{"Cristina":2000}}  # the money of work already in the record, by her
+        assert "done_before" not in s2.data  # the receipt counts its full money: the row outside a receipt never went into the takings
         tr=[r for r in treatments(b.contact) if r.info.get("kind")=="parked_paid"];assert len(tr)==1  # the mark is gone
-        # the receipt emitted: its record row is a payment (no new visit), with no money counted twice
-        while (q:=cassa.claim(loc)) and q.pk!=s2.pk:cassa.finish(t,q,"done",{"z":"1","number":"6"})  # the first receipt of the test, queued before
-        cassa.finish(t,q,"done",{"z":"1","number":"7"})
-        rows_=treatments(b.contact);paid=[r for r in rows_ if r.info.get("kind")=="payment"]
-        assert len(paid)==1 and paid[0].info["amount"]==0 and "Piega" in paid[0].info["service"]
     assert "*</abbr>" not in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
 
 def test_whole_bill_in_sospeso_toggle_many_times_and_drop(shop):

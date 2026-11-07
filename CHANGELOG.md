@@ -35,6 +35,9 @@
 - **Nascondi nomi** tolto dalla barra in alto: non serviva al banco.
 - **Non nello scontrino** (era «In sospeso» / Preventivo pagamenti cassa): la riga esclusa dallo scontrino va subito tra i **Trattamenti** del cliente, con operatore e importo, segnata con un asterisco finché non entra in uno scontrino, e conta nei Report come lavoro del giorno in cui è stata fatta (quando poi passa nello scontrino non si conta due volte). Nessun riquadro «da pagare» nella scheda né nel riepilogo dell'agenda: la Cassa la ricorda da sola quando scegli il cliente. Il pulsante del conto si chiama **Paga in cassa**.
 - **Registratore di cassa più corto**: *Prova collegamento* e *Stampa scontrino di prova* stanno in cima, sotto il nome della sede; la tabella dei reparti servizio per servizio è chiusa in *Reparti diversi per singoli servizi (facoltativo)* e si apre da sola solo se qualcosa è impostato.
+- **Cassa**: un conto rifiutato (manca un prezzo, codice gift card sbagliato) non si svuota più: torna com'era con il messaggio, e un prezzo mancante viene segnalato sotto la casella prima ancora di inviare. I modi di pagamento sono pulsanti grandi e squadrati come il resto, non i cerchietti del browser. Niente promemoria dei trattamenti «non nello scontrino» dentro la Cassa: stanno nella scheda del cliente (con l'asterisco) e nei Report, ed è il titolare a decidere quando farli pagare.
+- **Messaggi come toast**: «Salvato», «Conto inviato» e gli altri compaiono in basso a destra e spariscono da soli (un errore aspetta OK); dopo un salvataggio la pagina resta dove eri, non salta più in cima. Icone sui modi di pagamento della Cassa.
+- **Edizione Windows: PDF senza bordo nero**: nel tema scuro i margini del PDF prendevano il colore di sfondo della finestra; ora sono bianchi.
 
 ## 2.21.0 — il sito gestisce prenotazioni ed email
 

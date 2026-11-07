@@ -1419,6 +1419,11 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .dialog h2{margin:0 0 8px;font-size:20px}.dialog p{margin:0;font-size:15px}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.dialog-actions button{margin:0}
 .keys{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;align-items:center;margin:16px 0 0}.keys dt{white-space:nowrap}.keys dd{margin:0;color:var(--muted)}
+/* 2.22.0: the messages after a save are toasts at the bottom, not a banner that takes the page to the top: a success goes by itself, an error waits for OK */
+.flash{position:fixed;right:24px;bottom:24px;z-index:60;display:flex;flex-direction:column;gap:10px;max-width:min(520px,calc(100vw - 48px))}
+.flash .notice{margin:0;box-shadow:0 18px 40px -16px #1d1527b3;display:flex;align-items:center;gap:14px;animation:toast-in .35s cubic-bezier(.2,.9,.3,1.2)}.flash .notice>span{flex:1}.flash .notice button{flex:none;margin:0}
+.flash .notice.out{opacity:0;transition:opacity .4s}
+@media print{.flash{display:none}}
 .toast{position:fixed;left:50%;bottom:28px;z-index:60;transform:translateX(-50%);padding:12px 22px;border-radius:999px;background:var(--ink);color:var(--paper);font-size:14px;font-weight:600;box-shadow:0 18px 40px -16px #1d1527b3;animation:toast-in .35s cubic-bezier(.2,.9,.3,1.2)}
 .toast.out{opacity:0;transform:translate(-50%,12px);transition:opacity .4s,transform .4s}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,18px)}}
@@ -1441,7 +1446,14 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 #till-search{width:100%;margin:4px 0 8px}
 .till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-desc .till-staff{display:block;width:100%;margin-top:6px;min-height:34px;padding-top:4px;padding-bottom:4px;font-size:.9em}
 .till-total{display:flex;justify-content:flex-end;align-items:baseline;gap:10px}.till-total strong{font-size:26px;line-height:1.2}
-.till-pay{border:0;padding:0;margin:12px 0}.till-pay legend{font-weight:600;margin-bottom:4px}.till-pay .check{display:inline-flex;align-items:center;white-space:nowrap;margin:6px 18px 6px 0}.till-pay .check input{flex:none;width:auto;height:auto;margin:0 6px 0 0}
+.till-pay{border:0;padding:0;margin:12px 0}.till-pay legend{font-weight:600;margin-bottom:8px}
+/* 2.22.0: the way of paying as big rounded buttons, like the rest of the Cassa, not the browser's little circles */
+.pay-choices{display:flex;flex-wrap:wrap;gap:10px}.pay-choice{position:relative;display:inline-flex;align-items:center;gap:10px;padding:12px 18px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font-weight:600;font-size:1em;cursor:pointer;user-select:none;min-height:48px}
+.pay-choice input{position:absolute;opacity:0;width:1px;height:1px;margin:0}.pay-choice span{display:inline-flex;align-items:center;gap:10px}.pay-choice span::before{content:"";display:inline-block;width:20px;height:20px;border:2px solid var(--line);border-radius:6px;background:var(--paper);box-sizing:border-box;flex:none}
+.pay-choice .nav-ico{width:26px;height:26px;color:var(--brand);flex:none}
+.pay-choice:hover{border-color:var(--muted)}.pay-choice:has(input:checked){border-color:var(--brand);background:var(--soft);box-shadow:inset 0 0 0 1px var(--brand)}
+.pay-choice:has(input:checked) span::before{border-color:var(--brand);background:var(--brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/14px no-repeat}
+.pay-choice:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
 .till-bill details{margin:10px 0}.till-found{margin-top:6px;display:grid;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper)}.till-found:empty{display:none}.till-found li+li{border-top:1px solid var(--line)}.till-found button{display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-radius:0;background:transparent;font-weight:600;cursor:pointer}.till-found button:hover,.till-found button:focus-visible{background:var(--soft);color:var(--ink)}
 .till-today li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}.till-today .actions{margin:0}
 .till-copy{max-width:440px}.till-copy li{padding:2px 0}

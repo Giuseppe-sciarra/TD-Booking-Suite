@@ -265,15 +265,7 @@ def record(tenant,sale,what,rows,sign=1):
     staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff"))) or (sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else "")
     day=(sale.printed or timezone.now()).astimezone(ZoneInfo(tenant.timezone)).date()
     total=paid(sale);by={k:sign*v for k,v in shares(sale.data,total).items()}
-    # 2.22.0: the rows «Non nello scontrino» went in the record (and the reports) on the day of the work: here only the money
-    # of the rest; a receipt made only of them is a payment, not one more visit
-    done=sale.data.get("done_before") or {}
-    if done:
-        for who,c in done.get("by",{}).items():by[who]=by.get(who,0)-sign*c
-        by={k:v for k,v in by.items() if v};total-=done.get("cents",0)
-    d={"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000],"amount":sign*total,"by":by}
-    if done and total<=0:d["kind"]="payment"
-    save_treatment(tenant,sale.contact,d,None,booking=sale.booking)
+    save_treatment(tenant,sale.contact,{"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000],"amount":sign*total,"by":by},None,booking=sale.booking)
 def paid(sale):
     """2.20.9: the cents the client has paid: a «Da pagare» still open is not money in (it goes in on the day he pays)."""
     return int(sale.total*100)-(0 if sale.settled else int(sale.due*100))
@@ -513,13 +505,7 @@ def sell(request,t,loc,booking,action):
         if not email:raise ValueError("Per la copia per email scegli un cliente con l'email nella scheda.")
         d.update(copy=True,email=email)
     parked_x=park(t,loc,contact,booking,later,key+"p",request.user,note) if has_rows(later) else None
-    if taken:
-        before={"cents":0,"by":{}}
-        for x in taken:
-            c=int(x.total*100);before["cents"]+=c
-            for who,v in shares(x.data,c).items():before["by"][who]=before["by"].get(who,0)+v
-        d["done_before"]=before
-        for x in taken:settled(t,x)
+    for x in taken:settled(t,x)
     sale=enqueue(t,loc,key=key,booking=booking,contact=contact,total=Decimal(total)/100,due=Decimal(due)/100,actor=str(request.user.pk),data=d)
     gift.reserve(t,sale)
     for l,c in zip(sold,codes):
@@ -593,7 +579,8 @@ def till_view(request,slug):
             elif action=="mail" and sale.status in ("done","void"):
                 messages.success(request,"Copia inviata per email." if send_copy(t,sale) else "Il cliente non ha chiesto la copia per email.")
             return redirect(back)
-        except ValueError as ex:messages.error(request,str(ex))
+        except ValueError as ex:messages.error(request,str(ex));again=request.POST
+    else:again=None
     stale(loc)
     tz=ZoneInfo(t.timezone);today=datetime.combine(timezone.now().astimezone(tz).date(),datetime.min.time(),tz)
     copy=get_object_or_404(Sale,pk=request.GET["copia"],location=loc) if request.GET.get("copia") else None
@@ -639,6 +626,12 @@ def till_view(request,slug):
         d=x.data;x.lines=d.get("lines",[]);x.note=d.get("note","");x.who=" ".join(v for v in (x.contact.data.get("first_name",""),x.contact.data.get("last_name","")) if v) if x.contact_id and names_ok else ("Cliente" if x.contact_id else "")
     ids={str(x.pk) for x in taken}
     waiting=[x for x in parked if contact and x.contact_id==contact.pk and str(x.pk) not in ids]  # the client of this bill has more to pay
+    if again is not None:
+        # 2.22.0: the bill as it was typed, the refused one: rows, discount, client, so the person fixes the one thing and sends again
+        n=len(again.getlist("desc"));col=lambda k:(again.getlist(k)+[""]*n)[:n]
+        lines=[{"desc":d,"qty":q or 1,"price":p,"off":o,"staff":st,"svc":sv,"park":pk=="1"} for d,q,p,o,st,sv,pk in zip(col("desc"),col("qty"),col("price"),col("off"),col("staff"),col("svc"),col("park")) if d.strip() or p.strip()]
+        discount=again.get("discount","");taken=[]
+        if again.get("contact") and can(request,"contacts.read"):contact=Contact.objects.filter(pk=again["contact"]).first() or contact
     today_d=timezone.now().astimezone(tz).date()
     return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"top":top,"count":len(items),"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),

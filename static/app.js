@@ -6,6 +6,14 @@ document.addEventListener("invalid",e=>{const el=e.target;if(!(el instanceof HTM
  if(!document.querySelector("[aria-invalid=true]:focus")){el.scrollIntoView({block:"center"});el.focus({preventScroll:true});}
  const clear=()=>{note.remove();el.removeAttribute("aria-invalid");el.removeEventListener("input",clear);el.removeEventListener("change",clear);};
  el.addEventListener("input",clear);el.addEventListener("change",clear);},true);
+// 2.22.0: the page stays where it was after a save: the scroll position is kept across the form's redirect
+(()=>{const key="tdbs-scroll";try{const saved=sessionStorage.getItem(key);if(saved){sessionStorage.removeItem(key);const [path,y]=saved.split("|");if(path===location.pathname&&+y>0)addEventListener("load",()=>scrollTo(0,+y),{once:true});}}catch{}
+ document.addEventListener("submit",e=>{const f=e.target;if(!(f instanceof HTMLFormElement)||(f.method||"get").toLowerCase()!=="post"||f.hasAttribute("data-no-keep"))return;try{sessionStorage.setItem(key,location.pathname+"|"+Math.round(scrollY));}catch{}});
+})();
+// 2.22.0: the messages of a save as toasts: a success goes by itself after a few seconds, an error waits for OK
+(()=>{const boxes=[...document.querySelectorAll("[data-flash]")];if(boxes.length>1)boxes.slice(1).forEach(b=>{boxes[0].append(...b.children);b.remove();});
+ const items=document.querySelectorAll("[data-flash-item]");items.forEach(n=>{const close=()=>{n.classList.add("out");setTimeout(()=>n.remove(),400);};n.querySelector("[data-flash-ok]").addEventListener("click",close);
+ if(!n.classList.contains("error")&&!n.classList.contains("warning"))setTimeout(close,5000);});})();
 // 2.22.0: the one question dialog of every page (base.html): title, text parts, the yes button (none: a message with Chiudi)
 window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
  const dialog=document.querySelector("[data-ask-dialog]");
@@ -509,7 +517,13 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
  const num=v=>parseFloat(String(v||"").replace(",","."))||0;
  const eur=v=>Math.max(0,v).toFixed(2).replace(".",",")+" €";let credit=0;
- // 2.22.0: the rows «In sospeso» stay out of the total (they go in Preventivo pagamenti cassa), a gift card takes its credit off
+ // 2.22.0: a row with a description and no price stops the bill here, on that field, with a note: nothing is sent and nothing is lost
+ form.addEventListener("submit",e=>{const act=e.submitter?.value||"";if(act&&act!=="sell"&&act!=="park")return;
+  for(const r of body.querySelectorAll("tr")){const d=r.querySelector("[name=desc]"),p=r.querySelector("[name=price]");if(!d||!p||!d.value.trim()||num(p.value)>0)continue;
+   e.preventDefault();let note=p.nextElementSibling;if(!note||!note.hasAttribute("data-invalid")){note=document.createElement("small");note.setAttribute("data-invalid","");note.className="field-invalid";p.insertAdjacentElement("afterend",note);}
+   note.textContent="Manca il prezzo";p.setAttribute("aria-invalid","true");p.scrollIntoView({block:"center"});p.focus({preventScroll:true});
+   p.addEventListener("input",()=>{note.remove();p.removeAttribute("aria-invalid");},{once:true});return;}});
+ // 2.22.0: the rows «Non nello scontrino» stay out of the total, a gift card takes its credit off
  const sum=()=>{let t=0,later=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim(),net=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));if(r.querySelector("[name=park]").value==="1")later+=net;else t+=net;});const d=form.querySelector("[name=discount]").value.trim();t-=d.endsWith("%")?t*num(d.slice(0,-1))/100:num(d);t=Math.max(0,t);
   const want=form.querySelector("[data-till-gift-take]").value.trim(),use=Math.min(t,want?Math.min(credit,num(want)):credit),g=form.querySelector("[data-till-gift-total]");
   total.textContent=eur(t-use);g.hidden=!use;g.textContent=use?"Gift card −"+eur(use)+" su "+eur(t):"";
@@ -560,7 +574,8 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
      // 2.22.0: his gift cards with credit, and what he has in Preventivo pagamenti cassa
      const extra=form.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
       (c.gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small";x.textContent="Usa gift card "+g.code+" · "+g.balance+" €";x.addEventListener("click",()=>use(g.code));extra.append(x);});
-      (c.parked||[]).forEach(p=>{const a=document.createElement("a");a.className="button secondary small";const q=new URLSearchParams(location.search);q.append("sospeso",p.id);a.href="?"+q.toString();a.textContent="Non nello scontrino "+p.total+" € del "+p.day+": aggiungi al conto";extra.append(a);});
+      // 2.22.0: what the client has outside a receipt is not reminded here: it is in his record, the owner decides
+
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
 })();
 // 2.22.0: a client chosen by typing (gift card, quote): the id in the hidden field, «client-picked» for who wants the rest

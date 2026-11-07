@@ -100,6 +100,10 @@ ICONS.update({
  "absent":'<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
  "late":'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>',
  "hourglass":'<path d="M6.5 3h11M6.5 21h11M7.5 3c0 5 9 5 9 9s-9 4-9 9M16.5 3c0 5-9 5-9 9s9 4 9 9"/>',
+ "cash":'<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5h.01M18 14.5h.01"/>',
+ "card":'<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 9.5h19M6.5 15h4"/>',
+ "wallet":'<path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h12v3.5M3.5 7.5V17a2.5 2.5 0 0 0 2.5 2.5h13V8.5H6a2.5 2.5 0 0 1-2.5-1z"/><circle cx="16" cy="14" r="1.3"/>',
+ "clock":'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
  "gift":'<rect x="3.5" y="8.5" width="17" height="4" rx="1"/><path d="M5 12.5V20h14v-7.5M12 8.5V20M12 8.5C10 4 6.5 4.5 7.5 7c.5 1.2 2.5 1.5 4.5 1.5zm0 0c2-4.5 5.5-4 4.5-1.5-.5 1.2-2.5 1.5-4.5 1.5z"/>'})
 @register.simple_tag
 def icon(name):
