@@ -949,7 +949,11 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .agenda-item{position:relative;z-index:2;margin:1px 3px;padding:3px 8px;border-radius:7px;background:var(--soft);border-left:3px solid var(--brand);color:var(--ink);overflow:hidden;font-size:12.5px;line-height:1.3;display:flex;flex-direction:column}
 .agenda-item:hover{text-decoration:none;box-shadow:0 4px 14px -6px color-mix(in srgb,var(--brand) 60%,transparent)}
 .agenda-item strong{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.agenda-item small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
+/* 2.22.0: a short appointment (10-15 minutes, one row) shows one readable line: time and client, the service on hover */
+.agenda-item{container-type:size}
+@container (max-height:26px){.agenda-item{padding:0 8px;justify-content:center;font-size:12px}.agenda-item strong{line-height:1.2}.agenda-item small{display:none}}
+.agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}
+.wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}
 @media(max-width:700px){.agenda{--lane:minmax(110px,1fr)}.agenda-card{overflow-x:auto}.agenda-bar .segmented{margin-left:0}}
@@ -1236,7 +1240,7 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 
 /* 2.13.0: the emails to the clients, each with its preview */
 .client-mails{margin-top:34px}
-.mail-kinds{display:grid;gap:16px}
+.mail-kinds{display:grid;gap:16px}.mail-set{display:grid;gap:16px;border:0;padding:0;margin:0;min-width:0}.mail-set:disabled{opacity:.55}
 .mail-kind{padding:0;overflow:hidden}
 .mail-kind-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--line)}
 .mail-kind-head h3{margin:0;font-size:17px}.mail-kind-head p{margin:3px 0 0}
@@ -1280,7 +1284,7 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 .brand-mark img{display:block;max-width:100%;max-height:100%;object-fit:contain}
 .brand-letter{display:grid;place-items:center;width:calc(100% + 12px);height:calc(100% + 12px);margin:-6px;background:var(--pick);color:#fff;font:700 22px/1 var(--head)}
 .color-pick{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.color-pick input[type=color]{width:52px;height:44px;padding:3px;cursor:pointer}
+.color-pick input[name=brand_color]{width:110px;font-family:ui-monospace,Consolas,monospace}.color-chip{width:40px;height:40px;border-radius:10px;background:var(--pick,var(--brand));box-shadow:inset 0 0 0 1px #0002;flex:none}
 .swatches{display:flex;flex-wrap:wrap;gap:8px}
 .swatch{width:28px;height:28px;min-height:0;margin:0;padding:0;border-radius:50%;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--line);cursor:pointer;transition:transform .15s}
 .swatch:hover{transform:scale(1.12)}
@@ -1442,9 +1446,11 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-copy{max-width:440px}.till-copy li{padding:2px 0}
 @media (max-width:900px){.till{grid-template-columns:1fr}}
 @media print{
- @page{margin:12mm}
- :root,:root[data-theme]{color-scheme:light;--bg:#fff;--paper:#fff;--ink:#000;--muted:#444;--line:#aaa;--soft:#f2f2f2}
- body{background:#fff;color:#000;font-size:10.5pt}
+ @page{size:A4;margin:16mm 15mm}
+ /* 2.22.0: !important, else the dark palette that follows Windows (prefers-color-scheme) won and the PDF came out black */
+ :root,:root[data-theme],:root:not([data-theme=light]){color-scheme:light;--bg:#fff!important;--paper:#fff!important;--ink:#111!important;--muted:#555!important;--line:#c8c8c8!important;--soft:#f2f2f2!important;--side:#fff!important;--shadow:none!important}
+ html,body{background:#fff!important;color:#111;font-size:11pt;line-height:1.45}
+ :root:not([data-theme=light]) .for-light{display:block!important}:root:not([data-theme=light]) .for-dark{display:none!important}
  .sidebar,.topbar,footer,.skip,.no-print,.agenda-bar,.state-legend,.page-heading .actions,main>.notice,.toast,dialog,.agenda-free,.agenda-grip{display:none!important}
  .shell{margin:0!important}main{padding:0!important;max-width:none!important}
  .page-heading{margin-bottom:10pt}.page-heading h1{font-size:18pt}
@@ -1542,8 +1548,11 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 /* 2.20.8: Cassa, the most used services on top, all the others one click away */
 .till-all{margin-top:14px}.till-all>summary{cursor:pointer;font-weight:600;padding:10px 0;color:var(--brand)}
 /* 2.20.8: the PDF of a report table fits the page: nothing cut on the sides */
-@media print{@page{size:A4;margin:12mm}body.print-one .table-scroll{overflow:visible!important}body.print-one .printing table{width:100%;table-layout:auto;font-size:9pt}
- body.print-one .printing th,body.print-one .printing td{padding:4px 6px;white-space:normal;word-break:break-word}body.print-one .report-charts{grid-template-columns:1fr 1fr}}
+@media print{body.print-one .table-scroll{overflow:visible!important}body.print-one .printing table{width:100%;table-layout:auto;font-size:9.5pt}
+ body.print-one .printing th,body.print-one .printing td{padding:6px 8px;white-space:normal;word-break:break-word;border-bottom:1px solid #ddd}
+ body.print-one .printing thead th{background:#f1f1f1;color:#333;border-bottom:1px solid #999;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em}
+ body.print-one .printing h2{font-size:16pt;margin:0 0 4pt}body.print-one .printing h2+p,body.print-one .printing .section-heading p{margin:0 0 12pt}
+ body.print-one .report-charts{grid-template-columns:1fr 1fr}}
 /* 2.22.0: Cassa: rows «In sospeso» (Preventivo pagamenti cassa), gift cards, the closure missing */
 .till-row-end{white-space:nowrap}
 .till-park-cell{white-space:nowrap}
@@ -1566,36 +1575,53 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-close-alert .actions{margin:0}
 .till-park-all{margin-top:10px}
 .gift-list>li{display:block}
+.gift-amounts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.gift-sell .form-grid{align-items:end}
 .gift-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start}
 .gift-code{font-family:ui-monospace,Consolas,monospace;letter-spacing:.08em;font-size:1.05em}
 .gift-edit .form-grid{align-items:start}
-.gift-card-print{max-width:520px;margin:0 auto;text-align:center;padding:28px 24px;border:2px dashed var(--line);border-radius:18px}
+.gift-card-print{max-width:560px;margin:0 auto;text-align:center;padding:40px 32px;border:2px dashed var(--line);border-radius:18px;line-height:1.5}
 .gift-card-print h2{margin:.2em 0}
 .gift-logo{max-height:70px;max-width:220px;object-fit:contain;margin-bottom:8px}
-.gift-value{font-size:2.6rem;font-weight:800;margin:.2em 0}
+.gift-value{font-size:3.2rem;font-weight:800;margin:.15em 0 .3em;letter-spacing:-.01em}
 .gift-code-big{font-family:ui-monospace,Consolas,monospace;font-size:1.8rem;letter-spacing:.18em;font-weight:700;background:var(--soft);display:inline-block;padding:8px 16px;border-radius:10px}
-@media print{body.print-one .gift-card-print{border-color:#999}}
+@media print{body.print-one .gift-card-print{border-color:#999;max-width:150mm;margin-top:20mm}body.print-one .gift-code-big{background:#f1f1f1}}
 /* 2.22.0: Preventivi */
 .quote-lines td:first-child{min-width:240px}
 .quote-amount{white-space:nowrap;text-align:right}
 .label-like{display:block;margin-bottom:6px}
-.quote-sheet{max-width:820px}
-.quote-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid var(--ink);margin-bottom:18px}
-.quote-brand{display:flex;flex-direction:column;gap:2px}
-.quote-brand strong{font-size:1.15rem}
-.quote-logo{max-height:72px;max-width:220px;object-fit:contain;margin-bottom:8px;align-self:flex-start}
-.quote-meta{text-align:right}.quote-meta p{margin:0}
-.quote-ref{font-size:1.4rem;font-weight:800}
-.quote-client{display:flex;flex-direction:column;gap:2px;margin-bottom:18px}
-.quote-client .eyebrow,.quote-meta .eyebrow,.quote-notes .eyebrow{margin:0 0 2px}
-.quote-table{width:100%;border-collapse:collapse}
-.quote-table th,.quote-table td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+.quote-sheet{max-width:820px;padding:40px 44px}
+.quote-head{display:flex;justify-content:space-between;gap:32px;align-items:flex-start;padding-bottom:20px;border-bottom:2px solid var(--ink);margin-bottom:26px}
+.quote-brand{display:flex;flex-direction:column;gap:3px;color:var(--muted);font-size:.92em;line-height:1.4}
+.quote-brand strong{font-size:1.35rem;color:var(--ink);line-height:1.2;margin-bottom:4px}
+.quote-logo{max-height:64px;max-width:200px;object-fit:contain;margin-bottom:10px;align-self:flex-start}
+.quote-meta{text-align:right;flex:none}.quote-meta p{margin:0;line-height:1.5}
+.quote-meta .eyebrow{letter-spacing:.12em;text-transform:uppercase;font-size:.78em;color:var(--brand)}
+.quote-ref{font-size:1.7rem;font-weight:800;line-height:1.15;margin-bottom:4px!important}
+.quote-client{display:flex;flex-direction:column;gap:2px;margin:0 0 26px;padding:14px 18px;background:var(--soft);border-radius:var(--r-sm);line-height:1.45}
+.quote-client strong{font-size:1.15em}
+.quote-client .eyebrow,.quote-meta .eyebrow,.quote-notes .eyebrow{margin:0 0 4px;letter-spacing:.12em;text-transform:uppercase;font-size:.78em;color:var(--brand)}
+.quote-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.quote-table th,.quote-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.quote-table thead th{font-size:.8em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;background:var(--soft);border-bottom:1px solid color-mix(in srgb,var(--ink) 25%,transparent)}
+.quote-table thead th:first-child{border-radius:6px 0 0 0}.quote-table thead th:last-child{border-radius:0 6px 0 0}
+.quote-table tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--soft) 45%,transparent)}
 .quote-table .num{text-align:right;white-space:nowrap}
-.quote-table tfoot th{font-size:1.1rem;border-bottom:0;border-top:2px solid var(--ink)}
-.quote-table tfoot th:last-child{text-align:right}
-.quote-notes{margin-top:18px}
-.quote-foot{margin-top:24px}
-@media print{body.print-one .quote-sheet{max-width:none}body.print-one .quote-head{border-color:#000}}
+.quote-table tfoot th{font-size:1.2rem;padding-top:16px;border-bottom:0;border-top:2px solid var(--ink)}
+.quote-table tfoot th:last-child{text-align:right;font-size:1.35rem}
+.quote-notes{margin-top:26px;padding:14px 18px;border:1px solid var(--line);border-radius:var(--r-sm);line-height:1.5}.quote-notes p:last-child{margin:0}
+.quote-foot{margin-top:32px;padding-top:12px;border-top:1px solid var(--line);line-height:1.45}
+.client-history-sheet{padding:40px 44px}.client-history-sheet>h2{font-size:1.6rem;margin:0 0 4px}.client-history-sheet>.muted{margin:0 0 2px}
+.client-history-sheet .report-kpis{margin:22px 0 24px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.client-history-sheet .kpi{padding:12px 16px;gap:2px}.client-history-sheet .kpi strong{font-size:1.4em}
+.client-history-sheet h3{margin:28px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:1.05rem}.client-history-sheet ul.small{line-height:1.6}
+.history-table td strong{font-weight:600}
+@media print{
+ body.print-one .quote-sheet,body.print-one .client-history-sheet{max-width:none;padding:0!important}
+ body.print-one .quote-head{border-color:#000}body.print-one .quote-table tfoot th{border-top-color:#000}
+ body.print-one .quote-table thead th{background:#f1f1f1;color:#333;border-bottom-color:#999}body.print-one .quote-table tbody tr:nth-child(even) td{background:#fafafa}
+ body.print-one .quote-client{background:#f4f4f4}body.print-one .quote-meta .eyebrow,body.print-one .quote-client .eyebrow,body.print-one .quote-notes .eyebrow{color:#333}
+ body.print-one .client-history-sheet .kpi{border-color:#bbb;box-shadow:none;background:#fff}
+ body.print-one .quote-table tr,body.print-one .quote-table td,body.print-one .quote-table th{break-inside:avoid}
+}
 .client-alert.soft{background:var(--soft);border-color:var(--line)}
 .client-alert .allergy-mark .nav-ico{width:16px;height:16px}
 .history-table small{display:block;margin-top:2px}

@@ -189,7 +189,9 @@ class Tenant(models.Model):
     @property
     def stays(self):return self.business_type in ("hotel","casa_vacanze")
     @property
-    def asked_allergens(self):return list(self.allergens) if self.allergens_on else []
+    def asked_allergens(self):
+        from .presets import serves_food
+        return list(self.allergens) if self.allergens_on and serves_food(self.business_type) else []
 class Membership(models.Model):
     tenant=models.ForeignKey(Tenant,on_delete=models.CASCADE)
     user=models.ForeignKey(User,on_delete=models.CASCADE)

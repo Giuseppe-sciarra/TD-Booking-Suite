@@ -116,7 +116,7 @@ def test_the_day_shows_who_works_and_the_allergies(sample):
         taglio=Service.objects.get(name="Taglio");anna,bruno=Resource.objects.order_by("name")
         Resource.objects.filter(pk=anna.pk).update(name="Anna");Resource.objects.filter(pk=bruno.pk).update(name="Bruno")
         ExceptionDay.objects.create(tenant=t,resource=bruno,date=day,closed=True,label="Ferie")
-        Tenant.objects.filter(pk=t.pk).update(allergens=["Nichel","Lattosio"],allergens_on=True);t.refresh_from_db()
+        Tenant.objects.filter(pk=t.pk).update(allergens=["Nichel","Lattosio"],allergens_on=True,business_type="hotel");t.refresh_from_db()  # 2.22.0: allergens only where food is served
         create_booking(t,payload(taglio,resource=str(anna.pk),start=datetime.combine(day,time(10),tz).isoformat(),allergies=["Nichel"]))
     page=owner.get(f"/t/{t.slug}/bookings/?data={day.isoformat()}").content.decode()
     # Bruno is on holiday with nothing booked: no column, named above; Anna's client ticked an allergy

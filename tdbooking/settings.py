@@ -88,8 +88,10 @@ X_FRAME_OPTIONS="DENY"
 TRUST_PROXY=os.environ.get("TRUST_PROXY")=="1"
 FORMS_URLFIELD_ASSUME_HTTPS=True
 SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https") if os.environ.get("TRUST_PROXY")=="1" else None
-DATA_UPLOAD_MAX_MEMORY_SIZE=131072
-DATA_UPLOAD_MAX_NUMBER_FIELDS=2000  # 2.20.5: Registratore di cassa sends reparto and IVA of every service; the 128 KB body cap stays the real limit
+# 2.22.0: a form with more fields or bytes than this gets a bare 400 and the page looks dead (seen on a salon's PC with
+# 2000 fields and 128 KB); every form is behind a login, the limits only stop a runaway, so they are wide
+DATA_UPLOAD_MAX_MEMORY_SIZE=2*1024*1024
+DATA_UPLOAD_MAX_NUMBER_FIELDS=20000
 FILE_UPLOAD_MAX_MEMORY_SIZE=131072
 LOGIN_URL="/login/"
 EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
@@ -100,4 +102,8 @@ EMAIL_HOST_PASSWORD=os.environ.get("TRANSACTIONAL_SMTP_PASSWORD","")
 EMAIL_USE_TLS=True
 EMAIL_TIMEOUT=15
 DEFAULT_FROM_EMAIL=os.environ.get("TRANSACTIONAL_FROM","")
-LOGGING={"version":1,"disable_existing_loggers":False,"handlers":{"console":{"class":"logging.StreamHandler"}},"root":{"handlers":["console"],"level":"WARNING"}}
+LOGGING={"version":1,"disable_existing_loggers":False,"formatters":{"security":{"format":"%(levelname)s %(message)s %(request)s"}},
+    "handlers":{"console":{"class":"logging.StreamHandler"},"security":{"class":"logging.StreamHandler","formatter":"security"}},
+    "root":{"handlers":["console"],"level":"WARNING"},
+    # 2.22.0: a refused request (too many fields, too big, bad host) says which page: Django puts the request in extra
+    "loggers":{"django.security":{"handlers":["security"],"level":"WARNING","propagate":False}}}

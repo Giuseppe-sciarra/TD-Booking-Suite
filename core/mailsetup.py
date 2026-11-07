@@ -157,7 +157,7 @@ def page(request,target,title,description,saved_to=None):
         "method":method,"method_label":METHODS.get(method,""),"current":current,"redirect_uri":redirect_uri(),"target_url":target.url,
         "configured":config is not None,"own":own,"from_env":not target.tenant and not own and config is not None,"from_agency":bool(target.tenant) and not own and config is not None,
         "sender":config and formataddr((config.get("sender_name") or "",config["sender"])),"how":config and describe(config),
-        "back":None if target.tenant else "site_settings"})
+        "site_mails":bool(target.tenant) and __import__("core.wpsync",fromlist=["by_site"]).by_site(target.tenant),"back":None if target.tenant else "site_settings"})
 
 def google_callback(request):
     """Google comes back here after the consent page, for the agency or for a business."""

@@ -1,3 +1,13 @@
+// 2.22.0: the one question dialog of every page (base.html): title, text parts, the yes button (none: a message with Chiudi)
+window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
+ const dialog=document.querySelector("[data-ask-dialog]");
+ if(!dialog){done(yes?confirm(title):(alert(title),false));return;}
+ const ok=dialog.querySelector("[data-yes]"),no=dialog.querySelector("[data-no]");
+ dialog.querySelector("[data-title]").textContent=title;dialog.querySelector("[data-text]").replaceChildren(...parts);
+ ok.hidden=!yes;ok.textContent=yes||"";ok.className=danger?"danger":"primary";no.textContent=!yes?"Chiudi":/^annull/i.test(yes)?"Lascia stare":"Annulla";
+ const end=v=>{ok.onclick=no.onclick=dialog.oncancel=null;dialog.close();done(v);};
+ ok.onclick=()=>end(true);no.onclick=()=>end(false);dialog.oncancel=e=>{e.preventDefault();end(false);};
+ dialog.showModal();(yes?ok:no).focus();});
 "use strict";
 (() => {
  const $=s=>document.querySelector(s);
@@ -92,7 +102,7 @@
   const file=form.querySelector("[data-brand-file]"),color=form.querySelector("[data-brand-color]"),line=form.querySelector("[data-brand-tagline]");
   const remove=form.querySelector("[data-brand-remove]"),preview=form.querySelector("[data-brand-preview]"),marks=[...form.querySelectorAll("[data-brand-mark]")];
   const original=marks.map(m=>m.innerHTML),letter=(form.dataset.name||"?").trim().charAt(0).toUpperCase();
-  const paint=()=>{form.style.setProperty("--pick",color.value);};
+  const chip=form.querySelector("[data-brand-chip]"),paint=()=>{const v=color.value.trim();if(/^#[0-9a-fA-F]{6}$/.test(v)){form.style.setProperty("--pick",v);if(chip)chip.style.background=v;}};
   const show=src=>marks.forEach((m,i)=>{m.replaceChildren();
    if(src){const img=document.createElement("img");img.src=src;img.alt="";m.append(img);}
    else if(src===null){const s=document.createElement("span");s.className="brand-letter";s.textContent=letter;m.append(s);}
@@ -241,20 +251,17 @@
  cta?.addEventListener("click",e=>{if(swap(trialBox,loginBox,cta.getAttribute("href")))e.preventDefault();});
  document.querySelectorAll("[data-trial-close]").forEach(a=>a.addEventListener("click",e=>{if(swap(loginBox,trialBox,a.getAttribute("href")))e.preventDefault();}));
  // one listener for the whole page: the buttons of a list refreshed in place ask too (2.14.0)
- document.addEventListener("click",e=>{const button=e.target.closest("[data-confirm]");if(button&&!confirm(button.dataset.confirm))e.preventDefault();});
+ // 2.22.0: every confirmation is a dialog of the page, never one of Windows: in the Windows program the browser's
+ // confirm() became a Windows window that could stay behind, and the page waited for it with everything dead
+ document.addEventListener("click",e=>{const button=e.target.closest("[data-confirm]");if(!button||button.dataset.confirmed)return;e.preventDefault();
+  window.tdAsk("Confermi?",[button.dataset.confirm],button.textContent.trim().replace(/\s+/g," ").slice(0,40)||"OK",button.classList.contains("danger-text")||button.classList.contains("danger")).then(ok=>{if(!ok)return;
+   button.dataset.confirmed="1";try{if(button.form)button.form.requestSubmit(button);else button.click();}finally{delete button.dataset.confirmed;}});});
  const csrf=()=>document.querySelector("[name=csrfmiddlewaretoken]")?.value||"";
  // 2.14.0: the agenda at the desk. An appointment dragged to another time or operator (another day in the week), or
  // its lower edge to change how long it lasts: mouse at once, a finger after a long press, a confirmation, then the
  // desk's rules on the server, with Forza where the role has it. The Sposta page stays the way by keyboard
- const dialog=$("[data-drop-dialog]");
  const veiledName=text=>{const s=document.createElement("span");s.className="pv";s.textContent=text;return s;};
- const ask=(title,parts,yes,danger)=>new Promise(done=>{
-  const ok=dialog.querySelector("[data-yes]"),no=dialog.querySelector("[data-no]");
-  dialog.querySelector("[data-title]").textContent=title;dialog.querySelector("[data-text]").replaceChildren(...parts);
-  ok.hidden=!yes;ok.textContent=yes||"";ok.className=danger?"danger":"primary";no.textContent=yes?"Annulla":"Chiudi";
-  const end=v=>{ok.onclick=no.onclick=dialog.oncancel=null;dialog.close();done(v);};
-  ok.onclick=()=>end(true);no.onclick=()=>end(false);dialog.oncancel=e=>{e.preventDefault();end(false);};
-  dialog.showModal();(yes?ok:no).focus();});
+ const ask=window.tdAsk;
  const say=text=>{const t=document.createElement("div");t.className="toast";t.setAttribute("role","status");t.textContent=text;document.body.append(t);setTimeout(()=>t.classList.add("out"),3600);setTimeout(()=>t.remove(),4200);};
  const hm=m=>String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
  const lanes=agenda=>[...agenda.querySelectorAll("[data-drop]")];
@@ -365,15 +372,8 @@
   const key=document.querySelector('[data-key="'+CSS.escape(e.key.length===1?e.key.toLowerCase():e.key)+'"]');
   if(key){e.preventDefault();key.click();}});
 
- // 2.14.0: Nascondi nomi: names and prices blurred on a screen the clients can see, remembered on this device
- const privacy=$("[data-privacy-toggle]");
- let veiled=false;try{veiled=localStorage.getItem("tdbs-privacy")==="1";}catch{}
- function veil(){document.documentElement.toggleAttribute("data-privacy",veiled);
-  // a name in a tooltip would show on hover
-  document.querySelectorAll(".agenda-item[title],.agenda-item[data-title]").forEach(a=>{if(veiled&&a.title){a.dataset.title=a.title;a.removeAttribute("title");}else if(!veiled&&a.dataset.title){a.title=a.dataset.title;delete a.dataset.title;}});
-  if(privacy){privacy.setAttribute("aria-pressed",String(veiled));privacy.querySelector("span").textContent=veiled?"Mostra nomi":"Nascondi nomi";}}
- privacy?.addEventListener("click",()=>{veiled=!veiled;try{localStorage.setItem("tdbs-privacy",veiled?"1":"0");}catch{}veil();});
- veil();
+ // 2.22.0: Nascondi nomi is gone (never used at the desk); a veil left on a device from before is cleared
+ try{if(localStorage.getItem("tdbs-privacy")=="1")localStorage.removeItem("tdbs-privacy");}catch{}
  // only the paper sheets (agenda of the day, copy of the receipt): a Report table has its own id and its PDF below.
  // 2.20.10: it was on every [data-print], so in the Windows program the print dialog opened next to the PDF into Download
  // 2.20.11: in the Windows program (2.20.11 on) the Windows print dialog, not the browser's
@@ -494,6 +494,8 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  c.addEventListener("pointermove",e=>{if(!on)return;x.lineTo(...at(e));x.stroke();});
  const end=()=>{if(on)out.value=c.toDataURL("image/png");on=false;};c.addEventListener("pointerup",end);c.addEventListener("pointercancel",end);
  c.closest("form").querySelector("[data-sign-clear]")?.addEventListener("click",()=>{x.clearRect(0,0,c.width,c.height);out.value="";});});
+// 2.22.0: Gift card page: an amount pressed goes in the field; the form opens the Cassa with the card in the bill
+document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("click",()=>{const f=b.closest("form").querySelector("[data-gift-amount]");f.value=b.dataset.giftPreset;f.focus();}));
 // 2.16.0: Cassa: tap a service to add it, quantity, price and lines by hand, the total as it is typed, the client looked up
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
@@ -503,7 +505,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  const sum=()=>{let t=0,later=0;body.querySelectorAll("tr").forEach(r=>{const full=num(r.querySelector("[name=qty]").value)*num(r.querySelector("[name=price]").value),o=r.querySelector("[name=off]").value.trim(),net=full-Math.min(full,o.endsWith("%")?full*num(o.slice(0,-1))/100:num(o));if(r.querySelector("[name=park]").value==="1")later+=net;else t+=net;});const d=form.querySelector("[name=discount]").value.trim();t-=d.endsWith("%")?t*num(d.slice(0,-1))/100:num(d);t=Math.max(0,t);
   const want=form.querySelector("[data-till-gift-take]").value.trim(),use=Math.min(t,want?Math.min(credit,num(want)):credit),g=form.querySelector("[data-till-gift-total]");
   total.textContent=eur(t-use);g.hidden=!use;g.textContent=use?"Gift card −"+eur(use)+" su "+eur(t):"";
-  const p=form.querySelector("[data-till-parked]");p.hidden=!later;p.textContent=later?"In sospeso, non nello scontrino: "+eur(later):"";};
+  const p=form.querySelector("[data-till-parked]");p.hidden=!later;p.textContent=later?"Non nello scontrino: "+eur(later):"";};
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
   if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
@@ -519,10 +521,12 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
  if(box){const value=box.querySelector("[data-till-gift-value]"),err=box.querySelector("[data-till-gift-error]"),show=on=>{box.hidden=!on;opener.setAttribute("aria-expanded",String(on));if(on)value.focus();};
   opener.addEventListener("click",()=>show(box.hidden));box.querySelector("[data-till-gift-close]").addEventListener("click",()=>show(false));
   box.querySelectorAll("[data-till-gift-amount]").forEach(b=>b.addEventListener("click",()=>{value.value=b.dataset.tillGiftAmount;err.hidden=true;}));
+  const lock=r=>{r.querySelector("[name=desc]").readOnly=true;r.querySelector("[name=qty]").readOnly=true;r.querySelectorAll("[data-till-qty],[data-till-park]").forEach(b=>b.hidden=true);r.querySelector("[name=off]").readOnly=true;};
+  body.querySelectorAll("tr").forEach(r=>{if((r.querySelector("[name=svc]")?.value||"").startsWith("gift:"))lock(r);});  // a card put in by the Gift card page
   box.querySelector("[data-till-gift-add]").addEventListener("click",()=>{const v=num(value.value);
    if(!(v>=1&&v<=9999)){err.textContent="Scrivi un importo da 1 a 9.999 €.";err.hidden=false;value.focus();return;}
-   const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value="GIFT CARD";r.querySelector("[name=desc]").readOnly=true;r.querySelector("[name=price]").value=v.toFixed(2).replace(".",",");
-   r.querySelector("[name=svc]").value="gift:"+(box.querySelector("[data-till-gift-expires]").value||"");r.querySelector("[name=qty]").readOnly=true;r.querySelectorAll("[data-till-qty],[data-till-park]").forEach(b=>b.hidden=true);r.querySelector("[name=off]").readOnly=true;
+   const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value="GIFT CARD";r.querySelector("[name=price]").value=v.toFixed(2).replace(".",",");
+   r.querySelector("[name=svc]").value="gift:"+(box.querySelector("[data-till-gift-expires]").value||"");lock(r);
    body.append(r);value.value="";err.hidden=true;show(false);sum();});}
  // the code of a gift card that pays: its credit asked to the program, the total shown net of it
  const code=form.querySelector("[data-till-gift-code]"),info=form.querySelector("[data-till-gift-info]");let ask;
@@ -548,7 +552,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
      // 2.22.0: his gift cards with credit, and what he has in Preventivo pagamenti cassa
      const extra=form.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
       (c.gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small";x.textContent="Usa gift card "+g.code+" · "+g.balance+" €";x.addEventListener("click",()=>use(g.code));extra.append(x);});
-      (c.parked||[]).forEach(p=>{const a=document.createElement("a");a.className="button secondary small";const q=new URLSearchParams(location.search);q.append("sospeso",p.id);a.href="?"+q.toString();a.textContent="In sospeso "+p.total+" € del "+p.day+": aggiungi al conto";extra.append(a);});
+      (c.parked||[]).forEach(p=>{const a=document.createElement("a");a.className="button secondary small";const q=new URLSearchParams(location.search);q.append("sospeso",p.id);a.href="?"+q.toString();a.textContent="Non nello scontrino "+p.total+" € del "+p.day+": aggiungi al conto";extra.append(a);});
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
 })();
 // 2.22.0: a client chosen by typing (gift card, quote): the id in the hidden field, «client-picked» for who wants the rest
@@ -588,17 +592,18 @@ document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.cl
   box.innerHTML=await r.text();if(!box.open)box.showModal();box.querySelector(".peek-actions a")?.focus();});
 })();
 // 2.22.0: Promemoria WhatsApp: the chat opened is marked as sent (the desk presses Invio in WhatsApp); undone by hand
-(()=>{const list=document.querySelector(".wa-list");if(!list)return;const csrf=document.querySelector("#wa-mark [name=csrfmiddlewaretoken]")?.value||"";
- const todo=document.querySelector("[data-wa-todo]"),count=()=>{const n=list.querySelectorAll("li:not(.is-sent)").length;if(todo)todo.textContent=n?"Da avvisare: "+n:"Tutti avvisati";};
+(()=>{const lists=document.querySelectorAll(".wa-list");if(!lists.length)return;const csrf=document.querySelector("#wa-mark [name=csrfmiddlewaretoken]")?.value||"";
+ const todo=document.querySelector("[data-wa-todo]"),count=li=>{const n=document.querySelectorAll(".wa-list li:not(.is-sent)").length;if(todo)todo.textContent=n?"Da avvisare in questi giorni: "+n:"Tutti avvisati";
+  const day=li.closest(".wa-day"),t=day?.querySelector("[data-wa-day-todo]"),m=day?day.querySelectorAll("li:not(.is-sent)").length:0;if(t)t.textContent=m?"Da avvisare: "+m:"Tutti avvisati";};
  const mark=async(li,on)=>{const body=new URLSearchParams({booking:li.dataset.waRow,sent:on?"1":"0"});
   try{const r=await fetch(location.pathname,{method:"POST",credentials:"same-origin",headers:{"X-CSRFToken":csrf},body});const d=await r.json();if(!d.ok)return;
    li.classList.toggle("is-sent",on);li.querySelector("[data-wa-state]").textContent=on?"Avvisato alle "+d.at:"Da avvisare";
    const open=li.querySelector("[data-wa-open]");if(open){open.classList.toggle("primary",!on);open.classList.toggle("secondary",on);}
-   const undo=li.querySelector("[data-wa-undo]"),done=li.querySelector("[data-wa-done]");if(undo)undo.hidden=!on;if(done)done.hidden=on;count();}catch{}};
- list.addEventListener("click",e=>{const li=e.target.closest("li");if(!li)return;
+   const undo=li.querySelector("[data-wa-undo]"),done=li.querySelector("[data-wa-done]");if(undo)undo.hidden=!on;if(done)done.hidden=on;count(li);}catch{}};
+ lists.forEach(list=>list.addEventListener("click",e=>{const li=e.target.closest("li");if(!li)return;
   if(e.target.closest("[data-wa-open]")&&!li.classList.contains("is-sent")&&li.querySelector("[data-wa-undo]"))mark(li,true);
   if(e.target.closest("[data-wa-done]"))mark(li,true);
-  if(e.target.closest("[data-wa-undo]"))mark(li,false);});
+  if(e.target.closest("[data-wa-undo]"))mark(li,false);}));
 })();
 // 2.16.0: a page waiting for the register looks again by itself
 (()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();

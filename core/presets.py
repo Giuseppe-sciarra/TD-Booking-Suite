@@ -74,10 +74,17 @@ def questions(key):return [{**q,**({"choices":list(q["choices"])} if "choices" i
 # Restaurants start with them; the business adds or removes items in Configura l'attività
 ALLERGENS=["Glutine","Lattosio","Latte e derivati","Uova","Frutta a guscio","Arachidi","Pesce","Crostacei","Molluschi","Soia","Sedano","Senape","Sesamo","Solfiti","Lupini"]
 
+# 2.22.0: where food is part of what is booked; everywhere else the allergens do not exist: no card, no question, nothing
+FOOD_TYPES={"ristorante","hotel","casa_vacanze","evento","tour"}
+def serves_food(business_type):return business_type in FOOD_TYPES
 def first_settings(tenant,preset):
-    """The type of business and what it brings along: restaurants ask about allergies from the first day."""
+    """The type of business and what it brings along: restaurants ask about allergies from the first day; a type without
+    food loses them (2.22.0: a salon that had been a restaurant for a trial kept the allergens in its booking form)."""
     tenant.business_type=preset
-    if preset=="ristorante" and not tenant.allergens:tenant.allergens=list(ALLERGENS);tenant.allergens_on=True
+    if preset=="ristorante":
+        if not tenant.allergens:tenant.allergens=list(ALLERGENS)
+        tenant.allergens_on=True
+    elif not serves_food(preset):tenant.allergens=[];tenant.allergens_on=False
     return ["business_type","allergens","allergens_on"]
 
 # 2.8.0: the client record of businesses that work on the person: what was done, when and by whom.
@@ -125,6 +132,12 @@ DEFAULT_UNITS=("Operatore o postazione","Operatori e postazioni","Chi o cosa si 
 # 2.10.0: what the client books, in the words of the business: a salon books treatments
 SERVICE_WORDS={"parrucchiere":"Trattamento","centro_estetico":"Trattamento","spa":"Trattamento","medico":"Visita","tattoo":"Seduta"}
 def service_word(business_type):return SERVICE_WORDS.get(business_type,"Servizio")
+# 2.22.0: the example in the notes of the booking form, in the words of that business
+NOTE_HINTS={"ristorante":"tavolo vicino alla finestra, seggiolone, una torta","parrucchiere":"colore come l'ultima volta, capelli molto lunghi","centro_estetico":"pelle sensibile, come l'ultima volta",
+    "spa":"preferisco un'operatrice, pelle sensibile","medico":"prima visita, porto gli esami","tattoo":"disegno già pronto, copertura","autoscuola":"prima guida, cambio automatico",
+    "campo":"serve il noleggio delle racchette","corso":"principiante, prima lezione di prova","officina":"rumore in frenata, aspetto in sede","hotel":"arrivo dopo le 22, culla in camera",
+    "casa_vacanze":"arrivo in serata, con un cane","noleggio":"ritiro la mattina presto","evento":"posti vicini, uno con carrozzina","tour":"una persona con mobilità ridotta"}
+def note_hint(business_type):return NOTE_HINTS.get(business_type,"un'esigenza particolare, un orario da evitare")
 def units(business_type):
     """(singular, plural, help) of the things booked one at a time."""
     return UNITS.get(business_type,DEFAULT_UNITS)

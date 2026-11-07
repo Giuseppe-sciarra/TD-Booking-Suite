@@ -373,7 +373,7 @@ class ServiceForm(ScopedForm):
                 self.initial.setdefault("mode","fixed" if kind=="shift" else "rotation" if self.instance.turnover else "service")
                 self.fields.pop("turnover",None)
         # 2.14.0: allergies make a request only where the booking form asks about them
-        if not getattr(self.tenant,"allergens_on",False):self.fields.pop("request_allergies")
+        if not (self.tenant and self.tenant.asked_allergens):self.fields.pop("request_allergies")
         for name in ("request_above","online_capacity","pace_covers","pace_bookings","pause_start","pause_minutes"):
             if name in self.fields:self.fields[name].required=False  # 2.14.0: empty = 0, no limit
         add_limits(self,"questo servizio")
@@ -638,7 +638,7 @@ class TenantForm(forms.ModelForm):
         model=Tenant
         fields=["name","slug","timezone","status","trial_until","maintenance","marketing_enabled","export_enabled","client_mails_enabled","alloggiati_self","till_self","smtp_daily_limit","smtp_hourly_limit","brand_color","tagline","website","privacy_text","privacy_text_en","consent_text","consent_text_en","retention_days","receive_schedule","api_enabled"]
         labels={"name":"Nome attività","slug":"Indirizzo breve","timezone":"Fuso orario","status":"Stato","trial_until":"Fine prova","maintenance":"Manutenzione tecnica: sospendi temporaneamente prenotazioni e portale","marketing_enabled":"Marketing: l'attività invia campagne email ai clienti iscritti","export_enabled":"Marketing: l'attività scarica il CSV dei clienti iscritti (Brevo, Mailchimp, fogli)","client_mails_enabled":"Email ai clienti: l'attività sceglie quali inviare e ne scrive oggetto e testo (in Notifiche). Promemoria, arrivo e recensione, e quando partono, li impostate voi in Notifiche","alloggiati_self":"Alloggiati Web: l'attività inserisce da sola utente, password e chiave del servizio web (in Alloggi)","till_self":"Registratore di cassa: l'attività lo collega da sola (tipo, indirizzo, reparti e pagamenti)","smtp_daily_limit":"Limite email giornaliero","smtp_hourly_limit":"Limite email orario","brand_color":"Colore del marchio","tagline":"Sottotitolo","website":"Sito web","privacy_text":"Informativa prenotazioni","consent_text":"Testo consenso marketing","retention_days":"Conservazione prenotazioni (giorni)","receive_schedule":"Limita anche l'orario di invio delle richieste online"}
-        widgets={"trial_until":forms.DateInput(attrs={"type":"date"}),"brand_color":forms.TextInput(attrs={"type":"color"}),"privacy_text":forms.Textarea(attrs={"rows":4}),"consent_text":forms.Textarea(attrs={"rows":3})}
+        widgets={"trial_until":forms.DateInput(attrs={"type":"date"}),"brand_color":forms.TextInput(attrs={"maxlength":7,"placeholder":"#7a55ad","autocomplete":"off","spellcheck":"false"}),"privacy_text":forms.Textarea(attrs={"rows":4}),"consent_text":forms.Textarea(attrs={"rows":3})}
     def __init__(self,*a,**kw):
         kw.setdefault("label_suffix","")
         super().__init__(*a,**kw)

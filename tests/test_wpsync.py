@@ -93,11 +93,11 @@ def test_settings_are_for_the_agency_only(sample):
     t,o,s=sample
     owner,_=client_as(t)
     assert owner.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_secret"}).status_code==403
-    assert "wordpress-pc" not in owner.get(f"/t/{t.slug}/setup/").content.decode()
+    assert owner.get(f"/t/{t.slug}/settings/").status_code==403 and "wordpress-pc" not in owner.get(f"/t/{t.slug}/setup/").content.decode()
     c,_=staff_client()
     page=c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_secret"},follow=True).content.decode()
     t.refresh_from_db();secret=wpsync.conf(t)["secret"]
-    assert secret in page and secret not in c.get(f"/t/{t.slug}/setup/").content.decode()  # shown once
+    assert secret in page and secret not in c.get(f"/t/{t.slug}/settings/").content.decode()  # shown once
     assert secret not in t.wp_sync  # sealed
     c.post(f"/t/{t.slug}/setup/apply/",{"action":"wps_save","url":"https://www.salone.example/","days":"20","on":"1"})
     t.refresh_from_db();assert {k:v for k,v in wpsync.conf(t).items() if k!="secret"}=={"url":"https://www.salone.example","days":20,"on":True,"mails":False}

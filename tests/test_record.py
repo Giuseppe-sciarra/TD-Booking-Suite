@@ -121,7 +121,7 @@ def test_retention_keeps_new_cards_and_recent_records(sample):
 # ---------- allergies and intolerances
 def test_allergens_in_the_booking_form(sample):
     t,o,s=sample
-    t.allergens=["Glutine","Lattosio"];t.allergens_on=True;t.save()
+    t.allergens=["Glutine","Lattosio"];t.allergens_on=True;t.business_type="ristorante";t.save()
     page=Client().get(f"/book/{t.slug}/").content.decode()
     assert '"allergens": ["Glutine", "Lattosio"]' in page and "Intolleranze o allergie?" in page
     with scope(t):
@@ -146,6 +146,8 @@ def test_allergens_page(sample):
     t,o,s=sample
     owner,_=client_as(t,staff=True)  # the agency keeps it, also after 2.14.0
     url=f"/t/{t.slug}/setup/allergie/"
+    assert owner.get(url).status_code==404  # 2.22.0: a salon has no allergens page at all
+    Tenant.objects.filter(pk=t.pk).update(business_type="ristorante")
     owner.post(url,{"action":"toggle","on":"1"})
     t.refresh_from_db();assert t.allergens_on and t.allergens==ALLERGENS and len(ALLERGENS)==15
     owner.post(url,{"action":"add","name":"  Vegano  "});owner.post(url,{"action":"add","name":"vegano"})

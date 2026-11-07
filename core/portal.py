@@ -115,7 +115,7 @@ def setup(request,slug):
     agency=[a for a in agency if a["link"]]
     steps=[s for s in steps if catalog_allowed(request,s["key"])]
     done=sum(1 for s in steps if s["done"])+sum(1 for a in agency if a["done"])
-    from .presets import PRESETS
+    from .presets import PRESETS,serves_food
     from .profile import describe,MAX_LOCATIONS,default_name
     profile=describe(t);page=f"{settings.PUBLIC_ORIGIN.rstrip('/')}/book/{t.slug}/"
     shown=max(5,len(profile["locations"]))
@@ -123,11 +123,10 @@ def setup(request,slug):
     # agency_steps: "agency" is the agency's names in every page (context.py), the menu included
     return render(request,"setup.html",{"steps":steps,"agency_steps":agency,"done":done,"total":len(steps)+len(agency),"agency_names":settings.AGENCY_NAMES,"many":many,
         "profile":profile,"can_profile":can_profile(request),"presets":[(k,v["label"],v["hint"]) for k,v in PRESETS.items()],
-        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"wa_when":__import__("core.client_mails",fromlist=["WA_WHEN"]).WA_WHEN,"names":names,"default_name":"Sede","wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t) if can_profile(request) else None,"wps_secret":request.session.pop("wps_secret",None),
-        "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/"),
+        "counts":range(1,6),"max_locations":MAX_LOCATIONS,"absences":ABSENCES,"wait_minutes":WAIT_MINUTES,"wa_when":__import__("core.client_mails",fromlist=["WA_WHEN"]).WA_WHEN,"names":names,"default_name":"Sede",
         # 2.8.0: what this kind of business usually asks, and the allergies list of restaurants
         # the questions stay the agency's (2.10.0); the allergies list is the owner's too, with the services (2.14.0)
-        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":t.business_type=="ristorante" or t.allergens_on,
+        "recommended":recommended(t)[0] if can_profile(request) else [],"allergens_card":serves_food(t.business_type),
         # 2.13.0: ready colours of Logo e aspetto, the same in app.css
         "swatches":["#7a55ad","#be185d","#b91c1c","#c2410c","#a16207","#15803d","#0f766e","#1d4ed8","#334155"],
         # 2.14.0: a link for each channel, and the frame for a site without WordPress that grows with its content (embed.js)
@@ -215,8 +214,10 @@ def allergens_view(request,slug):
     """2.8.0: the allergies and intolerances the booking form asks about, as the business wants them: since 2.14.0
     kept by whoever keeps the services (the owner, staff with the permission, the agency)."""
     require(request,"catalog.write")
-    from .presets import ALLERGENS
+    from .presets import ALLERGENS,serves_food
+    from django.http import Http404
     t=request.tenant
+    if not serves_food(t.business_type):raise Http404  # 2.22.0: not a thing of this business
     if request.method=="POST":
         action=request.POST.get("action");items=list(t.allergens or [])
         try:
@@ -256,6 +257,11 @@ def merged(request,r):
     if r["error"]:text+=f" L'invio al sito non è riuscito ({r['error']}): quello che deve andare è in coda e parte con le prossime sincronizzazioni."
     (messages.warning if r["missing"] or r["lost"] or r["error"] else messages.success)(request,text)
 
+def wordpress_panels(request,t):
+    """2.22.0: the two WordPress cards (the booking page in the site, the PC mode), in Impostazioni e sito: the agency only."""
+    if not can_profile(request):return {}
+    return {"wordpress":True,"wp_code":request.session.pop("wp_code",None),"wps":wps_panel(t),"wps_secret":request.session.pop("wps_secret",None),
+        "wp_pending":bool(t.connect_hash and t.connect_until and t.connect_until>timezone.now()),"portal":settings.PUBLIC_ORIGIN.rstrip("/")}
 def setup_action(request,slug):
     """2.6.0: the profile of the business in one go, and the code that connects the WordPress site."""
     from django.http import Http404
@@ -295,7 +301,7 @@ def setup_action(request,slug):
     if action=="wp_code":
         from .wpconnect import new_code
         request.session["wp_code"]=new_code(t,request.user)
-        return redirect(reverse("setup",args=[slug])+"#wordpress")
+        return redirect(reverse("tenant_settings",args=[slug])+"#wordpress")
     # 2.17.0: the site fed by this PC also when it is off (wpsync.py)
     if action in ("wps_save","wps_secret","wps_now","wps_upload","wps_restore","wps_merge"):
         from . import wpsync
@@ -329,14 +335,14 @@ def setup_action(request,slug):
             except ValueError as ex:messages.error(request,str(ex))
             else:
                 if r:merged(request,r)  # 2.20.0: the archive just turned on, with the site answering
-        return redirect(reverse("setup",args=[slug])+"#wordpress-pc")
+        return redirect(reverse("tenant_settings",args=[slug])+"#wordpress-pc")
     if action=="wp_remove":
         site=request.POST.get("site","")
         if site in (t.embed_origins or []):
             t.embed_origins=[o for o in t.embed_origins if o!=site];t.save(update_fields=["embed_origins"])
             audit(t,request.user,"wordpress.removed",t.pk,site=site)
             messages.success(request,site+" non può più mostrare il modulo di prenotazione.")
-        return redirect(reverse("setup",args=[slug])+"#wordpress")
+        return redirect(reverse("tenant_settings",args=[slug])+"#wordpress")
     raise Http404
 def guide(request,slug=None):
     from .permissions import role_label
@@ -1014,20 +1020,25 @@ def wa_reminders(request,slug):
         audit(request.tenant,request.user,"whatsapp.reminded" if on else "whatsapp.unmarked",b.pk)
         return JsonResponse({"ok":True,"at":timezone.now().astimezone(tz).strftime("%H:%M") if on else ""})
     from .client_mails import wa_window,WA_WHEN
+    from django.utils.formats import date_format
     now=timezone.now();w=wa_window(request.tenant,now)
     try:day=date.fromisoformat(request.GET["giorno"]) if request.GET.get("giorno") else None
     except ValueError:day=None
-    from django.utils.formats import date_format
-    if day or not w:
-        day=day or today+timedelta(days=1);a=datetime.combine(day,time.min,tz);w=(a,a+timedelta(days=1))
-        title="Oggi" if day==today else date_format(day,"l j F").capitalize()
-    else:
-        last=(w[1]-timedelta(seconds=1)).astimezone(tz);day=last.date()
-        title={"d1":"Appuntamenti di "+date_format(day,"l j F"),"t0":"Oggi, da adesso"}.get(request.tenant.wa_when) or "Fino alle "+date_format(w[1].astimezone(tz),"H:i")+("" if w[1].astimezone(tz).date()==today else " di domani")
-    rows=reminders_due(request,*w)
-    return render(request,"wa_reminders.html",{"rows":rows,"day":day,"today":today,"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":title,
-        "when":dict(WA_WHEN).get(request.tenant.wa_when,""),
-        "todo":sum(1 for r in rows if not r.sent),"writer":can(request,"booking.write")})
+    try:first=date.fromisoformat(request.GET["da"]) if request.GET.get("da") else None
+    except ValueError:first=None
+    # one day asked: that day alone; otherwise a week from today (2.22.0: all the next days in sight, the window due now marked)
+    span=[day] if day else [(first or today)+timedelta(days=n) for n in range(7)]
+    days=[]
+    for d in span:
+        a=datetime.combine(d,time.min,tz);b=a+timedelta(days=1)
+        rows=reminders_due(request,a,b)
+        for r in rows:r.due=bool(w and w[0]<=r.start<w[1])
+        days.append({"date":d,"label":("Oggi, " if d==today else "Domani, " if d==today+timedelta(days=1) else "")+date_format(d,"l j F"),"rows":rows,"todo":sum(1 for r in rows if not r.sent),"due":any(r.due for r in rows)})
+    due_label={"d1":"da avvisare oggi","t0":"da avvisare adesso"}.get(request.tenant.wa_when) or "da avvisare adesso"
+    start=span[0]
+    return render(request,"wa_reminders.html",{"days":days,"single":bool(day),"today":today,"prev":start-timedelta(days=1 if day else 7),"next":start+timedelta(days=1 if day else 7),
+        "when":dict(WA_WHEN).get(request.tenant.wa_when,""),"due_label":due_label,
+        "todo":sum(x["todo"] for x in days),"writer":can(request,"booking.write")})
 def recalls_view(request,slug):
     """2.14.0: Richiami: the clients whose recall is due (a week ahead), without a booking to come; Chiama, WhatsApp,
     Prenota, Fatto. For who sees the client cards."""

@@ -6,7 +6,7 @@ License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
 
-Collegamento in un passo: nel portale, Configura l'attività > Sito WordPress, genera il codice di collegamento.
+Collegamento in un passo: nel portale, Impostazioni e sito > Sito WordPress, genera il codice di collegamento.
 In WordPress, Impostazioni > TD Booking Suite > Collegati al portale: indirizzo del portale e codice.
 Il plugin autorizza il sito, legge sedi e servizi e crea la pagina Prenota con [td_booking_suite].
 Shortcode per una sola sede o un solo servizio: [td_booking_suite location="..."] e [td_booking_suite service="..."], elencati nelle impostazioni.
@@ -15,7 +15,7 @@ Impostazioni manuali sempre disponibili: indirizzo del portale e indirizzo breve
 Non memorizza dati personali nel database WordPress. Link alternativo per aprire la pagina fuori dal riquadro.
 
 Modalità PC, per il programma installato su un PC spesso spento e non raggiungibile da Internet (edizione Windows, Un PC solo).
-Nel programma, Configura l'attività > Sito WordPress · modalità PC: indirizzo del sito e "Genera la chiave". In WordPress,
+Nel programma, Impostazioni e sito > Sito WordPress · modalità PC: indirizzo del sito e "Genera la chiave". In WordPress,
 Impostazioni > TD Booking Suite > Modalità PC: spunta la modalità e incolla la chiave. Il PC chiama il sito ogni 2 minuti
 quando è acceso (nessuna porta da aprire), manda servizi, operatori e orari liberi e prende le richieste arrivate.
 [td_booking_suite] mostra allora il modulo dai dati del PC, con "Disponibilità aggiornata alle ..."; ogni richiesta toglie subito

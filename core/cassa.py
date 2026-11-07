@@ -265,7 +265,15 @@ def record(tenant,sale,what,rows,sign=1):
     staff=", ".join(dict.fromkeys(l["staff"] for l in lines if l.get("staff"))) or (sale.booking.resource.name if sale.booking_id and sale.booking.resource_id else "")
     day=(sale.printed or timezone.now()).astimezone(ZoneInfo(tenant.timezone)).date()
     total=paid(sale);by={k:sign*v for k,v in shares(sale.data,total).items()}
-    save_treatment(tenant,sale.contact,{"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000],"amount":sign*total,"by":by},None,booking=sale.booking)
+    # 2.22.0: the rows «Non nello scontrino» went in the record (and the reports) on the day of the work: here only the money
+    # of the rest; a receipt made only of them is a payment, not one more visit
+    done=sale.data.get("done_before") or {}
+    if done:
+        for who,c in done.get("by",{}).items():by[who]=by.get(who,0)-sign*c
+        by={k:v for k,v in by.items() if v};total-=done.get("cents",0)
+    d={"date":day,"service":what[:120] or "Scontrino","staff":staff[:100],"details":"\n".join(rows)[:4000],"amount":sign*total,"by":by}
+    if done and total<=0:d["kind"]="payment"
+    save_treatment(tenant,sale.contact,d,None,booking=sale.booking)
 def paid(sale):
     """2.20.9: the cents the client has paid: a «Da pagare» still open is not money in (it goes in on the day he pays)."""
     return int(sale.total*100)-(0 if sale.settled else int(sale.due*100))
@@ -435,13 +443,29 @@ def split(post):
     park.pop("discount",None);park.pop("pay",None)
     return keep,park
 def has_rows(post):return any(d.strip() or p.strip() for d,p in zip(post.getlist("desc"),post.getlist("price")))
+def settled(t,x):
+    """2.22.0: a bill «Non nello scontrino» taken into a receipt: its treatment in the client's record loses the mark."""
+    from .models import Treatment
+    pk=x.data.get("treatment")
+    if not pk:return
+    tr=Treatment.objects.filter(pk=pk).first()
+    if tr:tr.pii=encrypt(t,{**tr.data,"kind":"parked_paid"},"treatment:"+str(tr.pk));tr.save(update_fields=["pii"])
 def park(t,loc,contact,booking,post,key,user,note=""):
     """Lines out of the receipt, on the client's card: Preventivo pagamenti cassa. The booking's work is done: completed."""
     d,total=bill(post,loc.till)
-    if any(l.get("svc","").startswith("gift:") for l in d["lines"]):raise ValueError("La gift card si vende con lo scontrino: non va in sospeso.")
+    if any(l.get("svc","").startswith("gift:") for l in d["lines"]):raise ValueError("La gift card si vende con lo scontrino: non può restare fuori.")
     x=Parked(tenant=t,location=loc,contact=contact,booking=booking,total=Decimal(total)/100,key=key,actor=str(user.pk))
     x.pii=encrypt(t,{"lines":d["lines"],"discount":d["discount"],"note":" ".join(str(note or "").split())[:120]},"parked:"+str(x.pk));x.save()
     audit(t,user,"sale.parked",x.pk,total=str(x.total))
+    if contact:
+        # 2.22.0: the treatment is done: in the record and the reports today, with a mark until it is in a receipt
+        from .clients import save_treatment
+        rows=[(f"{l['qty']} x " if l["qty"]>1 else "")+l["desc"]+(f" ({l['staff']})" if l.get("staff") else "")+f": {euro(Decimal(l['qty']*l['cents']-l.get('off',0))/100)}" for l in d["lines"]]
+        if note:rows.append(" ".join(str(note).split())[:120])
+        staff=", ".join(dict.fromkeys(l["staff"] for l in d["lines"] if l.get("staff")))
+        tr=save_treatment(t,contact,{"date":timezone.now().astimezone(ZoneInfo(t.timezone)).date(),"service":" + ".join(dict.fromkeys(l["desc"] for l in d["lines"]))[:120],"staff":staff[:100],
+            "details":"\n".join(rows)[:4000],"amount":total,"by":shares(d,total),"kind":"parked"},user,booking=booking)
+        x.pii=encrypt(t,{**x.data,"treatment":str(tr.pk)},"parked:"+str(x.pk));x.save(update_fields=["pii"])
     if booking:
         from .booking import change_status,BookingError
         for b in ([booking]+list(Booking.objects.filter(visit=booking.visit).exclude(pk=booking.pk)) if booking.visit else [booking]):
@@ -466,11 +490,11 @@ def sell(request,t,loc,booking,action):
     note=request.POST.get("park_note","")
     if keep is None or not has_rows(keep):
         if not has_rows(later):raise ValueError("Aggiungi almeno una riga al conto.")
-        if gift.clean(request.POST.get("gift_code")):raise ValueError("La gift card si usa sullo scontrino: togli il codice per mettere tutto in sospeso.")
+        if gift.clean(request.POST.get("gift_code")):raise ValueError("La gift card si usa sullo scontrino: togli il codice per lasciare tutto il conto fuori dallo scontrino.")
         for k,_ in PAYMENTS:later.pop("pay_"+k,None)
         x=park(t,loc,contact,booking,later,key,request.user,note)
         Parked.objects.filter(pk__in=[p.pk for p in taken]).delete()
-        return f"Messo in Preventivo pagamenti cassa: {euro(x.total)}."+("" if contact else " Senza cliente: lo trovi in fondo alla Cassa.")
+        return f"Non nello scontrino: {euro(x.total)}, segnato tra i trattamenti del cliente."+("" if contact else " Senza cliente: lo trovi in fondo alla Cassa.")
     card=None;credit=0
     code=gift.clean(request.POST.get("gift_code"))
     if code:
@@ -489,6 +513,13 @@ def sell(request,t,loc,booking,action):
         if not email:raise ValueError("Per la copia per email scegli un cliente con l'email nella scheda.")
         d.update(copy=True,email=email)
     parked_x=park(t,loc,contact,booking,later,key+"p",request.user,note) if has_rows(later) else None
+    if taken:
+        before={"cents":0,"by":{}}
+        for x in taken:
+            c=int(x.total*100);before["cents"]+=c
+            for who,v in shares(x.data,c).items():before["by"][who]=before["by"].get(who,0)+v
+        d["done_before"]=before
+        for x in taken:settled(t,x)
     sale=enqueue(t,loc,key=key,booking=booking,contact=contact,total=Decimal(total)/100,due=Decimal(due)/100,actor=str(request.user.pk),data=d)
     gift.reserve(t,sale)
     for l,c in zip(sold,codes):
@@ -498,7 +529,7 @@ def sell(request,t,loc,booking,action):
     if d.get("copy"):ConsentEvent.objects.create(tenant=t,contact=contact,kind="confirmed",purpose="receipt_copy",channel="desk",
         text_hash=__import__("core.privacy",fromlist=["text_hash"]).text_hash(COPY_TEXT),ref=str(sale.pk),actor=str(request.user.pk))
     audit(t,request.user,"sale.sent",sale.pk,total=str(sale.total),booking=str(booking.pk) if booking else "")
-    return "Conto inviato alla cassa."+(f" In Preventivo pagamenti cassa: {euro(parked_x.total)}." if parked_x else "")
+    return "Conto inviato alla cassa."+(f" Non nello scontrino: {euro(parked_x.total)}, tra i trattamenti del cliente." if parked_x else "")
 def resumed(request,loc):
     """The suspended bills taken back into this one (?sospeso=, more than one), with the rows of a quote (?preventivo=)."""
     rows=list(Parked.objects.filter(pk__in=[x for x in request.GET.getlist("sospeso") if re.fullmatch(r"[0-9a-f-]{36}",x)],location=loc).select_related("contact").order_by("created"))
@@ -536,8 +567,8 @@ def till_view(request,slug):
                 messages.success(request,"Chiusura giornaliera inviata alla cassa.");return redirect(back)
             if action=="drop_parked":
                 x=get_object_or_404(Parked,pk=request.POST.get("parked_id"),location=loc)
-                audit(t,request.user,"sale.parked_dropped",x.pk,total=str(x.total));x.delete()
-                messages.success(request,f"Tolto dal Preventivo pagamenti cassa: {euro(x.total)}.");return redirect(back)
+                audit(t,request.user,"sale.parked_dropped",x.pk,total=str(x.total));settled(t,x);x.delete()
+                messages.success(request,f"Tolto: {euro(x.total)}. Il trattamento resta nella scheda del cliente.");return redirect(back)
             if action=="closed_by_hand":
                 # 2.22.0: the closure done on the register: only noted, so the reminder goes away
                 sale=Sale(tenant=t,location=loc,kind="close",status="done",printed=timezone.now(),error="Fatta dalla cassa",key=secrets.token_urlsafe(24),actor=str(request.user.pk))
@@ -591,6 +622,16 @@ def till_view(request,slug):
     if quote:
         lines+=[{"desc":text(l["desc"]),"qty":l["qty"],"price":money(l["cents"]),"svc":l["ref"][2:] if l.get("ref","").startswith("s:") else l.get("ref","") if l.get("ref","").startswith("p:") else "","staff":""} for l in quote.data.get("lines",[]) if l.get("cents")]
         contact=contact or quote.contact
+    # 2.22.0: from the Gift card page: the card as a row of the bill, its client, the receipt as always
+    if request.GET.get("gift"):
+        try:v=Decimal(request.GET["gift"].replace(",","."))
+        except (InvalidOperation,ValueError):v=None
+        if v is not None and 1<=v<=9999:
+            exp=request.GET.get("scade","")
+            try:exp=date.fromisoformat(exp).isoformat() if exp else ""
+            except ValueError:exp=""
+            lines.append({"desc":"GIFT CARD","qty":1,"price":money(int(v*100)),"svc":"gift:"+exp,"staff":""})
+        if not contact and re.fullmatch(r"[0-9a-f-]{36}",request.GET.get("cliente","")):contact=Contact.objects.filter(pk=request.GET["cliente"]).first()
     if contact and not who and names_ok:who=contact.data
     names=list(Resource.objects.filter(location=loc,active=True).order_by("name").values_list("name",flat=True))
     parked=list(Parked.objects.filter(location=loc).select_related("contact","booking").order_by("-created"))

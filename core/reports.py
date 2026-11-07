@@ -182,7 +182,7 @@ def xlsx(head,rows,title):
     return buf.getvalue()
 
 TITLES={"lavori_operatore":"Lavori e incassi per operatore","lavori_mese":"Visite e incassi per mese","lavori_anno":"Anno per anno, con gli operatori",
-    "lavori_servizio":"I servizi più fatti","da_incassare":"Da incassare","sospesi":"Preventivo pagamenti cassa","gift_card":"Gift card vendute","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
+    "lavori_servizio":"I servizi più fatti","da_incassare":"Da incassare","sospesi":"Trattamenti non nello scontrino","gift_card":"Gift card vendute","lavori_cliente":"Clienti: visite e speso","elenco":"Elenco dei trattamenti",
     "occupazione":"Occupazione per operatore e risorsa","assenze":"Assenze e disdette all'ultimo momento","clienti":"Clienti nuovi e di ritorno",
     "origine":"Da dove arrivano le prenotazioni","valore":"Valore stimato"}
 def view(request,slug):

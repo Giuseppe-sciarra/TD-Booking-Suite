@@ -121,7 +121,7 @@ def test_requests_hold_the_place_and_mail_the_client(sample):
 
 def test_requests_by_rule_and_the_businesss_texts(sample):
     t,o,s=sample
-    t.allergens_on=True;t.allergens=["Glutine"];t.client_mails_enabled=True;t.client_mails={"requested":{"on":False}};t.save()
+    t.allergens_on=True;t.allergens=["Glutine"];t.business_type="ristorante";t.client_mails_enabled=True;t.client_mails={"requested":{"on":False}};t.save()
     with scope(t):
         Service.objects.filter(pk=s.pk).update(request_allergies=True);s.refresh_from_db()
         plain,_=create_booking(t,payload(s),None)

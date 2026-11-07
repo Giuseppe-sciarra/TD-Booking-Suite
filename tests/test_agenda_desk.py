@@ -133,7 +133,7 @@ def test_the_day_on_paper_shows_what_the_role_may_read(sample,clock):
     svc,marco=salon(t);luca=second(t,svc)
     day=clock[0].date()+timedelta(days=1)
     with scope(t):
-        Tenant.objects.filter(pk=t.pk).update(allergens=["Nichel"],allergens_on=True)
+        Tenant.objects.filter(pk=t.pk).update(allergens=["Nichel"],allergens_on=True,business_type="hotel")  # 2.22.0: allergens only where food is served
         create_booking(t,payload(svc,start=at(day,11),resource=str(marco.pk),first_name="Giulia",last_name="Rossi",allergies=["Nichel"],notes="Cute sensibile"),None)
         create_booking(t,payload(svc,start=at(day,12),resource=str(luca.pk),first_name="Anna",last_name="Verdi",email="anna@example.invalid",phone="+393339990000"),None)
     owner,_=client_as(t)

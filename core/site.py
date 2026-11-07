@@ -62,7 +62,7 @@ def clean_brand(upload):
         out=io.BytesIO();im.save(out,format="PNG");return out.getvalue(),round(im.width/max(im.height,1),3)
     except (ValueError,OSError,UnidentifiedImageError,Image.DecompressionBombError):raise forms.ValidationError("Usa un'immagine PNG, JPEG o WebP valida.")
 
-COLOR=forms.TextInput(attrs={"type":"color"})
+COLOR=forms.TextInput(attrs={"maxlength":7,"placeholder":"#7a55ad","autocomplete":"off","spellcheck":"false"})  # 2.22.0: the code, not the Windows colour window
 class SiteForm(forms.ModelForm):
     logo_file=forms.FileField(required=False,label="Logo per sfondi chiari: PNG trasparente, JPEG o WebP, massimo 1 MB")
     logo_dark_file=forms.FileField(required=False,label="Logo per sfondi scuri (menu laterale, pagina di accesso, tema scuro)")

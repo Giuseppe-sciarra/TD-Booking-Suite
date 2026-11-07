@@ -99,7 +99,8 @@ def page(request,slug):
         for m in c.used:m.euro=Decimal(abs(m.cents))/100
     today=timezone.now().astimezone(ZoneInfo(t.timezone)).date()
     live=GiftCard.objects.filter(status="active").exclude(expires__lt=today)
-    return render(request,"gift_cards.html",{"cards":rows,"q":q,"today":today,"names_ok":names_ok,"open_total":sum(c.balance for c in live),"open_n":live.filter(balance__gt=0).count()})
+    return render(request,"gift_cards.html",{"cards":rows,"q":q,"today":today,"names_ok":names_ok,"open_total":sum(c.balance for c in live),"open_n":live.filter(balance__gt=0).count(),
+        "presets":PRESETS,"expires":proposed(today)})
 def lookup(request,slug):
     """The Cassa asks for a code: its credit, or why it cannot pay."""
     require(request,"sale.write")

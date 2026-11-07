@@ -131,7 +131,7 @@ def test_switch_is_for_the_agency_and_uploads_everything(sample,monkeypatch):
     t.refresh_from_db();assert not t.wp_archive and queued(t)==[]
     c,_=staff_client();c.post(f"/t/{t.slug}/setup/apply/",form)
     t.refresh_from_db();assert t.wp_archive and {(k,r) for k,r,q in queued(t)}=={("booking",str(b.pk)),("contact",str(b.contact_id))}
-    page=c.get(f"/t/{t.slug}/setup/").content.decode()
+    page=c.get(f"/t/{t.slug}/settings/").content.decode()
     assert "Ripristina dal sito" in page and "Sincronizza con il sito" in page and 'value="wps_merge"' in page and "style=" not in page.split('id="wordpress-pc"')[1].split("</section>")[0]
     c.post(f"/t/{t.slug}/setup/apply/",{**form,"archive":""})
     t.refresh_from_db();assert not t.wp_archive and queued(t)==[]

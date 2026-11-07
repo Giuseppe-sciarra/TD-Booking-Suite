@@ -96,7 +96,8 @@ def tenant_settings(request,slug):
                 Tenant.objects.select_for_update().get(pk=tenant.pk)
                 form.save();audit(tenant,request.user,"tenant.settings",tenant.pk)
             messages.success(request,"Impostazioni aggiornate.");return redirect("tenant_settings",slug)
-    return render(request,"form.html",{"form":form,"title":"Impostazioni dell'attività","description":"Brand, piano, privacy e autorizzazioni di invio. Riservato all'amministratore.","error":error})
+    from .portal import wordpress_panels
+    return render(request,"form.html",{"form":form,"title":"Impostazioni e sito","description":"Brand, piano, privacy e autorizzazioni di invio, e il sito WordPress dell'attività. Riservato all'amministratore.","error":error,"after":"_wordpress.html",**wordpress_panels(request,tenant)})
 def smtp_view(request,slug):
     from .mailsetup import page,Target
     staff(request);tenant=request.tenant
@@ -301,6 +302,8 @@ def notifications_view(request,slug):
                 # 2.13.0: which emails reach the clients and with which words, once the agency allows it;
                 # 2.14.0: reminders and the other messages, and when they go, also without it; 2.16.2: these by the agency only
                 from . import client_mails as cm
+                from .wpsync import by_site
+                if by_site(tenant):raise ValueError("Le email ai clienti le manda il sito: i testi si cambiano nel plugin, in WordPress › Impostazioni › TD Booking Suite.")
                 with transaction.atomic():
                     t=Tenant.objects.select_for_update().get(pk=tenant.pk)
                     try:t.client_mails=cm.clean(request.POST,cm.free(t),t.client_mails,request.user.is_staff or getattr(settings,"SHOP_MAILS",False))

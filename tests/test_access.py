@@ -123,7 +123,7 @@ def test_location_operator_sees_only_his_location(sample):
     for hidden in ("Configura l&#x27;attività","Persone e permessi","Marketing","Registro attività","Accesso dell&#x27;agenzia","Clienti</a>","Email ai clienti"):
         assert hidden not in nav,hidden
     detail=op.get(f"/t/{t.slug}/bookings/{here.pk}/").content.decode()
-    assert "Sposta prenotazione" in detail and ">Annulla<" not in detail
+    assert "Sposta prenotazione" in detail and ">Annulla<" not in detail.split("<dialog")[0]
 
 def test_single_location_is_implicit_for_location_roles(sample):
     t,o,s=sample;c,u=client_as(t,staff=True)

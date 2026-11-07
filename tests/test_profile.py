@@ -71,11 +71,17 @@ def test_only_the_agency_changes_the_profile_in_cloud(sample):
     t.refresh_from_db();assert t.business_type=="" and not t.connect_hash
     c,_=staff_client()
     page=c.get(f"/t/{t.slug}/setup/").content.decode()
-    assert 'name="business_type"' in page and "Genera il codice di collegamento" in page
+    assert 'name="business_type"' in page and "Genera il codice" not in page  # 2.22.0: the WordPress cards are in Impostazioni e sito
+    assert "Genera il codice di collegamento" in c.get(f"/t/{t.slug}/settings/").content.decode()
     r=c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"ristorante","locations":"2","name_1":"Centro","name_2":"Mare"},follow=True)
     assert "Configurazione applicata: Ristorante / Pizzeria, 2 sedi" in r.content.decode()
-    t.refresh_from_db();assert t.business_type=="ristorante"
+    t.refresh_from_db();assert t.business_type=="ristorante" and t.allergens_on and t.allergens
     assert Audit.raw.filter(tenant=t,action="tenant.profile").exists()
+    # 2.22.0: a salon saved as a restaurant by mistake: the allergens go, with their card and the booking form's question
+    c.post(f"/t/{t.slug}/setup/apply/",{"action":"profile","business_type":"parrucchiere","locations":"1","name_1":"Centro","confirm_type":"1"})
+    t.refresh_from_db();assert t.business_type=="parrucchiere" and not t.allergens_on and t.allergens==[]
+    page=c.get(f"/t/{t.slug}/setup/").content.decode();assert 'id="allergie"' not in page
+    assert "colore come l'ultima volta" in c.get(f"/book/{t.slug}/").content.decode() and "tavolo" not in c.get(f"/book/{t.slug}/").content.decode()
 
 def test_more_than_five_locations(sample):
     t,o,s=sample
@@ -122,7 +128,7 @@ def test_client_card_shows_type_and_links_to_setup(sample):
     apply_profile(t,"spa",["Centro"])
     c,_=staff_client()
     page=c.get(f"/platform/clienti/{t.slug}/").content.decode()
-    assert "SPA / Massaggi" in page and f"/t/{t.slug}/setup/#tipo" in page and f"/t/{t.slug}/setup/#wordpress" in page
+    assert "SPA / Massaggi" in page and f"/t/{t.slug}/setup/#tipo" in page and f"/t/{t.slug}/settings/#wordpress" in page
 
 # ---------- WordPress
 def code_for(t):
@@ -634,3 +640,20 @@ def test_rental_picked_up_and_returned_the_same_day(sample):
         f=ServiceForm(data,instance=bici,tenant=t)
         assert not f.is_valid() and "la riconsegna è lo stesso giorno" in str(f.errors)
     assert "in giornata" in owner.get(f"/t/{t.slug}/bookings/{b.pk}/").content.decode()
+
+def test_a_salon_has_no_allergens_a_restaurant_does(sample):
+    """2.22.0: the allergens exist only where food is served: a business saved as a restaurant by mistake, then set to
+    a salon, loses them everywhere (form, card, page); a hotel keeps the option, off."""
+    from core.presets import ALLERGENS
+    t,o,s=sample
+    apply_profile(t,"ristorante",["Centro"]);t.refresh_from_db()
+    assert t.allergens_on and t.allergens==ALLERGENS and t.asked_allergens==ALLERGENS
+    c,_=staff_client()
+    assert 'id="allergie"' in c.get(f"/t/{t.slug}/setup/").content.decode()
+    apply_profile(t,"parrucchiere",["Centro"]);t.refresh_from_db()
+    assert not t.allergens_on and t.allergens==[] and t.asked_allergens==[]
+    page=c.get(f"/t/{t.slug}/setup/").content.decode()
+    assert 'id="allergie"' not in page and c.get(f"/t/{t.slug}/setup/allergie/").status_code==404
+    assert '"allergens": []' in Client().get(f"/book/{t.slug}/").content.decode() and "colore come l'ultima volta" in Client().get(f"/book/{t.slug}/").content.decode()
+    apply_profile(t,"hotel",["Centro"]);t.refresh_from_db()
+    assert not t.allergens_on and 'id="allergie"' in c.get(f"/t/{t.slug}/setup/").content.decode()

@@ -63,8 +63,8 @@ def widget_data(request,booking=None,wait=None):
             "areas":[{"id":str(a.pk),"name":a.name} for a in Area.objects.filter(location=s.location).order_by("name")] if s.kind in ("capacity","shift") else [],
             "resources":[{"id":str(r.pk),"name":r.name,"capacity":r.capacity,"description":r.description,"photo":r.photo_link(tenant.slug),**away_info(r)} for r in Resource.objects.filter(active=True,secondary=False,location=s.location,id__in=ServiceResource.objects.filter(service=s).values("resource_id")) if (mine is None or str(r.pk) in mine) and (internal or s.client_picks)]})
     prefix=f"/t/{tenant.slug}/booking-api" if internal else f"/book/{tenant.slug}/api"
-    from .presets import service_word
-    result={"service_label":_(service_word(tenant.business_type)),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
+    from .presets import service_word,note_hint
+    result={"service_label":_(service_word(tenant.business_type)),"note_hint":note_hint(tenant.business_type),"services":services,"today":timezone.now().astimezone(ZoneInfo(tenant.timezone)).date().isoformat(),"timezone":tenant.timezone,"slots":prefix+"/slots/","submit":prefix+"/submit/",
         # 2.14.0: where the page was opened, signed with the ticket, so the booking keeps its channel.
         # shortcut: the WordPress plugin is told apart by the theme= its frame always adds; a link with theme= counts as WordPress
         "ticket":signing.dumps({"tenant":str(tenant.pk),"origin":"wordpress" if "theme" in request.GET else "public","src":source_tag(request.GET.get("src")),**({"wait":str(wait.pk)} if wait else {}),**({"private":private} if private else {})},salt="public-booking"),"internal":internal,

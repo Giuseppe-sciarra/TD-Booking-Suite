@@ -45,7 +45,9 @@ def test_products_in_catalog_cassa_and_department(shop):
 
 def test_rows_in_sospeso_go_on_the_card_and_come_back(shop):
     t,loc,svc=shop
-    with scope(t):b,_=create_booking(t,payload(svc));Booking.objects.filter(pk=b.pk).update(status="arrived")
+    with scope(t):
+        Tenant.objects.filter(pk=t.pk).update(business_type="parrucchiere");t.refresh_from_db()  # a salon: the card has the Trattamenti
+        b,_=create_booking(t,payload(svc));Booking.objects.filter(pk=b.pk).update(status="arrived")
     c,_=client_as(t,role="reception")
     key=secrets.token_urlsafe(24)
     data=rows(("Taglio donna","1","25,00",str(svc.pk),""),("Piega","1","20,00","","1"))
@@ -57,12 +59,20 @@ def test_rows_in_sospeso_go_on_the_card_and_come_back(shop):
         x=Parked.objects.get();assert x.total==Decimal("20.00") and x.contact_id==b.contact_id and x.data["lines"][0]["desc"]=="Piega" and x.data["lines"][0]["staff"]=="Cristina"
         assert "Piega" not in x.pii  # sealed
     owner,_=client_as(t)
+    # 2.22.0: the row out of the receipt is a treatment of the client at once, marked *, counted in the reports as work of today
+    with scope(t):
+        from core.clients import treatments
+        tr=[r for r in treatments(b.contact) if r.info.get("kind")=="parked"];assert len(tr)==1
+        assert tr[0].info["service"]=="Piega" and tr[0].info["amount"]==2000 and tr[0].info["by"]=={"Cristina":2000} and tr[0].info["staff"]=="Cristina" and x.data["treatment"]==str(tr[0].pk)
     card=owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
-    assert "Preventivo pagamenti cassa: 20,00 €" in card and f"sospeso={x.pk}" in card
+    assert "Preventivo pagamenti cassa" not in card and "sospeso" not in card and 'title="Fatto, non ancora in uno scontrino">*</abbr>' in card
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert "Preventivo pagamenti cassa" in page and "Piega (Cristina)" in page
+    assert "Non nello scontrino" in page and "Piega (Cristina)" in page and "Preventivo pagamenti cassa" not in page and "In sospeso" not in page
     rep=owner.get("/t/salone/report/").content.decode()
-    assert "Preventivo pagamenti cassa" in rep and "<td>Piega</td>" in rep
+    assert "Trattamenti non nello scontrino" in rep and "<td>Piega</td>" in rep and "Preventivo pagamenti cassa" not in rep
+    assert "<td>Cristina</td><td>1</td><td>20,00</td>" in rep.replace("</td>\n<td>","</td><td>") or "Cristina" in rep  # her work of today, with its money
+    hist=owner.get(f"/t/salone/contacts/{b.contact_id}/storico/").content.decode()
+    assert "<strong>Piega *</strong>" in hist and "Non ancora in uno scontrino *" in hist
     # the next visit: taken into the bill, with the client; sent, it is gone from there
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}&sospeso={x.pk}").content.decode()
     assert f'name="parked" value="{x.pk}"' in page and 'value="Piega"' in page and 'value="20,00"' in page and f'value="{b.contact_id}"' in page
@@ -70,7 +80,14 @@ def test_rows_in_sospeso_go_on_the_card_and_come_back(shop):
     with scope(t):
         assert not Parked.objects.exists() and Sale.objects.count()==2
         s2=Sale.objects.order_by("-created").first();assert s2.contact_id==b.contact_id and s2.total==Decimal("20.00")
-    assert "Preventivo pagamenti cassa" not in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
+        assert s2.data["done_before"]=={"cents":2000,"by":{"Cristina":2000}}  # the money of work already in the record, by her
+        tr=[r for r in treatments(b.contact) if r.info.get("kind")=="parked_paid"];assert len(tr)==1  # the mark is gone
+        # the receipt emitted: its record row is a payment (no new visit), with no money counted twice
+        while (q:=cassa.claim(loc)) and q.pk!=s2.pk:cassa.finish(t,q,"done",{"z":"1","number":"6"})  # the first receipt of the test, queued before
+        cassa.finish(t,q,"done",{"z":"1","number":"7"})
+        rows_=treatments(b.contact);paid=[r for r in rows_ if r.info.get("kind")=="payment"]
+        assert len(paid)==1 and paid[0].info["amount"]==0 and "Piega" in paid[0].info["service"]
+    assert "*</abbr>" not in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
 
 def test_whole_bill_in_sospeso_toggle_many_times_and_drop(shop):
     t,loc,svc=shop
@@ -88,7 +105,7 @@ def test_whole_bill_in_sospeso_toggle_many_times_and_drop(shop):
     r=post(c,loc,action="park",gift_code="ABCD2345",**rows(("Piega","1","20,00","","")))
     assert "si usa sullo scontrino" in r.content.decode()
     r=post(c,loc,**rows(("GIFT CARD","1","50,00","gift:","1")))
-    assert "non va in sospeso" in r.content.decode()
+    assert "non può restare fuori" in r.content.decode()
     with scope(t):ids=list(Parked.objects.values_list("pk",flat=True))
     # taken back all together into one bill, sent: all gone
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}&"+"&".join(f"sospeso={i}" for i in ids)).content.decode()
@@ -152,6 +169,14 @@ def test_gift_card_sold_used_at_zero_given_back_and_voided(shop):
     with scope(t):other=Contact.objects.exclude(pk=b.contact_id).first() or Contact.objects.create(tenant=t,email_index=secrets.token_hex(8),pii=__import__("core.crypto",fromlist=["encrypt"]).encrypt(t,{"first_name":"Luca","last_name":"Bianchi"},"contact:x"))
     page=owner.get("/t/salone/cassa/gift-card/").content.decode()
     assert card.code in page and "Credito ancora da usare" in page
+    # 2.22.0: sold from the page: the Cassa opens with the card in the bill and its client, the receipt as always
+    assert "Vendi una gift card" in page and 'data-gift-preset="50"' in page and 'name="gift"' in page
+    from core.clients import seal_card,key_for
+    with scope(t):
+        luca=Contact(tenant=t,email_index=key_for(t,{"email":"","phone":"","first_name":"Luca","last_name":"Bianchi"}));seal_card(t,luca,{"first_name":"Luca","last_name":"Bianchi","email":"","phone":""});luca.save()
+    till=owner.get(f"/t/salone/cassa/?gift=50&scade=2027-06-30&cliente={luca.pk}").content.decode()
+    assert 'value="GIFT CARD"' in till and 'value="gift:2027-06-30"' in till and 'value="50,00"' in till and "Luca" in till
+    till=owner.get("/t/salone/cassa/?gift=abc&scade=x&cliente=zzz").content.decode();assert "GIFT CARD" not in till.split("till-row")[0]
     assert card.code in owner.get(f"/t/salone/cassa/gift-card/?stampa={card.pk}").content.decode()
     owner.post("/t/salone/cassa/gift-card/",{"card":str(card.pk),"action":"expires","expires":""})
     with scope(t):card.refresh_from_db();assert card.expires is None
@@ -199,7 +224,7 @@ def test_appointment_summary_and_client_history(shop):
     with scope(t):b,_=create_booking(t,payload(svc))
     c,_=client_as(t)
     r=c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
-    assert "Taglio donna" in r and "Da pagare" in r and f"?prenotazione={b.pk}&amp;sede={loc.pk}" in r and "Pagamento" in r and "Apri la prenotazione" in r
+    assert "Taglio donna" in r and "Totale" in r and "Da pagare" not in r and f"?prenotazione={b.pk}&amp;sede={loc.pk}" in r and "Pagamento" in r and "Apri la prenotazione" in r
     post(c,loc,booking=str(b.pk),**rows(("Taglio donna","1","25,00",str(svc.pk),"")))
     with scope(t):s=cassa.claim(loc);cassa.finish(t,s,"done",{"number":"9","z":"1"})
     r=c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
@@ -245,12 +270,16 @@ def test_whatsapp_reminders_of_tomorrow_marked_and_undone(shop):
     page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
     assert b.start.astimezone(tz).date()==tomorrow,b.start
     assert "Da avvisare: 1" in page and "https://wa.me/39" in page and "ti ricordiamo" in unquote(page)
+    assert page.count('class="card wa-day')==7 and "Domani, " in page and "In programma" in page  # 2.22.0: the week in sight; off: nothing due yet
+    assert "Giorno prima" in c.get(f"/t/salone/promemoria-whatsapp/?giorno={tomorrow.isoformat()}").content.decode()
     owner,_=client_as(t)
     assert "da avvisare" not in owner.get("/t/salone/").content.decode()  # off until the owner turns it on
     r=owner.post("/t/salone/setup/banco/",{"wa_when":"d1","absences_request":str(t.absences_request),"wait_mode":t.wait_mode,"wait_minutes":str(t.wait_minutes)})
     with scope(t):assert Tenant.objects.get(pk=t.pk).wa_when=="d1"
     for page in ("/t/salone/","/t/salone/contacts/","/t/salone/report/"):
         assert "Promemoria WhatsApp: 1 cliente da avvisare" in c.get(page).content.decode()  # on every page
+    page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
+    assert "Da avvisare oggi" in page and 'class="card wa-day is-due"' in page and "In programma" not in page  # tomorrow's visit is the one due now
     assert "cliente da avvisare" not in c.get("/t/salone/promemoria-whatsapp/").content.decode()
     with scope(t):Tenant.objects.filter(pk=t.pk).update(wa_when="h2")
     assert "da avvisare" not in c.get("/t/salone/").content.decode()  # tomorrow at 10 is not in the next 2 hours
