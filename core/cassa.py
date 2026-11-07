@@ -767,6 +767,7 @@ def settings_view(request,slug):
         conf=l.till;deps=conf.get("departments",{})
         cards.append({"loc":l,"conf":conf,"pay":[(k,label,conf.get("payments",{}).get(k,"")) for k,label in PAYMENTS],
             "services":[(s,deps.get(str(s.pk),{})) for s in Service.objects.filter(location=l,active=True).order_by("name")],
+            "depts_set":sum(1 for k,d in deps.items() if d.get("dept") or d.get("vat")),  # 2.22.0: the table stays closed unless something is set
             "last":Sale.objects.filter(location=l,kind__in=("probe","test")).order_by("-created").first(),"rch":{k:rch_cmd(conf,k) for k in RCH_CMDS},"found":(found,ports) if found_for==l.pk else None,"token":token if token_for==l.pk else ""})
     ports=[]
     if settings.TILL_DIRECT:

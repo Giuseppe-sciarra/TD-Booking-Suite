@@ -34,6 +34,7 @@
 - **Edizione Windows: la finestra si rimette in piedi da sola**: ogni 5 secondi controlla se una finestra di dialogo di Windows (file, colore) è rimasta dietro e la riporta davanti, e se la pagina non risponde per 15 secondi la ricarica; tutto scritto in `%LOCALAPPDATA%\TD Booking Suite\finestra.log`. I PDF escono in A4 con 15 mm di margine.
 - **Nascondi nomi** tolto dalla barra in alto: non serviva al banco.
 - **Non nello scontrino** (era «In sospeso» / Preventivo pagamenti cassa): la riga esclusa dallo scontrino va subito tra i **Trattamenti** del cliente, con operatore e importo, segnata con un asterisco finché non entra in uno scontrino, e conta nei Report come lavoro del giorno in cui è stata fatta (quando poi passa nello scontrino non si conta due volte). Nessun riquadro «da pagare» nella scheda né nel riepilogo dell'agenda: la Cassa la ricorda da sola quando scegli il cliente. Il pulsante del conto si chiama **Paga in cassa**.
+- **Registratore di cassa più corto**: *Prova collegamento* e *Stampa scontrino di prova* stanno in cima, sotto il nome della sede; la tabella dei reparti servizio per servizio è chiusa in *Reparti diversi per singoli servizi (facoltativo)* e si apre da sola solo se qualcosa è impostato.
 
 ## 2.21.0 — il sito gestisce prenotazioni ed email
 

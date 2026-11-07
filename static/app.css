@@ -1240,6 +1240,7 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 /* 2.13.0: the emails to the clients, each with its preview */
 .client-mails{margin-top:34px}
 .field-invalid{display:block;color:var(--danger);font-size:.85em;margin-top:4px}[aria-invalid=true]{border-color:var(--danger)!important}
+.till-try{margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--soft)}.till-try .actions{margin:0;flex-wrap:wrap;align-items:center}.till-try p{margin:8px 0 0}.till-depts{margin-top:16px}.till-depts>summary{cursor:pointer;font-weight:600}
 .mail-kinds{display:grid;gap:16px}.mail-set{display:grid;gap:16px;border:0;padding:0;margin:0;min-width:0}.mail-set:disabled{opacity:.55}
 .mail-kind{padding:0;overflow:hidden}
 .mail-kind-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--line)}
