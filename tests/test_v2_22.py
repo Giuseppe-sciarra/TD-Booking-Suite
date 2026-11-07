@@ -461,7 +461,7 @@ def test_annulla_appuntamento_from_the_agenda_panel(shop):
     page=c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
     assert "Annulla appuntamento" in page and 'name="back" value="agenda"' in page
     r=c.post(f"/t/salone/bookings/{b.pk}/",{"action":"cancelled","back":"agenda"})
-    assert r.status_code==302 and r.url.endswith(f"/t/salone/bookings/?data={day.isoformat()}"),r.url
+    assert r.status_code==302 and r.url.endswith(f"/t/salone/bookings/?vista=giorno&data={day.isoformat()}"),r.url
     with scope(t):b.refresh_from_db();assert b.status=="cancelled"
     assert "Annulla appuntamento" not in c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
 
@@ -550,3 +550,21 @@ def test_a_corrected_document_number_teaches_the_rch_count(shop):
     with scope(t):
         u.refresh_from_db();loc.refresh_from_db();assert (u.z,u.number,u.status)==("2040","21","done") and loc.till["doc_offset"]==13
         cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s7=mk();assert s7.doc=="2040-0022"
+
+def test_the_agenda_view_stays_the_one_chosen_and_the_past_is_marked(shop):
+    """2.22.2: Giorno, Settimana, Mese or Elenco chosen once stay for the next openings of the agenda (session);
+    an explicit date or period still wins; the day already gone is hatched and has no free spaces."""
+    t,loc,svc=shop
+    with scope(t):
+        cut=Service.objects.create(tenant=t,location=loc,name="Taglio",kind="resource",duration=30,interval=15,lead_minutes=0)
+        ServiceResource.objects.create(tenant=t,service=cut,resource=Resource.objects.create(tenant=t,location=loc,name="Marco"))
+    c,_=client_as(t,role="owner")
+    assert 'class="agenda-body"' in c.get("/t/salone/bookings/").content.decode()
+    c.get("/t/salone/bookings/?vista=mese");assert 'class="month-grid"' in c.get("/t/salone/bookings/").content.decode()
+    c.get("/t/salone/bookings/?vista=elenco");assert "Le tue prenotazioni" in c.get("/t/salone/bookings/").content.decode()
+    assert 'class="agenda-body"' in c.get("/t/salone/bookings/?vista=giorno").content.decode() and 'class="agenda-body"' in c.get("/t/salone/bookings/").content.decode()
+    c.get("/t/salone/bookings/?vista=settimana");assert "Le tue prenotazioni" in c.get("/t/salone/bookings/?from=2026-01-01&to=2026-01-31").content.decode()
+    yesterday=(timezone.now().astimezone(ZoneInfo(t.timezone))-timedelta(days=1)).date();tomorrow=yesterday+timedelta(days=2)
+    page=c.get(f"/t/salone/bookings/?vista=giorno&data={yesterday.isoformat()}").content.decode()
+    assert 'class="agenda-past"' in page and 'class="agenda-free"' not in page
+    page=c.get(f"/t/salone/bookings/?data={tomorrow.isoformat()}").content.decode();assert 'class="agenda-past"' not in page and 'class="agenda-free"' in page

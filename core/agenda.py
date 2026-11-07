@@ -179,12 +179,14 @@ def day_view(request):
             row=row_of(max(a,frame_a));c["blocks"].append({"block":blk,"row":row,"row_end":max(row+1,row_of(min(b,frame_b))),"label":blk.get_reason_display(),
                 "from":a.astimezone(tz).strftime("%H:%M"),"to":b.astimezone(tz).strftime("%H:%M")})
     hours=[{"row":n+1,"end":min(n+1+60//STEP,count+1),"label":(frame_a+timedelta(minutes=n*STEP)).strftime("%H:%M")} for n in range(count) if (n*STEP)%60==0]
-    now_row=None
+    now_row=None;past_rows=None
     if day==today and frame_a<=now.astimezone(tz)<frame_b:
         now_row=(now.astimezone(tz)-frame_a).total_seconds()/60/STEP
+    if day<today:past_rows=count
+    elif day==today:past_rows=min(count,max(0,(now.astimezone(tz)-frame_a).total_seconds()/60/STEP))  # 2.22.2: the part gone, hatched
     ctx=common(request,"giorno",day,today,places,location,everyone,chosen)
     ctx.update({"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":day,
-        "columns":columns,"hours":hours,"count":count,"now_row":now_row,"legend":[],"off":[o.name for o in off],
+        "columns":columns,"hours":hours,"count":count,"now_row":now_row,"past_rows":past_rows,"legend":[],"off":[o.name for o in off],
         "closed_day":bool(ops) and not any(works(o) for o in ops),"total":sum(r.status!="cancelled" for r in rows),"writer":writer,"end_row":count+1,
         "first":frame_a.hour*60+frame_a.minute})
     return render(request,"agenda.html",ctx)

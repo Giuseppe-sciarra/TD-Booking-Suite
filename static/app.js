@@ -69,7 +69,8 @@ window.tdAsk=(title,parts,yes,danger)=>new Promise(done=>{
   agenda.querySelectorAll("[data-lane]").forEach(el=>el.style.setProperty("--lane",el.dataset.lane));
   // 2.14.0: the lower edge of an appointment to drag, to change how long it lasts
   agenda.querySelectorAll("[data-move]").forEach(el=>{if(!el.querySelector(".agenda-grip")){const g=document.createElement("span");g.className="agenda-grip";g.setAttribute("aria-hidden","true");el.append(g);}});
-  const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";});
+  const now=agenda.querySelector("[data-now]");if(now)now.style.top="calc(var(--row) * "+now.dataset.now+")";
+  const past=agenda.querySelector("[data-past]");if(past)past.style.height="calc(var(--row) * "+past.dataset.past+")";});
  lay();
  document.querySelectorAll("[data-agenda]").forEach(agenda=>(agenda.querySelector("[data-now]")||agenda.querySelector(".agenda-item"))?.scrollIntoView({block:"nearest"}));
  document.querySelectorAll("form[data-autosubmit] input[type=date],form[data-autosubmit] select,form[data-autosubmit] input[type=checkbox]").forEach(el=>el.addEventListener("change",()=>el.form.requestSubmit()));

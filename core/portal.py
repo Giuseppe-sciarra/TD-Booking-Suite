@@ -462,6 +462,9 @@ def bookings(request,slug):
     # 2.11.0: the week and the month too, for every business
     from .agenda import fits,day_view,week_view,month_view
     agenda=fits(request);view=request.GET.get("vista","")
+    # 2.22.2: the view chosen (Giorno, Settimana, Mese, Elenco) stays the one for the next openings of the agenda
+    if view in ("giorno","settimana","mese","elenco"):request.session["agenda_vista"]=view
+    elif not view and "from" not in request.GET and "to" not in request.GET:view=request.session.get("agenda_vista","")
     if view=="settimana":return week_view(request)
     if view=="mese":return month_view(request)
     if agenda and view!="elenco" and "from" not in request.GET and "to" not in request.GET:return day_view(request)
@@ -577,12 +580,12 @@ def booking_detail(request,slug,booking_id):
             if back:
                 request.session["undo"]=str(booking.pk);return redirect("dashboard",slug)
             if agenda:
-                messages.success(request,"Appuntamento annullato.");return redirect(reverse("bookings",args=[slug])+f"?data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
+                messages.success(request,"Appuntamento annullato.");return redirect(reverse("bookings",args=[slug])+f"?vista=giorno&data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
             return redirect("booking_detail",slug,booking_id)
         except BookingError as ex:
             messages.error(request,str(ex))
             if back:return redirect("dashboard",slug)
-            if agenda:return redirect(reverse("bookings",args=[slug])+f"?data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
+            if agenda:return redirect(reverse("bookings",args=[slug])+f"?vista=giorno&data={booking.start.astimezone(ZoneInfo(request.tenant.timezone)):%Y-%m-%d}")
     from .clients import mark
     mark(request,[booking])  # 2.14.0: VIP, tags, absences of the client, for who sees the client cards
     data=shown(request,booking.data)

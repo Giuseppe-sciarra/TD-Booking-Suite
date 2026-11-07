@@ -563,7 +563,7 @@ a.client-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px #2b2
  .floaters{display:none}
  .clean-list .actions{flex-wrap:wrap}
 }
-.filters button,.filters .button{min-height:44px;margin-top:0}
+.filters button,.filters .button{min-height:44px;margin-top:0}.filters .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}.filters .actions a{margin-bottom:0;min-height:44px}
 .login-brand{gap:22px}.login-kicker{margin-bottom:12px}.login-points{margin-top:18px}.login-stage{margin-bottom:44px}
 .login-copy h1{font-size:clamp(32px,3.2vw,48px)}
 @media(min-width:901px) and (max-height:920px){.login-badge{display:none}.login-panel{padding-top:20px;padding-bottom:14px}.login-card{padding-top:26px}}
@@ -955,6 +955,8 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}
 .peek-edit{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.peek-edit .form-grid{gap:10px}.peek-edit .actions{margin-top:10px}
 .wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
+/* 2.22.2: the part of the day already gone is hatched: there one cannot book, the free spaces start at the pink line */
+.agenda-past{position:absolute;left:var(--hours);right:0;top:0;height:0;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 9%,transparent) 0 5px,transparent 5px 11px);pointer-events:none;z-index:0}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}
 @media(max-width:700px){.agenda{--lane:minmax(96px,1fr);--hours:40px}.card.agenda-card{overflow:auto;max-height:calc(100dvh - 76px);overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.agenda-item .origin,.agenda-item .client-marks{display:none}.agenda-bar .segmented{margin-left:0;width:100%}
@@ -1670,7 +1672,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .peek-dialog::backdrop{background:rgba(20,12,30,.28)}
 .peek{display:flex;flex-direction:column;min-height:100%}
 .peek-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:18px 20px;background:var(--brand,#3b2a55);color:var(--brand-ink,#fff)}
-.peek-head .ghost{color:inherit;font-size:1.3rem}
+.peek-head .ghost{color:inherit;font-size:1.3rem;background:transparent;border-color:color-mix(in srgb,var(--brand-ink,#fff) 55%,transparent);box-shadow:none}.peek-head .ghost:hover{background:color-mix(in srgb,var(--brand-ink,#fff) 18%,transparent)}
 .peek-day{margin:0;font-size:1.35rem;font-weight:800;text-transform:capitalize}
 .peek-time{margin:2px 0 0;opacity:.9}
 .peek-client{display:flex;gap:12px;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
