@@ -278,8 +278,9 @@ def notifications_view(request,slug):
     # 2.16.2: the agency opens it too, it alone sets when the reminders go
     if not (can(request,"users.manage") or request.user.is_staff):raise PermissionDenied
     tenant=request.tenant;error=""
-    # 2.22.0: the administrator's settings; in the Windows program (SHOP_MAILS) the shop is its own administrator
-    shop=request.user.is_staff or getattr(settings,"SHOP_MAILS",False)
+    # 2.22.0: the email address, Telegram and "Avvisa l'operatore" are the administrator's (Accesso dell'amministratore on Windows too):
+    # the owner sees WhatsApp, and the email parts only once the administrator set up a mail server or Telegram
+    shop=request.user.is_staff
     current=decrypt(tenant,tenant.telegram,"telegram") if tenant.telegram else {}
     if request.method=="POST":
         fresh(request)

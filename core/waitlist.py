@@ -99,9 +99,10 @@ def link(tenant,e,slot):
 
 def run(now=None):
     """The worker's turn: the businesses with something due or a kept place that expires. Returns the emails queued."""
+    from .wpsync import by_site
     now=now or timezone.now();sent=0
     for tenant in Tenant.objects.filter(wait_check__lte=now):
-        if not operational(tenant):continue
+        if not operational(tenant) or by_site(tenant):continue  # 2.22.0: the site in charge tells the list itself, from the archive and its free times
         with scope(tenant),transaction.atomic():
             sent+=step(Tenant.objects.select_for_update().get(pk=tenant.pk),now)
     return sent

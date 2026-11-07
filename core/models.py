@@ -559,6 +559,7 @@ class WaitEntry(Scoped):
     pii=models.TextField()
     snapshot=models.JSONField(default=dict)
     created=models.DateTimeField(auto_now_add=True)
+    updated=models.DateTimeField(null=True,blank=True)  # 2.22.0: the last change, its version for the site's archive (wpsync.ver): the site in charge tells the waiting list itself
     class Meta:indexes=[models.Index(fields=["tenant","status","last"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"wait:"+str(self.pk))
@@ -857,6 +858,6 @@ class PricingPlan(models.Model):
 def _archived(sender,instance,**kw):
     from .wpsync import changed
     changed(sender,instance)
-for _m in (Booking,Contact,Sale,Treatment,ConsentEvent):
+for _m in (Booking,Contact,Sale,Treatment,ConsentEvent,WaitEntry):
     models.signals.post_save.connect(_archived,sender=_m,dispatch_uid="archive-save-"+_m.__name__)
     models.signals.post_delete.connect(_archived,sender=_m,dispatch_uid="archive-delete-"+_m.__name__)

@@ -323,9 +323,13 @@ def test_review_fixes_visit_mark_void_receipt_quote_retention(shop):
     with scope(t):
         s=cassa.claim(loc);cassa.finish(t,s,"done",{"number":"3","z":"1"});Sale.objects.filter(pk=s.pk).update(status="void")
     assert ">Pagamento<" in c.get(f"/t/salone/bookings/{b.pk}/riepilogo/").content.decode()
-    # the same «Metti in sospeso» twice: once
+    # 2.22.1: «Non nello scontrino» without a client and without a booking keeps nothing (the business writes it down), and says so
+    r=post(c,loc,action="park",**rows(("Piega","1","20,00","","")))
+    with scope(t):assert Parked.objects.count()==0
+    assert "Senza cliente non resta segnato" in c.get(r.url if r.status_code==302 else "/t/salone/cassa/").content.decode()
+    # the same «Metti in sospeso» twice, on the client's card: once
     key=secrets.token_urlsafe(24)
-    for _ in range(2):post(c,loc,action="park",key=key,**rows(("Piega","1","20,00","","")))
+    for _ in range(2):post(c,loc,action="park",key=key,contact=str(b.contact_id),**rows(("Piega","1","20,00","","")))
     with scope(t):assert Parked.objects.count()==1
     # quotes without a card go with retention
     c.post("/t/salone/preventivi/nuovo/",{"first_name":"Solo","last_name":"Nome","desc":["Piega"],"qty":["1"],"price":["20"],"ref":[""],"save":[""]})

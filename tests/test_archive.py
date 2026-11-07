@@ -142,9 +142,9 @@ def test_plugin_has_the_archive_and_only_two_pc_prefixes():
     routes=dict(re.findall(r"register_rest_route\('tdbs/v1','([^']+)',array\('methods'=>'(\w+)'",php))
     # 2.19.0: /agenda/book is the browser's (the agenda's Nuovo appuntamento), outside the PC's two prefixes
     assert routes=={"/sync":"POST","/slots":"GET","/book":"POST","/agenda/book":"POST","/archive/push":"POST","/archive/pull":"POST"}
-    for needle in ("TDBS_ARCHIVE_BODY=524288","tdbs_archive_bookings(","DELETE FROM '.tdbs_archive_table()","Per il firewall del sito","const TDBS_VERSION='2.22.0'"," * Version: 2.22.0","require_once __DIR__.'/mails.php'"):
+    for needle in ("TDBS_ARCHIVE_BODY=524288","tdbs_archive_bookings(","DELETE FROM '.tdbs_archive_table()","Per il firewall del sito","const TDBS_VERSION='"+(root/"VERSION").read_text().strip()+"'"," * Version: "+(root/"VERSION").read_text().strip(),"require_once __DIR__.'/mails.php'"):
         assert needle in php
-    assert "Stable tag: 2.22.0" in (root/"wordpress/td-booking-suite/readme.txt").read_text()
+    assert "Stable tag: "+(root/"VERSION").read_text().strip() in (root/"wordpress/td-booking-suite/readme.txt").read_text()  # the plugin's version is the suite's
     for doc in ("templates/guide.html","wordpress/td-booking-suite/readme.txt"):
         assert "/wp-json/tdbs/v1/archive/" in (root/doc).read_text() and "512 KB" in (root/doc).read_text()
 

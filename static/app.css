@@ -725,7 +725,7 @@ main:has(>.showcase){max-width:none;padding:0}
 .wp-code{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 16px;margin:4px 0 16px;border-radius:var(--r-sm);background:var(--soft);border:1px dashed var(--pastel)}
 .wp-code span{flex-basis:100%;font-size:12px;font-weight:600;color:var(--muted)}
 .wp-code .code{font:700 22px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
-.wp-card h3{font-size:15px;margin:22px 0 6px}
+.wp-card h3{font-size:15px;margin:22px 0 6px}.wp-card .wp-part{font-size:17px;margin:14px 0 8px;padding-top:14px;border-top:1px solid var(--line)}.wp-card .section-heading+.wp-part{border-top:0;padding-top:0;margin-top:6px}
 /* 2.6.0: three ways to send email */
 .method-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 22px}
 .method-tabs a{display:block;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:var(--paper);transition:border-color .15s,background .15s}
@@ -956,7 +956,12 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}
-@media(max-width:700px){.agenda{--lane:minmax(110px,1fr)}.agenda-card{overflow-x:auto}.agenda-bar .segmented{margin-left:0}}
+@media(max-width:700px){.agenda{--lane:minmax(96px,1fr);--hours:40px}.card.agenda-card{overflow:auto;max-height:calc(100dvh - 76px);overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.agenda-item .origin,.agenda-item .client-marks{display:none}.agenda-bar .segmented{margin-left:0;width:100%}
+ /* 2.22.1: the phone: the bar in rows that fit, no keys hint; the hours stay on the left while the columns scroll; the blocks say the start, the client and the service */
+ .agenda-bar{gap:8px}.day-nav{width:100%}.day-pick{width:100%}.day-pick input[type=date]{flex:1 1 120px;min-width:0}.day-pick select{flex:1 1 110px;min-width:0;white-space:nowrap;text-overflow:ellipsis}.kbd-hint{display:none}
+ .agenda-hour{position:sticky;left:0;z-index:2;background:var(--paper);padding:0 6px 0 2px;font-size:11px}.agenda-head>span:first-child{position:sticky;left:0;z-index:4;background:var(--paper)}
+ .agenda-head{top:0}.agenda-head strong{padding:9px 8px;font-size:13px}.op-photo{width:22px;height:22px;margin-right:6px}
+ .agenda-item{margin:1px 2px;padding:3px 5px;font-size:12px}.agenda-item .to{display:none}.agenda-item.short{padding:0 5px}}
 
 /* 2.10.0: the menu in framed groups, an icon on every entry; daily work on top, the program's settings folded below */
 .sidebar .nav-groups{margin-top:12px}.sidebar .nav-groups+.nav-groups,.sidebar .nav-admin+.nav-groups{margin-top:0}
@@ -1041,7 +1046,10 @@ button,.button{padding:8px 15px}
 .op-1{--op:#7a55ad}.op-2{--op:#d9548f}.op-3{--op:#2f8fa6}.op-4{--op:#d88a2b}.op-5{--op:#3f9a62}.op-6{--op:#5b6fd6}.op-7{--op:#b8563c}.op-8{--op:#8a8f2e}
 :root[data-theme=dark] .op-1{--op:#c5b4d9}:root[data-theme=dark] .op-2{--op:#f08bb8}:root[data-theme=dark] .op-3{--op:#78c8db}:root[data-theme=dark] .op-4{--op:#f0b866}:root[data-theme=dark] .op-5{--op:#7fd1aa}:root[data-theme=dark] .op-6{--op:#9eabf2}:root[data-theme=dark] .op-7{--op:#f0a08a}:root[data-theme=dark] .op-8{--op:#cfd27a}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .op-1{--op:#c5b4d9}:root:not([data-theme=light]) .op-2{--op:#f08bb8}:root:not([data-theme=light]) .op-3{--op:#78c8db}:root:not([data-theme=light]) .op-4{--op:#f0b866}:root:not([data-theme=light]) .op-5{--op:#7fd1aa}:root:not([data-theme=light]) .op-6{--op:#9eabf2}:root:not([data-theme=light]) .op-7{--op:#f0a08a}:root:not([data-theme=light]) .op-8{--op:#cfd27a}}
-.agenda-item[class*="op-"]:not(.op-0){border-left-color:var(--op);background:color-mix(in srgb,var(--op) 14%,var(--paper))}
+/* 2.22.1: the blocks as in Fresha: the operator's colour full, white words; without operator the brand's */
+.agenda .agenda-item,.week-day .agenda-item{background:var(--op,var(--brand));color:#fff;border-left:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.agenda .agenda-item strong,.week-day .agenda-item strong{font-weight:700;color:#fff}.agenda .agenda-item small,.week-day .agenda-item small{color:rgba(255,255,255,.88)}
+.agenda .agenda-item .pv,.agenda .agenda-item .muted{color:inherit}
 .agenda-item.completed{background:var(--ok-soft)}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
 .op-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--op,var(--brand));margin-right:7px;vertical-align:1px}
 .agenda-head strong.op-0 .op-dot{background:var(--muted)}
@@ -1232,7 +1240,7 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
 #resource-description{display:block;margin-top:6px;font-size:13px}
 
 /* 2.13.0: a checkbox drawn as a switch (the client's emails, the emails to the clients) */
-.switch{display:inline-flex;align-items:center;gap:12px;margin:0;cursor:pointer;font-weight:600;color:var(--ink)}
+.switch{display:inline-flex;align-items:center;gap:12px;margin:0;cursor:pointer;font-weight:600;color:var(--ink)}.switch+.switch{margin-left:28px}
 .switch input[type=checkbox]{appearance:none;position:relative;flex:none;width:46px;height:26px;min-height:26px;margin:0;padding:0;border:0;border-radius:999px;background:var(--line);cursor:pointer;transition:background-color .25s}
 .switch input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--paper);box-shadow:0 1px 3px #2b223640;transition:transform .25s cubic-bezier(.3,1.4,.6,1)}
 .switch input[type=checkbox]:checked{background:var(--ok)}.switch input[type=checkbox]:checked::after{transform:translateX(20px)}
@@ -1360,18 +1368,19 @@ select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;paddi
    their confirmation, legend, quick search, shortcuts, the refresh, Nascondi nomi, the day on paper */
 .agenda-item{transition:box-shadow .15s,opacity .2s,filter .2s}
 .agenda-state{display:inline-block;margin-right:4px;padding:0 6px;border-radius:999px;font-size:10.5px;font-style:normal;font-weight:700;line-height:15px;vertical-align:1px;background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
-.agenda .agenda-item.pending{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 7px,color-mix(in srgb,var(--warn-soft) 45%,var(--paper)) 7px 14px);border-left-style:dashed}
+.agenda .agenda-item.pending{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 7px,color-mix(in srgb,var(--warn-soft) 45%,var(--paper)) 7px 14px);color:var(--ink);border-left:3px dashed var(--warn);box-shadow:none}.agenda .agenda-item.pending strong{color:var(--ink)}.agenda .agenda-item.pending small{color:var(--muted)}
+.agenda .agenda-item .agenda-state{background:rgba(255,255,255,.28);color:#fff}
 .agenda-item.pending .agenda-state{background:var(--warn);color:var(--paper)}
 .agenda-item.arrived .agenda-state{background:var(--brand);color:var(--brand-ink)}
-.agenda .agenda-item.in_progress{background:color-mix(in srgb,var(--op,var(--brand)) 30%,var(--paper))}
+.agenda .agenda-item.in_progress{box-shadow:inset 0 0 0 2px #fff,0 0 0 2px var(--op,var(--brand))}
 .agenda-item.in_progress .agenda-state{background:var(--ok);color:var(--paper)}
 .agenda-item.in_progress .agenda-state::before{content:"";display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:currentColor;vertical-align:1px;animation:live 1.4s ease-in-out infinite}
 @keyframes live{50%{opacity:.25;transform:scale(.55)}}
-.agenda .agenda-item.completed{background:var(--ok-soft);color:color-mix(in srgb,var(--ink) 72%,transparent)}
+.agenda .agenda-item.completed{background:color-mix(in srgb,var(--op,var(--brand)) 28%,var(--paper));color:color-mix(in srgb,var(--ink) 72%,transparent)}.agenda .agenda-item.completed strong{color:inherit}.agenda .agenda-item.completed small{color:var(--muted)}
 .agenda-item.completed .agenda-state{background:var(--paper);color:var(--ok)}
-.agenda .agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
+.agenda .agenda-item.no_show{background:var(--danger-soft);color:var(--ink);border-left:3px solid var(--danger)}.agenda .agenda-item.no_show strong{color:var(--ink)}.agenda .agenda-item.no_show small{color:var(--muted)}
 .agenda-item.no_show .agenda-state{background:var(--danger);color:var(--paper)}
-.agenda .agenda-item.cancelled{z-index:1;background:var(--paper);border:1px dashed color-mix(in srgb,var(--muted) 60%,transparent);border-left:3px dashed var(--muted);color:var(--muted);opacity:.75}
+.agenda .agenda-item.cancelled strong,.agenda .agenda-item.cancelled small{color:var(--muted)}.agenda .agenda-item.cancelled{z-index:1;background:var(--paper);border:1px dashed color-mix(in srgb,var(--muted) 60%,transparent);border-left:3px dashed var(--muted);color:var(--muted);opacity:.75}
 .agenda-item.cancelled .pv{text-decoration:line-through}.agenda-item.cancelled .agenda-state{background:var(--soft);color:var(--muted)}
 .agenda-body>.agenda-item[data-lane]{width:calc(100% / var(--lanes) - 4px);margin-left:calc((var(--lane) - 1) * 100% / var(--lanes) + 2px);margin-right:0}
 .agenda-forced{display:inline-grid;place-items:center;width:15px;height:15px;margin-right:4px;border-radius:50%;background:var(--danger-soft);color:var(--danger);vertical-align:-2px}
@@ -1662,3 +1671,6 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 /* 2.22.0: Promemoria WhatsApp */
 .wa-list li.is-sent{opacity:.72}
 .wa-list li.is-sent .wa-state{color:var(--ok);font-weight:600}
+
+:root[data-theme=dark] .agenda-item.op-full,:root[data-theme=dark] .agenda-item.op-full strong{color:#1c1524}:root[data-theme=dark] .agenda-item.op-full small{color:rgba(28,21,36,.8)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .agenda-item.op-full,:root:not([data-theme=light]) .agenda-item.op-full strong{color:#1c1524}:root:not([data-theme=light]) .agenda-item.op-full small{color:rgba(28,21,36,.8)}}

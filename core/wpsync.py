@@ -33,7 +33,7 @@ from django.db.models.functions import Greatest
 from django.utils import timezone
 from .clients import ERASED,key_for,same_person,seal_card
 from .crypto import encrypt,decrypt
-from .models import Tenant,Service,Option,Location,Resource,Booking,Contact,Treatment,ConsentEvent,Sale,SiteOutbox,Audit,audit
+from .models import Tenant,Service,Option,Location,Resource,Booking,Contact,Treatment,ConsentEvent,Sale,WaitEntry,SiteOutbox,Audit,audit
 from .tenancy import scope
 
 EVERY=120
@@ -110,7 +110,9 @@ def snapshot(tenant,days):
             "options":[{"id":str(o.pk),"name":o.name,"duration":o.duration} for o in options],"resources":[{"id":str(r.pk),"name":r.name} for r in people],"slots":slots})
     phone=next((l.phone for l in Location.objects.filter(active=True).exclude(phone="").order_by("name")),"")
     reminder=current(tenant)["reminder"]["on"]
-    return {"v":1,"name":tenant.name,"timezone":tenant.timezone,"generated":timezone.now().isoformat(),"days":days,"phone":phone,"services":out,"master":master(tenant),"color":tenant.brand_color,
+    # 2.22.0: for the emails the site in charge decides itself: the instructions before the arrival and the recall of every service
+    extra={str(s.pk):{"instructions":s.instructions,"recall":s.recall_days} for s in Service.objects.filter(Q(recall_days__gt=0)|~Q(instructions=""))}
+    return {"v":1,"name":tenant.name,"timezone":tenant.timezone,"generated":timezone.now().isoformat(),"days":days,"phone":phone,"services":out,"extra":extra,"master":master(tenant),"color":tenant.brand_color,
         "texts":{"privacy":tenant.privacy_text,"consent":tenant.consent_text,
             "notices":"Mandami per email la conferma, il promemoria e gli avvisi su questa prenotazione" if reminder else "Mandami per email la conferma e gli avvisi su questa prenotazione"}}
 
@@ -142,8 +144,24 @@ def agenda(tenant,c):
     cancelled ones out), with client, phone and notes, sealed with the shared secret; the site shows it after its password."""
     tz=ZoneInfo(tenant.timezone);start=datetime.combine(timezone.now().astimezone(tz).date(),datetime.min.time(),tz)
     rows=[row(b,tz) for b in Booking.objects.filter(start__gte=start,start__lt=start+timedelta(days=int(c.get("days",30)))).exclude(status="cancelled").select_related("service","option","resource").order_by("start")]
+    # 2.22.1: the operators with their colour (the agenda's, op-1..8) and their photo, small, for the site's agenda header
+    from .agenda import colors
+    ops=list(Resource.objects.filter(active=True).order_by("name"));color=colors(ops)
     return seal(c["secret"],{"generated":timezone.now().isoformat(),"timezone":tenant.timezone,
-        "operators":[{"id":str(r.pk),"name":r.name} for r in Resource.objects.filter(active=True).order_by("name")],"bookings":rows})
+        "operators":[{"id":str(r.pk),"name":r.name,"color":color[r.pk],"photo":face(r)} for r in ops],"bookings":rows})
+
+def face(resource):
+    """2.22.1: the operator's photo as a 128 px JPEG data address, or empty."""
+    from .models import ResourcePhoto
+    if not resource.photo_at:return ""
+    photo=ResourcePhoto.objects.filter(resource=resource).first()
+    if not photo:return ""
+    try:
+        import io,base64
+        from PIL import Image
+        im=Image.open(io.BytesIO(bytes(photo.data)));im.thumbnail((128,128));out=io.BytesIO();im.save(out,format="JPEG",quality=80)
+        return "data:image/jpeg;base64,"+base64.b64encode(out.getvalue()).decode()
+    except (OSError,ValueError):return ""
 
 STAFF=type("SiteAgenda",(),{"pk":""})()  # 2.19.0: who writes in the site's agenda: the desk's rules, no user of this program
 def take(tenant,rows):
@@ -234,7 +252,7 @@ def call(c,route,payload):
     return data if isinstance(data,dict) else {}
 
 # ---------- 2.18.0 the site as the central archive
-KINDS={"contact":Contact,"booking":Booking,"treatment":Treatment,"consent":ConsentEvent,"sale":Sale}
+KINDS={"contact":Contact,"booking":Booking,"treatment":Treatment,"consent":ConsentEvent,"sale":Sale,"wait":WaitEntry}  # 2.22.0: wait, the waiting list (the site in charge tells it itself)
 RELATED={"booking":("service","location","resource","option","secondary"),"consent":("contact",),"sale":("location",)}
 CHUNK=400_000  # each body under 512 KB: under the 1 MB nginx allows by default, no proxy setting to change
 QUIET=ContextVar("wps_quiet",default=False)
@@ -291,7 +309,7 @@ def pack(kind,obj,tz):
     elif kind=="sale":
         if obj.kind not in ("sale","void"):return None
         out["location"]=obj.location.name  # the summary: lines, payments and codice fiscale stay on the PC
-    elif kind=="treatment":out["data"]=obj.data
+    elif kind in ("treatment","wait"):out["data"]=obj.data
     else:
         out["data"]=obj.data;out["names"]={k:getattr(obj,k).name if getattr(obj,k+"_id") else "" for k in RELATED["booking"]}
         if obj.status!="cancelled":out["view"]=row(obj,tz)  # what [tdbs_agenda] shows; never the client record
@@ -325,7 +343,7 @@ def push(tenant,c,calls=20):
 def kept():
     """What the site must have of each kind (pack gives no empty record for these)."""
     return (("contact",Contact.objects.exclude(email_index__startswith=ERASED)),("booking",Booking.objects.all()),("treatment",Treatment.objects.all()),
-        ("consent",ConsentEvent.objects.exclude(contact__email_index__startswith=ERASED,contact__merged_into__isnull=True)),("sale",Sale.objects.filter(kind__in=("sale","void"))))
+        ("consent",ConsentEvent.objects.exclude(contact__email_index__startswith=ERASED,contact__merged_into__isnull=True)),("sale",Sale.objects.filter(kind__in=("sale","void"))),("wait",WaitEntry.objects.all()))
 def upload_all(tenant):
     """Carica tutto sul sito: every record in the outbox again; the next syncs send them. Returns how many.
     2.20.0: with the versions they have, so on the site a record changed there later stays."""
@@ -494,7 +512,7 @@ def merge(tenant,actor):
                         elif kind=="booking":
                             if Booking.objects.filter(request_key=rec.get("request_key","")).exists():out["same"]+=1;continue
                             x=w.booking(rec)
-                        elif kind=="sale":continue  # shortcut: the receipts are the register's, on the PC; the site has only their summary
+                        elif kind in ("sale","wait"):continue  # shortcut: the receipts are the register's, on the PC (the site has only their summary); the waiting list lives on the PC too
                         else:x=w.child(kind,rec)
                         if not x:
                             if kind in ("treatment","consent"):out["lost"]+=1

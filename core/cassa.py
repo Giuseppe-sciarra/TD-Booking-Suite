@@ -446,6 +446,9 @@ def park(t,loc,contact,booking,post,key,user,note=""):
     """Lines out of the receipt, on the client's card: Preventivo pagamenti cassa. The booking's work is done: completed."""
     d,total=bill(post,loc.till)
     if any(l.get("svc","").startswith("gift:") for l in d["lines"]):raise ValueError("La gift card si vende con lo scontrino: non può restare fuori.")
+    # 2.22.1: without a client and without a booking nothing is kept: the business writes it down itself (the owner's choice)
+    if not contact and not booking:
+        audit(t,user,"sale.parked",None,total=str(Decimal(total)/100),unrecorded=True);return None
     x=Parked(tenant=t,location=loc,contact=contact,booking=booking,total=Decimal(total)/100,key=key,actor=str(user.pk))
     x.pii=encrypt(t,{"lines":d["lines"],"discount":d["discount"],"note":" ".join(str(note or "").split())[:120]},"parked:"+str(x.pk));x.save()
     audit(t,user,"sale.parked",x.pk,total=str(x.total))
@@ -486,7 +489,8 @@ def sell(request,t,loc,booking,action):
         for k,_ in PAYMENTS:later.pop("pay_"+k,None)
         x=park(t,loc,contact,booking,later,key,request.user,note)
         Parked.objects.filter(pk__in=[p.pk for p in taken]).delete()
-        return f"Non nello scontrino: {euro(x.total)}, segnato tra i trattamenti del cliente."+("" if contact else " Senza cliente: lo trovi in fondo alla Cassa.")
+        if not x:return f"Non nello scontrino: {euro(Decimal(bill(later,loc.till)[1])/100)}. Senza cliente non resta segnato da nessuna parte."
+        return f"Non nello scontrino: {euro(x.total)}, segnato tra i trattamenti del cliente."+("" if contact else " Resta sulla prenotazione.")
     card=None;credit=0
     code=gift.clean(request.POST.get("gift_code"))
     if code:

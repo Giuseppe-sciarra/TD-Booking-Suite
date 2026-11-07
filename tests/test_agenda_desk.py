@@ -88,7 +88,7 @@ def test_stretched_it_keeps_its_length_and_the_client_hears_nothing(sample,clock
         with pytest.raises(BookingError):create_booking(t,payload(svc,start=at(day,12),resource=str(marco.pk),email="x@example.invalid"),None)
     assert len(sent(t))==before  # for the client nothing moved: no email
     page=owner.get(f"/t/{t.slug}/bookings/?vista=giorno&data={day.isoformat()}").content.decode()
-    assert 'data-start="11:00" data-minutes="75"' in page and "11:00–12:15" in page
+    assert 'data-start="11:00" data-minutes="75"' in page and '11:00<span class="to">–12:15</span>' in page
     # dragged later it keeps its 75 minutes (the agenda sends them), and that is a move for the client
     assert drop(owner,t,b,date=day.isoformat(),time="14:00",minutes=75).status_code==200
     with scope(t):b.refresh_from_db();assert b.end==datetime.fromisoformat(at(day,15,15)) and "client_confirmed" not in b.snapshot

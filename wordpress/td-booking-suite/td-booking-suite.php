@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
- * Version: 2.22.0
+ * Version: 2.22.1
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.22.0';
+const TDBS_VERSION='2.22.1';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -124,7 +124,7 @@ add_action('admin_post_tdbs_refresh',function(){
 add_action('admin_post_tdbs_disconnect',function(){
     tdbs_admin_check('tdbs_disconnect');
     update_option('tdbs_settings',array('disconnected'=>true));
-    tdbs_flash('Sito scollegato. Per togliere anche l’autorizzazione, scollegalo dal portale in Configura l’attività.','success');tdbs_back();
+    tdbs_flash('Sito scollegato. Per togliere anche l’autorizzazione, scollegalo dal portale in Impostazioni e sito › Sito WordPress.','success');tdbs_back();
 });
 
 function tdbs_settings_page() {
@@ -147,7 +147,7 @@ function tdbs_settings_page() {
         echo '<form method="post" action="'.$post.'" style="display:inline"><input type="hidden" name="action" value="tdbs_refresh">';wp_nonce_field('tdbs_refresh');submit_button('Aggiorna la configurazione','secondary','submit',false);echo '</form> ';
         echo '<form method="post" action="'.$post.'" style="display:inline" onsubmit="return confirm(\'Scollegare il sito dal portale?\')"><input type="hidden" name="action" value="tdbs_disconnect">';wp_nonce_field('tdbs_disconnect');submit_button('Scollega','delete','submit',false);echo '</form></p></div>';
     }
-    echo '<div class="card" style="max-width:860px"><h2>'.($connected?'Collega a un’altra attività':'Collegati al portale').'</h2><ol><li>Nel portale apri <em>Configura l’attività › Sito WordPress</em> e premi <em>Genera il codice di collegamento</em>: vale 24 ore e una volta sola.</li><li>Qui sotto scrivi l’indirizzo del portale, quello che apri nel browser per entrare, e incolla il codice.</li><li>Premi <em>'.($connected?'Collega':'Collegati').'</em>: il plugin autorizza questo sito, legge sedi e servizi e, se lasci la spunta, crea la pagina Prenota con il modulo.</li><li>Per una sola sede o un solo servizio usa gli shortcode che compaiono qui dopo il collegamento.</li></ol>';
+    echo '<div class="card" style="max-width:860px"><h2>'.($connected?'Collega a un’altra attività':'Collegati al portale').'</h2><ol><li>Nel portale apri <em>Impostazioni e sito › Sito WordPress</em> e premi <em>Genera il codice di collegamento</em>: vale 24 ore e una volta sola.</li><li>Qui sotto scrivi l’indirizzo del portale, quello che apri nel browser per entrare, e incolla il codice.</li><li>Premi <em>'.($connected?'Collega':'Collegati').'</em>: il plugin autorizza questo sito, legge sedi e servizi e, se lasci la spunta, crea la pagina Prenota con il modulo.</li><li>Per una sola sede o un solo servizio usa gli shortcode che compaiono qui dopo il collegamento.</li></ol>';
     echo '<form method="post" action="'.$post.'"><input type="hidden" name="action" value="tdbs_connect">';wp_nonce_field('tdbs_connect');
     echo '<table class="form-table"><tr><th><label for="tdbs-portal">Indirizzo del portale</label></th><td><input type="url" class="regular-text" id="tdbs-portal" name="portal" value="'.esc_attr($s['origin']??'').'" required placeholder="https://portale.tuodominio.it"></td></tr>';
     echo '<tr><th><label for="tdbs-code">Codice di collegamento</label></th><td><input class="regular-text" id="tdbs-code" name="code" required autocomplete="off" placeholder="ABCD-EFGH-JKLM-NPQR" style="text-transform:uppercase;letter-spacing:.05em"></td></tr>';
@@ -159,6 +159,7 @@ function tdbs_settings_page() {
     submit_button();
     echo '</form></details>';
     tdbs_pc_settings($post);
+    tdbs_faces_settings($post);
     tdbs_mail_settings($post);
     echo '<p>Collegato al portale, il plugin non conserva nomi, recapiti, note o credenziali nel database WordPress: il modulo arriva dal portale, dentro un riquadro della pagina. In modalità PC conserva le richieste cifrate solo finché il PC non le prende.</p></div>';
 }
@@ -314,7 +315,7 @@ function tdbs_archive_push(WP_REST_Request $request) {
     foreach (array_slice((array)($data['ops']??array()),0,1000) as $op) {
         if (!is_array($op)) continue;
         $kind=(string)($op['kind']??'');$ref=(string)($op['ref']??'');$seq=$op['seq']??null;$v=$op['v']??0;$day=(string)($op['day']??'');$sealed=(string)($op['data']??'');
-        if (!in_array($kind,array('booking','contact','treatment','consent','sale'),true) || !preg_match('/^[a-f0-9-]{36}$/',$ref) || !is_int($seq) || $seq<1 || !is_int($v) || $v<0 || ($day!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$day)) || ($sealed!=='' && !preg_match('#^[A-Za-z0-9+/=]+$#',$sealed))) continue;
+        if (!in_array($kind,array('booking','contact','treatment','consent','sale','wait'),true) || !preg_match('/^[a-f0-9-]{36}$/',$ref) || !is_int($seq) || $seq<1 || !is_int($v) || $v<0 || ($day!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$day)) || ($sealed!=='' && !preg_match('#^[A-Za-z0-9+/=]+$#',$sealed))) continue;
         // what is gone stays as an empty row with its v, so an older copy arriving late cannot bring it back; an older one is acked too, and kept out
         $done=$wpdb->query($wpdb->prepare("INSERT INTO $table (kind,ref,seq,v,day,data) VALUES (%s,%s,%d,%d,%s,%s) ON DUPLICATE KEY UPDATE data=IF($win,VALUES(data),data),day=IF($win,VALUES(day),day),seq=IF($win,VALUES(seq),seq),v=GREATEST(v,VALUES(v))",$kind,$ref,$seq,$v,$day,$sealed));
         if ($done!==false) $acked[]=$seq;
@@ -339,7 +340,7 @@ function tdbs_archive_pull(WP_REST_Request $request) {
     $data=tdbs_pc_verify($request,TDBS_ARCHIVE_BODY);
     if ($data instanceof WP_REST_Response) return $data;
     if (!tdbs_archive_on()) return tdbs_pc_error('Nel plugin l’archivio è spento: accendilo in Impostazioni › TD Booking Suite.',409);
-    $kind=in_array($data['kind']??'',array('booking','contact','treatment','consent','sale'),true)?$data['kind']:'contact';
+    $kind=in_array($data['kind']??'',array('booking','contact','treatment','consent','sale','wait'),true)?$data['kind']:'contact';
     $after=preg_match('/^[a-f0-9-]{36}$/',(string)($data['after']??''))?(string)$data['after']:'';
     $gone=!empty($data['gone']);
     $rows=(array)$wpdb->get_results($wpdb->prepare('SELECT ref,v,data FROM '.tdbs_archive_table()." WHERE kind=%s AND ref>%s".($gone?'':" AND data<>''")." ORDER BY ref LIMIT 500",$kind,$after),ARRAY_A);
@@ -630,40 +631,127 @@ function tdbs_agenda_pending() {
     }
     return $out;
 }
-/** 2.19.0: the day or the week in one table, the operators' row and the bookings in the same horizontal scroll, also on
-    the phone: the operators stay on top, the days of the week on the left. */
-function tdbs_agenda_table($a,$days) {
-    $cols=array();foreach ((array)$a['operators'] as $o) $cols[(string)$o['id']]=(string)$o['name'];
-    $cells=array();
+/** 2.22.1: the day or the week as a real agenda, as the program's: the hours on the left, a column per operator (the week:
+    per day), each booking a block at its time with the operator's colour, the faces of the operators on top as a filter;
+    a tap opens the detail (agenda.js). The hours come from the free times the PC sent for those days and from the
+    bookings themselves, 8-20 when nothing is known. */
+function tdbs_agenda_hours($snap,$days,$items) {
+    $lo=null;$hi=null;$m=function($t){return (int)substr($t,0,2)*60+(int)substr($t,3,2);};
+    foreach ((array)($snap['services']??array()) as $sv) foreach ((array)($sv['slots']??array()) as $byres) foreach ((array)$byres as $bydays) foreach ((array)$bydays as $d=>$ranges) if (in_array($d,$days,true))
+        foreach ((array)$ranges as $r) if (preg_match('/^\d{2}:\d{2}-\d{2}:\d{2}$/',(string)$r)) {$a=$m(substr($r,0,5));$b=$m(substr($r,6,5));$lo=$lo===null?$a:min($lo,$a);$hi=$hi===null?$b:max($hi,$b);}
+    if ($lo===null) {$lo=8*60;$hi=20*60;}
+    foreach ($items as $x) {$lo=min($lo,$m(substr($x['start'],11,5)));$hi=max($hi,$m(substr($x['end'],11,5)));}
+    return array((int)floor($lo/60)*60,(int)ceil(max($hi,$lo+60)/60)*60);
+}
+/* ---------- 2.22.1 the operators' faces: a photo chosen here (media library) per operator, else the one the program sends
+   with the agenda (its Operatori photo, 128 px). tdbs_faces: operator id => attachment id. */
+function tdbs_faces() {$f=get_option('tdbs_faces',array());return is_array($f)?$f:array();}
+function tdbs_face($id,$fromPc='') {
+    $f=tdbs_faces();
+    if (!empty($f[$id]) && ($u=wp_get_attachment_image_url((int)$f[$id],'thumbnail'))) return $u;
+    return (string)$fromPc;
+}
+function tdbs_agenda_people() {
+    $stored=get_option('tdbs_agenda',array());$a=is_array($stored)&&!empty($stored['sealed'])?tdbs_pc_open($stored['sealed']):null;
+    $out=array();
+    foreach ((array)($a['operators']??array()) as $o) if (is_array($o) && ($o['id']??'')!=='') $out[(string)$o['id']]=array('name'=>(string)($o['name']??''),'photo'=>(string)($o['photo']??''));
+    if (!$out) foreach ((array)(tdbs_pc_snapshot()['services']??array()) as $sv) foreach ((array)($sv['resources']??array()) as $r) if (($r['id']??'')!=='') $out[(string)$r['id']]=array('name'=>(string)($r['name']??''),'photo'=>'');
+    return $out;
+}
+function tdbs_faces_settings($post) {
+    $people=tdbs_agenda_people();
+    if (!$people) return;
+    wp_enqueue_media();$f=tdbs_faces();
+    echo '<div class="card" style="max-width:860px"><h2>Foto degli operatori</h2><p class="description">Compaiono in cima alle colonne dell’agenda del sito e nell’app sul telefono. Scegli qui una foto dalla libreria media; senza, vale quella messa nel programma (Configura l’attività › Operatori), che arriva con la sincronizzazione.</p>';
+    echo '<form method="post" action="'.$post.'"><input type="hidden" name="action" value="tdbs_faces_save">';wp_nonce_field('tdbs_faces_save');
+    echo '<table class="form-table">';
+    foreach ($people as $id=>$o) {
+        $mine=(int)($f[$id]??0);$src=tdbs_face($id,$o['photo']);
+        echo '<tr><th>'.esc_html($o['name']).'</th><td class="tdbs-face-row"><span class="tdbs-face-preview">'.($src!==''?'<img src="'.esc_attr($src).'" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;vertical-align:middle">':'<span style="display:inline-grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#eee;vertical-align:middle">'.esc_html(tdbs_initials($o['name'])).'</span>').'</span> '
+            .'<input type="hidden" name="face['.esc_attr($id).']" value="'.esc_attr((string)$mine).'" data-face> <button type="button" class="button" data-face-pick>Scegli dalla libreria</button> <button type="button" class="button" data-face-clear'.($mine?'':' hidden').'>Togli, usa quella del programma</button>'
+            .($mine?'':($o['photo']!==''?' <span class="description">dal programma</span>':' <span class="description">nessuna foto</span>')).'</td></tr>';
+    }
+    echo '</table>';submit_button('Salva le foto','secondary');echo '</form></div>';
+    echo '<script>document.addEventListener("click",function(e){var b=e.target.closest("[data-face-pick],[data-face-clear]");if(!b||!window.wp||!wp.media)return;var row=b.closest("td"),input=row.querySelector("[data-face]"),prev=row.querySelector(".tdbs-face-preview"),clear=row.querySelector("[data-face-clear]");'
+        .'if(b.hasAttribute("data-face-clear")){input.value="0";clear.hidden=true;prev.innerHTML="";return;}'
+        .'var frame=wp.media({title:"Foto dell\u2019operatore",button:{text:"Usa questa foto"},multiple:false,library:{type:"image"}});'
+        .'frame.on("select",function(){var a=frame.state().get("selection").first().toJSON();input.value=a.id;var u=(a.sizes&&a.sizes.thumbnail?a.sizes.thumbnail.url:a.url);prev.innerHTML=\'<img src="\'+u+\'" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;vertical-align:middle">\';clear.hidden=false;});frame.open();});</script>';
+}
+add_action('admin_post_tdbs_faces_save',function(){
+    tdbs_admin_check('tdbs_faces_save');
+    $out=array();
+    foreach ((array)($_POST['face']??array()) as $id=>$v) if (preg_match('/^[a-f0-9-]{1,40}$/',(string)$id) && absint($v) && get_post_type(absint($v))==='attachment') $out[(string)$id]=absint($v);
+    update_option('tdbs_faces',$out,false);
+    tdbs_flash('Foto degli operatori salvate.','success');tdbs_back();
+});
+function tdbs_initials($name) {$i=mb_strtoupper(mb_substr($name,0,1));if (preg_match('/\s(\S)/u',$name,$m)) $i.=mb_strtoupper($m[1]);return $i;}
+function tdbs_agenda_grid($a,$days,$snap,$only='') {
+    $week=count($days)>1;$ops=array();
+    foreach ((array)$a['operators'] as $o) if (is_array($o)) $ops[(string)$o['id']]=array('name'=>(string)$o['name'],'color'=>(int)($o['color']??0),'photo'=>tdbs_face((string)$o['id'],(string)($o['photo']??'')));
+    $items=array();
     foreach ((array)$a['bookings'] as $b) {
-        $d=substr((string)$b['start'],0,10);
-        if (in_array($d,$days,true)) $cells[$d][isset($cols[(string)$b['resource']])?(string)$b['resource']:'-'][]=$b;
+        $d=substr((string)$b['start'],0,10);$rid=(string)($b['resource']??'');
+        if (!in_array($d,$days,true) || ($only!=='' && $rid!==$only)) continue;
+        if ($rid!=='' && !isset($ops[$rid])) $ops[$rid]=array('name'=>(string)($b['operator']??''),'color'=>0,'photo'=>'');
+        $items[]=$b;
     }
-    foreach ($cells as $x) if (isset($x['-'])) {$cols['-']='Senza operatore';break;}
-    if (!$cols) $cols['-']='Prenotazioni';
-    $week=count($days)>1;$name=function($d,$f){return wp_date($f,strtotime($d.' 12:00 UTC'),new DateTimeZone('UTC'));};
-    $html=($week?'':'<h3>'.esc_html($name($days[0],'l j F')).'</h3>').'<div class="tdbs-agenda-scroll" role="region" aria-label="Prenotazioni" tabindex="0"><table class="tdbs-agenda-table'.($week?' is-week':'').'"><thead><tr>'
-        .($week?'<th scope="col" class="tdbs-agenda-corner">Giorno</th>':'');
-    foreach ($cols as $c) $html.='<th scope="col">'.esc_html($c).'</th>';
-    $html.='</tr></thead><tbody>';
-    foreach ($days as $d) {
-        $html.='<tr>'.($week?'<th scope="row">'.esc_html($name($d,'D j M')).'</th>':'');
-        foreach (array_keys($cols) as $k) {
-            $items=$cells[$d][$k]??array();
-            usort($items,function($x,$y){return strcmp($x['start'],$y['start']);});
-            $html.='<td>'.($items?'':($week?'<span class="tdbs-agenda-empty" aria-hidden="true">—</span><span class="screen-reader-text">Nessuna prenotazione</span>':'<p class="tdbs-agenda-empty">Nessuna prenotazione</p>'));
-            foreach ($items as $b) {
-                $when=substr($b['start'],11,5);$dl='';  // 2.22.0: the start only
-                foreach (array('Quando'=>$when,'Servizio'=>$b['service'],'Con'=>$b['operator'],'Cliente'=>$b['client'],'Telefono'=>$b['phone'],'Note'=>$b['notes'],'Stato'=>$b['status']) as $key=>$v) if ((string)$v!=='')
-                    $dl.='<dt>'.$key.'</dt><dd>'.($key==='Telefono'?'<a href="tel:'.esc_attr(preg_replace('/[^0-9+]/','',(string)$v)).'">'.esc_html($v).'</a>':nl2br(esc_html($v))).'</dd>';
-                $html.='<details class="tdbs-agenda-booking'.(!empty($b['pending'])?' is-pending':'').'"><summary><strong>'.esc_html($when).'</strong> '.esc_html($b['service'].($b['client']?' · '.$b['client']:''))
-                    .(!empty($b['pending'])?' <span class="tdbs-agenda-chip">'.esc_html($b['status']).'</span>':'').'</summary><dl>'.$dl.'</dl></details>';
-            }
-            $html.='</td>';
+    $none=false;foreach ($items as $x) if ((string)($x['resource']??'')==='') {$none=true;break;}
+    list($lo,$hi)=tdbs_agenda_hours($snap,$days,$items);$rows=(int)(($hi-$lo)/15);
+    $name=function($d,$f){return wp_date($f,strtotime($d.' 12:00 UTC'),new DateTimeZone('UTC'));};
+    // the columns: the operators of the day (and "Senza operatore" when needed), or the seven days
+    $cols=array();
+    if ($week) foreach ($days as $d) $cols[]=array('key'=>$d,'label'=>$name($d,'D j'),'sub'=>'','day'=>$d);
+    else {foreach ($ops as $id=>$o) if ($only==='' || $id===$only) $cols[]=array('key'=>$id,'label'=>$o['name'],'sub'=>'','day'=>$days[0],'op'=>$o);if ($none || !$cols) $cols[]=array('key'=>'-','label'=>$ops?'Senza operatore':'Prenotazioni','sub'=>'','day'=>$days[0]);}
+    // the operators as a drop-down with their faces: one of them and his calendar, or everyone
+    $faces='';
+    if ($ops) {
+        $av=function($o,$cls='') {return $o['photo']!==''?'<img class="tdbs-ag-avatar'.$cls.'" src="'.esc_attr($o['photo']).'" alt="">':'<span class="tdbs-ag-avatar'.$cls.'" aria-hidden="true">'.esc_html(tdbs_initials($o['name'])).'</span>';};
+        $all='<span class="tdbs-ag-avatar is-small is-all" aria-hidden="true">'.count($ops).'</span>';
+        $cur=$only!=='' && isset($ops[$only])?'<span class="op-'.$ops[$only]['color'].'">'.$av($ops[$only],' is-small').'</span><span>'.esc_html($ops[$only]['name']).'</span>':$all.'<span>Tutti gli operatori</span>';
+        $faces='<details class="tdbs-ag-pick" data-pick><summary aria-label="Operatore">'.$cur.'<span class="tdbs-ag-chev" aria-hidden="true"></span></summary><ul role="list">'
+            .'<li><a href="'.esc_url(remove_query_arg(array('operatore','nuovo'))).'"'.($only===''?' aria-current="true"':'').'>'.$all.'<span>Tutti gli operatori</span></a></li>';
+        foreach ($ops as $id=>$o) $faces.='<li class="op-'.$o['color'].'"><a href="'.esc_url(add_query_arg('operatore',$id,remove_query_arg('nuovo'))).'"'.($only===$id?' aria-current="true"':'').'>'.$av($o,' is-small').'<span>'.esc_html($o['name']).'</span></a></li>';
+        $faces.='</ul></details>';
+    }
+    // the grid: the hours, then one column per key with its bookings placed by time; overlapping ones side by side
+    $html='<div class="tdbs-ag-scroll" role="region" aria-label="Agenda" tabindex="0"><div class="tdbs-ag'.($week?' is-week':'').'" style="--rows:'.$rows.'">';
+    $html.='<div class="tdbs-ag-head"><div class="tdbs-ag-corner"></div>';
+    foreach ($cols as $c) $html.='<div class="tdbs-ag-th'.(isset($c['op'])?' op-'.$c['op']['color']:'').'">'.(isset($c['op'])?($c['op']['photo']!==''?'<img class="tdbs-ag-avatar is-small" src="'.esc_attr($c['op']['photo']).'" alt="">':'<span class="tdbs-ag-avatar is-small" aria-hidden="true">'.esc_html(tdbs_initials($c['op']['name'])).'</span>'):'').'<span>'.esc_html($c['label']).'</span></div>';
+    $html.='</div><div class="tdbs-ag-body"><div class="tdbs-ag-hours">';
+    for ($h=$lo;$h<$hi;$h+=60) $html.='<span>'.sprintf('%02d:00',$h/60).'</span>';
+    $html.='</div>';
+    $m=function($t){return (int)substr($t,0,2)*60+(int)substr($t,3,2);};
+    try {$tz=new DateTimeZone((string)($a['timezone']??'Europe/Rome'));} catch (Exception $e) {$tz=wp_timezone();}
+    $now=new DateTime('now',$tz);$today=$now->format('Y-m-d');$nowmin=(int)$now->format('H')*60+(int)$now->format('i');
+    foreach ($cols as $c) {
+        $mine=array();
+        foreach ($items as $x) {
+            $rid=(string)($x['resource']??'');$d=substr((string)$x['start'],0,10);
+            if ($week?$d===$c['day']:($c['key']==='-'?$rid==='':$rid===$c['key'])) $mine[]=$x;
         }
-        $html.='</tr>';
+        usort($mine,function($x,$y){return strcmp($x['start'],$y['start']);});
+        // lanes: an item goes in the first lane free at its start
+        $lanes=array();$placed=array();
+        foreach ($mine as $x) {
+            $s=$m(substr($x['start'],11,5));$e=max($s+15,$m(substr($x['end'],11,5)));$l=0;
+            while (isset($lanes[$l]) && $lanes[$l]>$s) $l++;
+            $lanes[$l]=$e;$placed[]=array($x,$s,$e,$l);
+        }
+        $n=max(1,count($lanes));
+        $html.='<div class="tdbs-ag-col'.($c['day']===$today?' is-today':'').'" data-day="'.esc_attr($c['day']).'">';
+        if ($c['day']===$today && $nowmin>=$lo && $nowmin<=$hi) $html.='<span class="tdbs-ag-now" style="--at:'.(($nowmin-$lo)/15).'"></span>';
+        foreach ($placed as $p) {
+            list($x,$s,$e,$l)=$p;$top=max(0,($s-$lo)/15);$h=max(1,min($rows-$top,($e-$s)/15));
+            $op=isset($ops[(string)($x['resource']??'')])?$ops[(string)$x['resource']]:array('color'=>0);
+            $detail=array('quando'=>$name(substr($x['start'],0,10),'l j F').' · '.substr($x['start'],11,5).'–'.substr($x['end'],11,5),'servizio'=>(string)$x['service'],'con'=>(string)($x['operator']??''),'cliente'=>(string)($x['client']??''),'telefono'=>(string)($x['phone']??''),'note'=>(string)($x['notes']??''),'stato'=>(string)($x['status']??''));
+            $html.='<button type="button" class="tdbs-ag-item op-'.(int)$op['color'].(!empty($x['pending'])?' is-pending':'').($h<=1?' is-short':'').'" style="--top:'.$top.';--h:'.$h.';--lane:'.$l.';--lanes:'.$n.'" data-detail="'.esc_attr(wp_json_encode($detail,JSON_UNESCAPED_UNICODE)).'">'
+                .'<strong>'.esc_html(substr($x['start'],11,5)).'</strong> <span class="tdbs-ag-who">'.esc_html((string)($x['client']?:'Senza nome')).'</span><small>'.esc_html($x['service'].($week && !empty($x['operator'])?' · '.$x['operator']:'')).'</small></button>';
+        }
+        $html.='</div>';
     }
-    return $html.'</tbody></table></div>';
+    $html.='</div></div></div>';
+    $sheet='<dialog class="tdbs-ag-sheet" aria-label="Prenotazione"><div class="tdbs-ag-sheet-in"><button type="button" class="tdbs-ag-close" data-close aria-label="Chiudi">×</button><dl data-detail-list></dl></div></dialog>';
+    return ($week?'':'<h3 class="tdbs-ag-title">'.esc_html($name($days[0],'l j F')).'</h3>').$faces.$html.$sheet;
 }
 /** 2.19.0: how long the service takes with that operator, from a free time the PC sent (of another operator if none), else 30 minutes. */
 function tdbs_pc_length($sv,$option,$rid) {
@@ -779,22 +867,83 @@ function tdbs_agenda_shortcode() {
     $step=$week?7:1;$v=$week?'settimana':'giorno';
     $bar='<nav class="tdbs-agenda-bar" aria-label="Agenda">'.$link('Giorno',array('vista'=>'giorno','giorno'=>$day),!$week).$link('Settimana',array('vista'=>'settimana','giorno'=>$day),$week)
         .$link('<span aria-hidden="true">‹</span><span class="screen-reader-text">Indietro</span>',array('vista'=>$v,'giorno'=>$shift($day,-$step))).$link('Oggi',array('vista'=>$v,'giorno'=>$today))
-        .$link('<span aria-hidden="true">›</span><span class="screen-reader-text">Avanti</span>',array('vista'=>$v,'giorno'=>$shift($day,$step))).$out.'</nav>';
+        .$link('<span aria-hidden="true">›</span><span class="screen-reader-text">Avanti</span>',array('vista'=>$v,'giorno'=>$shift($day,$step)))
+        .(isset($_GET['tdbs_app'])?'':'<a class="button" href="'.esc_url(tdbs_app_url()).'">Apri come app</a>').$out.'</nav>';
     $days=array($day);
     if ($week) {$first=$shift($day,-((int)gmdate('N',strtotime($day.' 12:00 UTC'))-1));$days=array();for ($i=0;$i<7;$i++) $days[]=$shift($first,$i);}
     $at=(int)($stored['received']??0);
     // 2.19.0: Nuovo appuntamento; once saved, the page opens again on its day with this line
     $saved=($_GET['nuovo']??'')==='1'?'<p class="tdbs-agenda-status" role="status">Appuntamento salvato: qui sotto è «Da sincronizzare» finché il PC non lo prende, entro 2 minuti con il PC acceso.</p>':'';
-    return '<div class="tdbs-agenda"><p class="tdbs-agenda-updated">Aggiornata alle '.esc_html(wp_date('H:i',$at)).' del '.esc_html(wp_date('d/m',$at)).'</p>'.$saved.tdbs_agenda_form().$bar.'<div class="tdbs-agenda-body">'.tdbs_agenda_table($a,$days).'</div></div>';
+    $only=preg_match('/^[a-f0-9-]{1,40}$/',(string)($_GET['operatore']??''))?(string)$_GET['operatore']:'';
+    wp_enqueue_script('tdbs-agenda',plugins_url('agenda.js',__FILE__),array(),TDBS_VERSION,true);
+    return '<div class="tdbs-agenda"><p class="tdbs-agenda-updated">Aggiornata alle '.esc_html(wp_date('H:i',$at)).' del '.esc_html(wp_date('d/m',$at)).'</p>'.$saved.tdbs_agenda_form().$bar.'<div class="tdbs-agenda-body">'.tdbs_agenda_grid($a,$days,tdbs_pc_snapshot(),$only).'</div></div>';
 }
 add_action('init',function(){add_shortcode('tdbs_agenda','tdbs_agenda_shortcode');});
+
+/* ---------- 2.22.1 l'agenda come app sul telefono: a page of its own (?tdbs_app=1) without the theme, with the site's name,
+   logo and icon and the business's colour, a web app manifest (?tdbs_manifest=1) and a service worker (?tdbs_sw=1, from
+   the root so it may control the page): Chrome offers "Installa app", Safari "Aggiungi alla schermata Home", and the agenda
+   opens full screen like an app; without connection it shows the last agenda seen. The password and the session are the
+   agenda's own; nothing else of the site is cached. */
+function tdbs_app_url() {return add_query_arg('tdbs_app','1',home_url('/'));}
+function tdbs_app_color() {$c=(string)(tdbs_pc_snapshot()['color']??'');return preg_match('/^#[0-9a-fA-F]{6}$/',$c)?$c:'#6d4aff';}
+/** The icons of the app: the site icon (Aspetto › Personalizza › Identità del sito), else the theme's logo when big enough. */
+function tdbs_app_icons() {
+    $out=array();
+    foreach (array(192,512) as $s) if ($u=get_site_icon_url($s)) $out[]=array('src'=>$u,'sizes'=>$s.'x'.$s,'type'=>(string)(wp_check_filetype($u)['type']?:'image/png'),'purpose'=>'any');
+    if (!$out && ($id=(int)get_theme_mod('custom_logo')) && ($img=wp_get_attachment_image_src($id,'full')) && min((int)$img[1],(int)$img[2])>=144)
+        $out[]=array('src'=>$img[0],'sizes'=>$img[1].'x'.$img[2],'type'=>(string)(get_post_mime_type($id)?:'image/png'),'purpose'=>'any');
+    return $out;
+}
+add_action('template_redirect',function(){
+    if (isset($_GET['tdbs_manifest'])) {
+        nocache_headers();header('Content-Type: application/manifest+json; charset=UTF-8');
+        $name=(string)get_bloginfo('name');
+        echo wp_json_encode(array('name'=>$name.' · Agenda','short_name'=>mb_substr($name,0,12),'start_url'=>tdbs_app_url(),'scope'=>home_url('/'),'display'=>'standalone','orientation'=>'portrait','lang'=>'it',
+            'background_color'=>'#ffffff','theme_color'=>tdbs_app_color(),'icons'=>tdbs_app_icons()),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (isset($_GET['tdbs_sw'])) {
+        nocache_headers();header('Content-Type: application/javascript; charset=UTF-8');header('Service-Worker-Allowed: /');
+        readfile(__DIR__.'/app-sw.js');exit;
+    }
+    if (isset($_GET['tdbs_app'])) {tdbs_app_page();exit;}
+},0);
+function tdbs_app_page() {
+    if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE',true);
+    nocache_headers();header('Cache-Control: no-store, private');header('X-Robots-Tag: noindex, nofollow');status_header(200);
+    if (empty(tdbs_pc()['agenda'])) {status_header(404);echo '<!DOCTYPE html><meta charset="utf-8"><p>Agenda non attiva.</p>';return;}
+    $name=(string)get_bloginfo('name');$color=tdbs_app_color();$icon=get_site_icon_url(192);$touch=get_site_icon_url(180);
+    $logo=($id=(int)get_theme_mod('custom_logo'))?wp_get_attachment_image_src($id,'medium'):null;
+    $css=plugins_url('widget.css',__FILE__).'?ver='.TDBS_VERSION;$js=plugins_url('agenda.js',__FILE__).'?ver='.TDBS_VERSION;
+    $body=tdbs_agenda_shortcode();  // the same agenda; its script is printed here (no theme, no wp_footer)
+    echo '<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Agenda · '.esc_html($name).'</title>'
+        .'<link rel="manifest" href="'.esc_url(add_query_arg('tdbs_manifest','1',home_url('/'))).'"><meta name="theme-color" content="'.esc_attr($color).'"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="'.esc_attr(mb_substr($name,0,12)).'">'
+        .($touch?'<link rel="apple-touch-icon" href="'.esc_url($touch).'">':'').($icon?'<link rel="icon" href="'.esc_url($icon).'">':'')
+        .'<link rel="stylesheet" href="'.esc_url($css).'"></head><body class="tdbs-app">'
+        .'<header class="tdbs-app-bar" style="background:'.esc_attr($color).'">'.($logo?'<img src="'.esc_url($logo[0]).'" alt="">':($icon?'<img src="'.esc_url($icon).'" alt="">':'')).'<strong>'.esc_html($name).'</strong><span>Agenda</span></header>'
+        .'<main class="tdbs-app-main">'.$body.'</main>'
+        .'<div class="tdbs-app-install" role="note" hidden><button type="button" data-install>Installa l’app sul telefono</button><span data-ios hidden>Per averla sulla schermata Home: <strong>Condividi</strong> › <strong>Aggiungi alla schermata Home</strong></span><button type="button" class="tdbs-app-later" data-later aria-label="Chiudi">×</button></div>'
+        .'<script src="'.esc_url($js).'" defer></script><script>'.tdbs_app_script().'</script></body></html>';
+}
+function tdbs_app_script() {
+    return 'if("serviceWorker" in navigator)navigator.serviceWorker.register('.wp_json_encode(add_query_arg('tdbs_sw','1',home_url('/'))).').catch(function(){});'
+        .'if(document.querySelector(".tdbs-agenda-login")&&window.caches)caches.delete("tdbs-app-1");'  // closed: the last agenda is not kept on the phone
+        .'(function(){var box=document.querySelector(".tdbs-app-install"),btn=box.querySelector("[data-install]"),ios=box.querySelector("[data-ios]");'
+        .'var standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;var later=0;try{later=+sessionStorage.getItem("tdbs-app-later")||0;}catch(e){}'
+        .'if(standalone||later)return;var ev=null,closed=false;'
+        .'addEventListener("beforeinstallprompt",function(e){e.preventDefault();ev=e;if(!closed)box.hidden=false;});'
+        .'btn.addEventListener("click",function(){if(!ev)return;ev.prompt();ev.userChoice.then(function(){ev=null;box.hidden=true;});});'
+        .'if(/iphone|ipad|ipod/i.test(navigator.userAgent)){btn.hidden=true;ios.hidden=false;box.hidden=false;}'
+        .'box.querySelector("[data-later]").addEventListener("click",function(){closed=true;box.hidden=true;try{sessionStorage.setItem("tdbs-app-later","1");}catch(e){}});})();';
+}
 
 /* the settings page: Modalità PC (sincronizzazione) */
 function tdbs_pc_settings($post) {
     $p=tdbs_pc();$snap=tdbs_pc_snapshot();
     global $wpdb;$waiting=!empty($p['secret'])?(int)$wpdb->get_var('SELECT COUNT(*) FROM '.tdbs_pc_table()):0;
     echo '<div class="card" style="max-width:860px"><h2>Modalità PC (sincronizzazione)</h2><p>Per il programma installato su un PC dell’attività, spesso spento e non raggiungibile da Internet. Quando il PC è acceso, ogni 2 minuti manda a questo sito servizi, operatori e orari liberi e prende le richieste arrivate: il modulo funziona anche a PC spento.</p>'
-        .'<ol><li>Nel programma apri <em>Configura l’attività › Sito WordPress · modalità PC</em> (la vede chi amministra il programma). Scrivi l’indirizzo di questo sito, <code>'.esc_html(tdbs_site_origin()).'</code>, premi <em>Salva</em>, poi <em>Genera la chiave</em> e <em>Copia</em>.</li>'
+        .'<ol><li>Nel programma apri <em>Impostazioni e sito › Sito WordPress › Modalità PC</em> (la vede chi amministra il programma). Scrivi l’indirizzo di questo sito, <code>'.esc_html(tdbs_site_origin()).'</code>, premi <em>Salva</em>, poi <em>Genera la chiave</em> e <em>Copia</em>.</li>'
         .'<li>Qui sotto incolla la chiave in <em>Chiave dal programma</em>, spunta <em>Usa la modalità PC</em> e premi <em>Salva la modalità PC</em>.</li>'
         .'<li>Metti lo shortcode <code>[td_booking_suite]</code> in una pagina, per esempio Prenota.</li>'
         .'<li>Nel programma accendi <em>Sincronizzazione attiva</em>, premi <em>Salva</em> e poi <em>Sincronizza ora</em>. La riga in alto nel programma dice com’è andata; qui compare «Ultimi dati dal PC».</li>'
@@ -811,7 +960,8 @@ function tdbs_pc_settings($post) {
         .'<ol class="description"><li>Scrivi qui una password, almeno 10 caratteri, e premi <em>Salva la modalità PC</em>. Una password nuova chiude le sessioni aperte.</li>'
         .'<li>Crea una pagina, per esempio Agenda, con lo shortcode <code>[tdbs_agenda]</code>. Non metterla nel menu del sito; Google non la mostra.</li>'
         .'<li>Escludi quella pagina dalla cache del server, per esempio dalla FastCGI cache di aaPanel. I plugin di cache di WordPress la saltano da soli, la cache del server no: senza esclusione le prenotazioni potrebbero arrivare a chi non ha la password.</li>'
-        .'<li>Dai la password solo a chi deve vedere l’agenda. L’agenda arriva alla sincronizzazione dopo, entro 2 minuti con il PC acceso.</li></ol>'
+        .'<li>Dai la password solo a chi deve vedere l’agenda. L’agenda arriva alla sincronizzazione dopo, entro 2 minuti con il PC acceso.</li>'
+        .'<li><strong>Sul telefono, come app</strong>: apri <code>'.esc_html(tdbs_app_url()).'</code> (o <em>Apri come app</em> nella pagina) e installala: Chrome propone <em>Installa l’app</em>, su iPhone <em>Condividi › Aggiungi alla schermata Home</em>. Nome e icona sono quelli del sito ('.(tdbs_app_icons()?'icona del sito impostata':'<strong>manca l’icona del sito</strong>: senza, Chrome non propone l’installazione; impostala in Aspetto › Personalizza › Identità del sito').'), il colore quello dell’attività nel programma. Senza connessione mostra l’ultima agenda vista.</li></ol>'
         .'<p class="description">Il PC manda l’agenda cifrata con la chiave condivisa e il sito la decifra per mostrarla: chi amministra questo sito può tecnicamente leggerla.</p></td></tr>';
     // 2.18.0
     $st=!empty($p['secret'])?tdbs_archive_status():array('records'=>0,'size'=>0);$at=(int)get_option('tdbs_archive_at',0);
@@ -885,4 +1035,37 @@ function tdbs_site_info($snap,$sv,$option,$rid,$date,$time,$end,$client,$pieces=
         'service'=>$name,'service_id'=>(string)$sv['id'],'operator'=>$who,'location'=>(string)($sv['location']??''),
         'start'=>(new DateTime($date.' '.$time,$tz))->getTimestamp(),'end'=>(new DateTime($date.' '.$end,$tz))->getTimestamp());
 }
+/* ---------- 2.22.1 updates from the public releases (github.com/Giuseppe-sciarra/TD-Booking-Suite): the repository's
+   workflow attaches td-booking-suite-<versione>.zip to each release; WordPress shows the new version in Plugin and installs
+   it like any other update. Asked at most every 12 hours, without any key: the releases are public. */
+const TDBS_REPO='Giuseppe-sciarra/TD-Booking-Suite';
+function tdbs_latest() {
+    $hit=get_site_transient('tdbs_latest');
+    if (is_array($hit) && (int)($hit['at']??0)>time()-12*HOUR_IN_SECONDS) return $hit;
+    $hit=array('at'=>time(),'version'=>'','zip'=>'','notes'=>'','url'=>'');
+    $r=wp_remote_get('https://api.github.com/repos/'.TDBS_REPO.'/releases/latest',array('timeout'=>10,'headers'=>array('Accept'=>'application/vnd.github+json','User-Agent'=>'TD-Booking-Suite/'.TDBS_VERSION)));
+    $d=is_wp_error($r)?null:json_decode((string)wp_remote_retrieve_body($r),true);
+    if (is_array($d) && empty($d['draft']) && empty($d['prerelease'])) {
+        $v=ltrim((string)($d['tag_name']??''),'v');
+        foreach ((array)($d['assets']??array()) as $a) if (preg_match('/^td-booking-suite-[0-9.]+\.zip$/',(string)($a['name']??''))) $hit['zip']=(string)($a['browser_download_url']??'');
+        if ($hit['zip']!=='' && preg_match('/^\d+\.\d+\.\d+$/',$v)) {$hit['version']=$v;$hit['notes']=(string)($d['body']??'');$hit['url']=(string)($d['html_url']??'');}
+    }
+    set_site_transient('tdbs_latest',$hit,12*HOUR_IN_SECONDS);
+    return $hit;
+}
+add_action('load-update-core.php',function(){if (isset($_GET['force-check'])) delete_site_transient('tdbs_latest');});
+add_filter('pre_set_site_transient_update_plugins',function($t){
+    if (!is_object($t)) return $t;
+    $l=tdbs_latest();$file=plugin_basename(__FILE__);
+    $row=array('id'=>$file,'slug'=>'td-booking-suite','plugin'=>$file,'url'=>'https://github.com/'.TDBS_REPO,'icons'=>array(),'banners'=>array(),'requires_php'=>'8.0');
+    if ($l['version']!=='' && version_compare($l['version'],TDBS_VERSION,'>')) {$t->response[$file]=(object)($row+array('new_version'=>$l['version'],'package'=>$l['zip']));unset($t->no_update[$file]);}
+    else {unset($t->response[$file]);$t->no_update[$file]=(object)($row+array('new_version'=>TDBS_VERSION,'package'=>''));}
+    return $t;
+});
+add_filter('plugins_api',function($res,$action,$args){
+    if ($action!=='plugin_information' || (string)($args->slug??'')!=='td-booking-suite') return $res;
+    $l=tdbs_latest();
+    return (object)array('name'=>'TD Booking Suite — Prenotazioni','slug'=>'td-booking-suite','version'=>$l['version']!==''?$l['version']:TDBS_VERSION,'author'=>'Tastiere Digitali','homepage'=>'https://github.com/'.TDBS_REPO,
+        'requires'=>'6.2','requires_php'=>'8.0','download_link'=>$l['zip'],'sections'=>array('description'=>'Il modulo di prenotazione di TD Booking Suite nel sito, la modalità PC, l’agenda e l’archivio.','changelog'=>$l['notes']!==''?wp_kses_post(nl2br(esc_html($l['notes']))):'Vedi il rilascio su GitHub.'));
+},10,3);
 require_once __DIR__.'/mails.php';

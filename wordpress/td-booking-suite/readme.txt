@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.22.0
+Stable tag: 2.22.1
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -30,6 +30,20 @@ chi amministra il sito può tecnicamente leggerla. Blocco dopo 5 password sbagli
 fuori dalla cache dei plugin e non indicizzata; la cache del server (per esempio la FastCGI cache di aaPanel) va
 esclusa a mano per quella pagina.
 
+Agenda come un'agenda (2.22.1). [tdbs_agenda] è una griglia come quella del programma: le ore a sinistra, una colonna per
+operatore con la sua foto o le iniziali in cima (nella settimana una colonna per giorno), i blocchi all'ora giusta col colore
+dell'operatore, quelli sovrapposti affiancati, la riga rossa dell'ora, un tocco apre il dettaglio (telefono cliccabile). Gli
+operatori si scelgono da una tendina con le foto: uno solo o tutti. Le foto si scelgono in Impostazioni > TD Booking Suite >
+Foto degli operatori (libreria media); senza, valgono quelle messe nel programma in Operatori, che arrivano con la
+sincronizzazione. Da telefono tre operatori stanno nello schermo, di più scorrono di lato.
+
+Agenda come app sul telefono (2.22.1). L'agenda ha anche una pagina sua senza il tema, <sito>/?tdbs_app=1 (il tasto "Apri come
+app" nella pagina), con il nome, il logo e l'icona del sito e il colore dell'attività, un manifest e un service worker: Chrome
+propone "Installa l'app", su iPhone si usa Condividi > Aggiungi alla schermata Home, e l'agenda si apre a tutto schermo come
+un'app, con la stessa password. Senza connessione mostra l'ultima agenda vista; con Esci la copia sul telefono viene tolta.
+Serve l'icona del sito (Aspetto > Personalizza > Identità del sito): senza, Chrome non propone l'installazione (vale anche il
+logo del tema se è almeno 144 px). Nient'altro del sito passa dal service worker.
+
 Nuovo appuntamento nell'agenda riservata (2.19.0). Con la password dell'agenda si aggiungono anche appuntamenti: premi
 "Nuovo appuntamento", scegli servizio, prestazione (se ce n'è più di una), operatore o "Chiunque", giorno e uno degli orari
 liberi, oppure scrivi "Altro orario" (lo controlla il PC); poi nome, cognome e telefono del cliente, email facoltativa, note,
@@ -52,6 +66,23 @@ arriva dopo viene confermata al PC ma non sostituisce quella più nuova. Se il s
 coda e partono appena torna, con gli orari liberi aggiornati. Nel programma "Sincronizza con il sito" confronta tutto e tiene
 la versione più recente da tutte e due le parti; lo fa da solo anche quando l'archivio si accende su un PC già usato da solo.
 L'archivio di prima resta: i suoi record contano come i più vecchi, finché il PC non li manda di nuovo.
+
+Aggiornamenti dal repository pubblico (2.22.1). Il plugin controlla ogni 12 ore l'ultimo rilascio di
+github.com/Giuseppe-sciarra/TD-Booking-Suite (senza chiavi: i rilasci sono pubblici) e, se c'è una versione più nuova con il
+suo zip allegato, WordPress la mostra in Plugin e la installa come ogni altro aggiornamento; "Controlla di nuovo" in
+Aggiornamenti forza il controllo. Senza licenza il plugin resta inutile: lo zip pubblico non dà niente a chi non ha il programma.
+
+Prima dell'arrivo, Dopo la visita, Richiamo e Si è liberato un posto (2.22.1). Con il sito che gestisce le email, anche queste
+quattro le decide e le manda il sito da solo, ogni 5 minuti con gli altri promemoria, dai dati che il PC sincronizza: le
+prenotazioni e le schede dell'archivio, le istruzioni e i giorni di richiamo dei servizi (arrivano con gli orari liberi) e la
+lista d'attesa (arriva con l'archivio). Le regole sono quelle del programma: Prima dell'arrivo alle prenotazioni confermate con
+le istruzioni scritte nel servizio, ore prima; Dopo la visita ore dopo una visita segnata Fatta, solo a chi ha dato il consenso
+alle comunicazioni e al massimo una volta a settimana; Richiamo, una volta al giorno, all'ultima visita di un servizio con il
+richiamo quando arriva il suo giorno, con il consenso e senza un altro appuntamento già preso; Si è liberato un posto a chi è in
+lista quando per il suo servizio e i suoi giorni compare un orario libero nuovo (una volta per orario, "lo prende chi prenota per
+primo"), con la pagina Prenota. Interruttori, ore e link della recensione stanno in Email ai clienti: Prima dell'arrivo spenta di
+serie, Dopo la visita accesa (parte solo con il link), Richiamo spento, Si è liberato un posto acceso. Il PC spento non ferma
+niente, se non l'arrivo di dati nuovi.
 
 Più servizi nella stessa visita (2.22.0). Nel modulo, con "Aggiungi un altro servizio", il cliente mette altri servizi della
 stessa sede, uno dopo l'altro: il sito mostra solo gli orari in cui ci stanno tutti, con lo stesso operatore o divisi come

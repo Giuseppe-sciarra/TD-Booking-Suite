@@ -9,7 +9,7 @@
    the history. The links of the emails are signed here with the shared secret. */
 defined('ABSPATH') || exit;
 
-const TDBS_MAIL_DB='1';
+const TDBS_MAIL_DB='2';
 const TDBS_MAIL_KINDS=array(
     'confirmed'=>array('Conferma','Appena la prenotazione è fatta, online o al banco'),
     'requested'=>array('Richiesta ricevuta','Per i servizi che confermate voi: la richiesta arrivata'),
@@ -19,6 +19,11 @@ const TDBS_MAIL_KINDS=array(
     'reminder2'=>array('Secondo promemoria','Poche ore prima, facoltativo'),
     'recheck'=>array('Da ricontrollare','Una prenotazione dal sito su un orario che nel frattempo è stato preso al banco'),
     'refused'=>array('Non registrata','Una prenotazione dal sito che il programma non ha potuto tenere'),
+    // 2.22.0: these four the site decides by itself (tdbs_decide): from the archive, the snapshot and the waiting list the PC sends
+    'arrival'=>array('Prima dell’arrivo','Soggiorni ed eventi: le istruzioni scritte nel servizio nel programma (check-in, punto d’incontro), ore prima dell’inizio'),
+    'review'=>array('Dopo la visita','Il grazie con il link per la recensione, ore dopo la fine, a chi è iscritto alle comunicazioni, al massimo una volta a settimana'),
+    'recall'=>array('Richiamo','Quando è ora di tornare per un servizio con il richiamo, a chi è iscritto alle comunicazioni e non ha già un appuntamento'),
+    'waitlist'=>array('Si è liberato un posto','A chi è in lista d’attesa, quando si libera il posto che aspetta, con il link per prenotarlo'),
 );
 function tdbs_mail_defaults() {
     return array(
@@ -31,6 +36,10 @@ function tdbs_mail_defaults() {
         'reminder2'=>array('on'=>false,'hours'=>2,'subject'=>'A tra poco · {attivita}','body'=>"Ciao {nome},\nti aspettiamo tra poco: {servizio}, {quando}."),
         'recheck'=>array('subject'=>'La tua prenotazione va ricontrollata · {attivita}','body'=>"Ciao {nome},\nl’orario che hai scelto, {quando}, nel frattempo è stato occupato: ti ricontattiamo per confermarlo o spostarlo."),
         'refused'=>array('subject'=>'Prenotazione non registrata · {attivita}','body'=>"Ciao {nome},\nla prenotazione di {servizio}, {quando}, non è stata registrata: {motivo}.\nContattaci per prenotare."),
+        'arrival'=>array('on'=>false,'hours'=>48,'subject'=>'Prima del tuo arrivo · {attivita}','body'=>"Ciao {nome},\nti aspettiamo: {servizio}, {quando}.\n{istruzioni}\nPer gestire la prenotazione usa il tasto qui sotto."),
+        'review'=>array('on'=>true,'hours'=>3,'url'=>'','subject'=>'Com’è andata? · {attivita}','body'=>"Ciao {nome},\ngrazie di aver scelto {attivita}. Se ti va, lasciaci una recensione: per noi conta molto."),
+        'recall'=>array('on'=>false,'subject'=>'È ora di tornare · {attivita}','body'=>"Ciao {nome},\nè il momento giusto per {servizio}. Prenota quando vuoi con il tasto qui sotto."),
+        'waitlist'=>array('on'=>true,'subject'=>'Si è liberato un posto · {attivita}','body'=>"Ciao {nome},\nsi è liberato un posto che aspettavi: {servizio}, {quando}.\n{nota}\nPrenota con il tasto qui sotto."),
     );
 }
 function tdbs_mail_conf() {
@@ -47,7 +56,7 @@ function tdbs_mail_tables() {
     global $wpdb;$state=$wpdb->prefix.'tdbs_state';$changes=$wpdb->prefix.'tdbs_changes';
     if (get_option('tdbs_mail_db')!==TDBS_MAIL_DB) {
         require_once ABSPATH.'wp-admin/includes/upgrade.php';$cs=$wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE $state (\n ref varchar(40) NOT NULL,\n alias varchar(40) NOT NULL DEFAULT '',\n status varchar(12) NOT NULL DEFAULT '',\n start bigint(20) NOT NULL DEFAULT 0,\n seen bigint(20) NOT NULL DEFAULT 0,\n flags text NOT NULL,\n data longtext NOT NULL,\n PRIMARY KEY  (ref),\n KEY alias (alias),\n KEY start (start)\n) $cs;");
+        dbDelta("CREATE TABLE $state (\n ref varchar(40) NOT NULL,\n alias varchar(40) NOT NULL DEFAULT '',\n status varchar(12) NOT NULL DEFAULT '',\n start bigint(20) NOT NULL DEFAULT 0,\n seen bigint(20) NOT NULL DEFAULT 0,\n cs varchar(80) NOT NULL DEFAULT '',\n flags text NOT NULL,\n data longtext NOT NULL,\n PRIMARY KEY  (ref),\n KEY cs (cs),\n KEY alias (alias),\n KEY start (start)\n) $cs;");
         dbDelta("CREATE TABLE $changes (\n id bigint(20) unsigned NOT NULL AUTO_INCREMENT,\n ref varchar(40) NOT NULL,\n action varchar(12) NOT NULL,\n at varchar(40) NOT NULL,\n PRIMARY KEY  (id)\n) $cs;");
         update_option('tdbs_mail_db',TDBS_MAIL_DB);
     }
@@ -65,7 +74,7 @@ function tdbs_state_get($ref) {
 }
 function tdbs_state_put($ref,$status,$start,$info,$flags,$seen=null,$alias=null) {
     global $wpdb;list($state)=tdbs_mail_tables();
-    $row=array('ref'=>$ref,'status'=>$status,'start'=>(int)$start,'flags'=>wp_json_encode((object)$flags),'data'=>tdbs_pc_seal($info));
+    $row=array('ref'=>$ref,'status'=>$status,'start'=>(int)$start,'flags'=>wp_json_encode((object)$flags),'data'=>tdbs_pc_seal($info),'cs'=>(string)($info['contact_id']??'').'.'.(string)($info['service_id']??''));
     if ($seen!==null) $row['seen']=(int)$seen;
     if ($alias!==null) $row['alias']=$alias;
     if ($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $state WHERE ref=%s",$ref))) $wpdb->update($state,$row,array('ref'=>$ref));
@@ -85,7 +94,7 @@ function tdbs_values($info,$ref,$extra=array()) {
     return array_merge(array('nome'=>(string)($info['first_name']??''),'servizio'=>(string)($info['service']??''),
         'quando'=>TDBS_DAYS[(int)$d->format('N')-1].' '.$d->format('d/m/Y').' alle '.$d->format('H:i'),'data'=>$d->format('d/m/Y'),'ora'=>$d->format('H:i'),
         'sede'=>(string)($info['location']??''),'operatore'=>(string)($info['operator']??''),'attivita'=>(string)(tdbs_pc_snapshot()['name']??''),
-        'link'=>tdbs_link($ref,(int)$info['start']),'istruzioni'=>'','motivo'=>''),$extra);
+        'link'=>tdbs_link($ref,(int)$info['start']),'istruzioni'=>'','motivo'=>'','nota'=>''),$extra);
 }
 function tdbs_fill($text,$v) {return preg_replace_callback('/\{(\w+)\}/',function($m)use($v){return array_key_exists($m[1],$v)?(string)$v[$m[1]]:$m[0];},(string)$text);}
 /** The email of this moment to the client of the booking, if he left an email and did not say no to these emails. */
@@ -96,7 +105,9 @@ function tdbs_tell($kind,$ref,$info,$extra=array()) {
     if (!is_array($c) || (array_key_exists('on',$c) && empty($c['on']))) return false;
     $v=tdbs_values($info,$ref,$extra);$buttons=array();
     if ($kind==='reminder' || $kind==='reminder2') $buttons=array(array('Confermo, ci sarò',tdbs_link($ref,(int)$info['start'],'confirm')),array('Annulla',$v['link']));
-    elseif (in_array($kind,array('confirmed','requested','moved'),true)) $buttons=array(array('Gestisci la prenotazione',$v['link']));
+    elseif (in_array($kind,array('confirmed','requested','moved','arrival'),true)) $buttons=array(array('Gestisci la prenotazione',$v['link']));
+    elseif ($kind==='review') {$v['link']=(string)$c['url'];$buttons=array(array('Lascia una recensione',$v['link']));}
+    elseif ($kind==='recall' || $kind==='waitlist') {$v['link']=tdbs_book_link();$buttons=array(array('Prenota',$v['link']));}
     return tdbs_send($email,tdbs_fill($c['subject'],$v),tdbs_fill($c['body'],$v),$buttons);
 }
 /** To the business (Avvisi a voi): a booking made, cancelled or declined by a client on the site. */
@@ -149,15 +160,22 @@ function tdbs_info_of($rec) {
     global $wpdb;
     $d=(array)($rec['data']??array());$n=(array)($rec['names']??array());$s=(array)($rec['snapshot']??array());
     $notices=($s['notices']??true)!==false;
-    if (!empty($rec['contact_id'])) {
-        $card=$wpdb->get_var($wpdb->prepare('SELECT data FROM '.tdbs_archive_table()." WHERE kind='contact' AND ref=%s",(string)$rec['contact_id']));
-        $card=$card?tdbs_pc_open($card):null;
-        if (is_array($card) && array_key_exists('notices',$card) && !$card['notices']) $notices=false;
-    }
+    $card=tdbs_card((string)($rec['contact_id']??''));
+    if ($card && array_key_exists('notices',$card) && !$card['notices']) $notices=false;
     $service=(string)($s['service']??($n['service']??''));if (!empty($n['option'])) $service.=' · '.$n['option'];
     return array('first_name'=>(string)($d['first_name']??''),'last_name'=>(string)($d['last_name']??''),'email'=>(string)($d['email']??''),'phone'=>(string)($d['phone']??''),
         'notices'=>$notices,'service'=>$service,'service_id'=>(string)($rec['service_id']??''),'operator'=>(string)($n['resource']??''),'location'=>(string)($n['location']??''),
-        'start'=>strtotime((string)($rec['start']??'')),'end'=>strtotime((string)($rec['end']??'')));
+        'start'=>strtotime((string)($rec['start']??'')),'end'=>strtotime((string)($rec['end']??'')),
+        // 2.22.0: for Dopo la visita and Richiamo: the card and its consent to the communications (art. 130: they invite)
+        'contact_id'=>(string)($rec['contact_id']??''),'consent'=>$card && ($card['consent']??'')==='yes' && empty($card['suppressed']));
+}
+/** The client's card of the archive, opened, or null. */
+function tdbs_card($id) {
+    global $wpdb;
+    if ($id==='') return null;
+    $card=$wpdb->get_var($wpdb->prepare('SELECT data FROM '.tdbs_archive_table()." WHERE kind='contact' AND ref=%s",$id));
+    $card=$card?tdbs_pc_open($card):null;
+    return is_array($card)?$card:null;
 }
 /** One booking of the archive push: what the site knows of it updated; the email of the change when it changed after since
     (the program turned this on): new, accepted, moved, cancelled. A booking of a visit after its first service, of a series,
@@ -193,6 +211,7 @@ function tdbs_state_from_archive($ref,$rec,$v) {
 add_filter('cron_schedules',function($s){$s['tdbs_5']=array('interval'=>300,'display'=>'Ogni 5 minuti (TD Booking Suite)');return $s;});
 add_action('init',function(){if (!wp_next_scheduled('tdbs_mail_cron')) wp_schedule_event(time()+60,'tdbs_5','tdbs_mail_cron');});
 add_action('tdbs_mail_cron','tdbs_remind');
+add_action('tdbs_mail_cron','tdbs_decide');
 function tdbs_remind($now=null) {
     global $wpdb;
     if (!tdbs_master()) return 0;
@@ -213,6 +232,92 @@ function tdbs_remind($now=null) {
         }
     }
     return $sent;
+}
+
+/* ---------- 2.22.0 the four the site decides by itself, as the program would: Prima dell'arrivo (the instructions of the
+   service, hours before), Dopo la visita (hours after a visit marked Fatta, with the consent, once a week per client),
+   Richiamo (the last visit of a service with a recall, its day reached, nothing booked after, once a day), Si è liberato un
+   posto (the waiting list of the PC against the free times here, once per time). The instructions and the recall days
+   come with the snapshot (extra), the entries with the archive (kind wait). */
+function tdbs_book_link() {$p=tdbs_booking_page(false);return $p?get_permalink($p):home_url('/');}
+function tdbs_decide($now=null) {
+    global $wpdb;
+    if (!tdbs_master()) return 0;
+    list($state)=tdbs_mail_tables();$now=$now??time();$conf=tdbs_mail_conf();$sent=0;
+    $snap=tdbs_pc_snapshot();$extra=(array)($snap['extra']??array());
+    $c=$conf['arrival'];
+    if (!empty($c['on']) && $extra) foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT ref FROM $state WHERE status='confirmed' AND start>%d AND start<=%d ORDER BY start LIMIT 500",$now,$now+max(1,(int)$c['hours'])*HOUR_IN_SECONDS)) as $ref) {
+        $b=tdbs_state_get($ref);if (!$b || isset($b['flags']['arrival'])) continue;
+        $text=(string)($extra[(string)($b['info']['service_id']??'')]['instructions']??'');
+        if ($text!=='' && tdbs_tell('arrival',$ref,$b['info'],array('istruzioni'=>$text))) $sent++;
+        $b['flags']['arrival']=$now;tdbs_state_put($ref,$b['status'],$b['start'],$b['info'],$b['flags']);
+    }
+    $c=$conf['review'];
+    if (!empty($c['on']) && (string)$c['url']!=='') {
+        $after=$now-max(1,(int)$c['hours'])*HOUR_IN_SECONDS;
+        foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT ref FROM $state WHERE status='completed' AND start>%d AND start<=%d ORDER BY start LIMIT 500",$after-3*DAY_IN_SECONDS,$after)) as $ref) {
+            $b=tdbs_state_get($ref);if (!$b || isset($b['flags']['review'])) continue;
+            $end=(int)($b['info']['end']??0);
+            if ($end>$after) continue;
+            // not the old ones when it is switched on, never twice in 7 days to the same client
+            $go=$end>$after-2*DAY_IN_SECONDS && !empty($b['info']['consent']) && !tdbs_told_lately($b['info'],'review',$now-7*DAY_IN_SECONDS);
+            $b['flags']['review']=$go && tdbs_tell('review',$ref,$b['info'])?$now:0;  // 0: looked at, not sent
+            $sent+=(int)(bool)$b['flags']['review'];tdbs_state_put($ref,$b['status'],$b['start'],$b['info'],$b['flags']);
+        }
+    }
+    $c=$conf['recall'];$day=gmdate('Y-m-d',$now);
+    if (!empty($c['on']) && $extra && get_option('tdbs_recall_day')!==$day) {
+        update_option('tdbs_recall_day',$day,false);
+        foreach ($extra as $sid=>$x) {
+            $days=(int)($x['recall']??0);if ($days<1) continue;
+            // shortcut: the visits whose recall came due in the last 3 days; a site without visits for longer skips them
+            foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT ref FROM $state WHERE status='completed' AND cs LIKE %s AND start>%d AND start<=%d LIMIT 500",'%.'.$wpdb->esc_like((string)$sid),$now-($days+3)*DAY_IN_SECONDS,$now-$days*DAY_IN_SECONDS)) as $ref) {
+                $b=tdbs_state_get($ref);if (!$b || isset($b['flags']['recall']) || empty($b['info']['consent'])) continue;
+                $cs=(string)($b['info']['contact_id']??'').'.'.$sid;$contact=(string)($b['info']['contact_id']??'');
+                $last=(int)$wpdb->get_var($wpdb->prepare("SELECT MAX(start) FROM $state WHERE cs=%s AND status='completed'",$cs));
+                $booked=$contact!=='' && $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $state WHERE cs LIKE %s AND status IN ('pending','confirmed') AND start>%d",$wpdb->esc_like($contact).'.%',$now));
+                $go=$last===(int)$b['start'] && !$booked;
+                $b['flags']['recall']=$go && tdbs_tell('recall',$ref,$b['info'])?$now:0;
+                $sent+=(int)(bool)$b['flags']['recall'];tdbs_state_put($ref,$b['status'],$b['start'],$b['info'],$b['flags']);
+            }
+        }
+    }
+    $c=$conf['waitlist'];
+    if (!empty($c['on']) && !empty($snap['services'])) foreach ((array)$wpdb->get_results('SELECT ref,data FROM '.tdbs_archive_table()." WHERE kind='wait' AND data<>'' LIMIT 500",ARRAY_A) as $row) {
+        $e=tdbs_pc_open($row['data']);
+        if (!is_array($e) || ($e['status']??'')!=='waiting') continue;
+        $sv=tdbs_pc_service($snap,(string)($e['service_id']??''));if (!$sv) continue;  // a service the site does not take (shortcut: only appointments with operator)
+        try {$tz=new DateTimeZone((string)($snap['timezone']??'Europe/Rome'));} catch (Exception $ex) {$tz=wp_timezone();}
+        $today=(new DateTime('@'.$now))->setTimezone($tz)->format('Y-m-d');
+        $first=(string)($e['first']??'');$last=(string)($e['last']??$first);
+        if ($last<$today) continue;
+        $st=tdbs_state_get($row['ref']);$seen=$st?(array)($st['flags']['seen']??array()):array();
+        $from=(string)($e['time_from']??'');$to=(string)($e['time_to']??'');$free=tdbs_pc_free($snap,$sv,'',(string)($e['resource_id']??''));
+        $times=array();$when='';
+        foreach ($free as $d=>$list) {
+            if ($d<$first || $d>$last) continue;
+            foreach ($list as $x) {$a=substr($x[0],0,5);if (($from!=='' && $a<substr($from,0,5)) || ($to!=='' && $a>=substr($to,0,5)) || in_array($d.' '.$a,$seen,true)) continue;$times[]=$a;$seen[]=$d.' '.$a;}
+            if ($times) {$when=$d;break;}
+        }
+        if (!$times) continue;
+        $dt=new DateTime($when.' '.$times[0],$tz);$card=tdbs_card((string)($e['contact_id']??''));
+        $d=(array)($e['data']??array());
+        $info=array('first_name'=>(string)($d['first_name']??''),'email'=>(string)($d['email']??''),'notices'=>!($card && array_key_exists('notices',$card) && !$card['notices']),
+            'service'=>(string)($sv['name']??''),'location'=>(string)($sv['location']??''),'operator'=>'','start'=>$dt->getTimestamp());
+        $quando=TDBS_DAYS[(int)$dt->format('N')-1].' '.$dt->format('d/m/Y').' alle '.implode(', ',array_slice($times,0,6)).(count($times)>6?' e altri orari':'');
+        if (tdbs_tell('waitlist',$row['ref'],$info,array('quando'=>$quando,'nota'=>'Lo abbiamo scritto a tutti quelli in lista: lo prende chi prenota per primo. Se non c’è più, sulla pagina vedi cosa resta libero.'))) $sent++;
+        tdbs_state_put($row['ref'],'waiting',$dt->getTimestamp(),array('contact_id'=>(string)($e['contact_id']??''),'service_id'=>(string)($e['service_id']??'')),array('seen'=>array_slice($seen,-300)));
+    }
+    return $sent;
+}
+/** A flag set after since on another row of the same client (the state keeps cs = client.service). */
+function tdbs_told_lately($info,$flag,$since) {
+    global $wpdb;list($state)=tdbs_mail_tables();$contact=(string)($info['contact_id']??'');
+    if ($contact==='') return false;
+    foreach ((array)$wpdb->get_col($wpdb->prepare("SELECT flags FROM $state WHERE cs LIKE %s AND start>%d",$wpdb->esc_like($contact).'.%',$since-30*DAY_IN_SECONDS)) as $f) {
+        $f=json_decode((string)$f,true);if (is_array($f) && (int)($f[$flag]??0)>$since) return true;
+    }
+    return false;
 }
 
 /* ---------- the client's page of the links: the booking, Confermo, Annulla (Non vengo inside the cutoff) */
@@ -274,8 +379,8 @@ function tdbs_page($title,$html) {
 function tdbs_mail_settings($post) {
     $c=tdbs_mail_conf();$on=tdbs_master();$err=get_option('tdbs_mail_error');$last=(int)get_option('tdbs_mail_last',0);
     echo '<div class="card" style="max-width:860px"><h2 id="tdbs-email">Email ai clienti</h2>';
-    echo $on?'<p><strong>Attive.</strong> Il programma ha acceso <em>Il sito gestisce prenotazioni ed email</em>: le email ai clienti e gli avvisi a voi li manda questo sito, anche con il PC spento. Il programma non ne manda più.</p>'
-        :'<p><strong>Spente.</strong> Si accendono dal programma: <em>Configura l’attività › Sito WordPress · modalità PC</em>, con <em>Sito come archivio centrale</em> e <em>Il sito gestisce prenotazioni ed email</em>. Finché sono spente le email le manda il programma.</p>';
+    echo $on?'<p><strong>Attive.</strong> Il programma ha acceso <em>Il sito gestisce prenotazioni ed email</em>: le email ai clienti e gli avvisi a voi li manda questo sito, anche con il PC spento. Il programma non ne manda più. Anche Prima dell’arrivo, Dopo la visita, Richiamo e Si è liberato un posto le decide e le manda questo sito, dall’archivio e dalla lista d’attesa che il PC sincronizza.</p>'
+        :'<p><strong>Spente.</strong> Si accendono dal programma: <em>Impostazioni e sito › Sito WordPress › Modalità PC</em>, con <em>Sito come archivio centrale</em> e <em>Il sito gestisce prenotazioni ed email</em>. Finché sono spente le email le manda il programma.</p>';
     echo '<p class="description">Partono con la posta di questo sito (wp_mail): con il plugin SMTP che usate per i moduli, purché lo usi per tutte le email di WordPress. Ultimo invio riuscito: '.($last?esc_html(wp_date('d/m/Y H:i',$last)):'nessuno').'.'
         .(is_array($err)?' <strong>Ultimo invio non riuscito: '.esc_html(wp_date('d/m/Y H:i',(int)$err['at'])).', a '.esc_html((string)$err['to']).'. Controlla l’SMTP del sito.</strong>':'').'</p>';
     echo '<p class="description">I promemoria partono da WP-Cron, che gira quando qualcuno apre il sito. Per averli all’ora giusta anche di notte aggiungi nel server un cron ogni 5 minuti: <code>*/5 * * * * wget -q -O - '.esc_html(site_url('wp-cron.php?doing_wp_cron')).' &gt;/dev/null 2&gt;&amp;1</code> (in aaPanel: Cron › Accedi a URL).</p>';
@@ -285,7 +390,8 @@ function tdbs_mail_settings($post) {
     foreach (TDBS_MAIL_KINDS as $k=>$label) {
         $x=$c[$k];$id='tdbs-'.$k;
         echo '<tr><th><label for="'.$id.'-s">'.esc_html($label[0]).'</label></th><td><p class="description">'.esc_html($label[1]).'</p>';
-        if (array_key_exists('on',$x)) echo '<p><label><input type="checkbox" name="'.$k.'[on]" value="1"'.checked(!empty($x['on']),true,false).'> Parte</label> · <label>ore prima <input type="number" min="1" max="72" name="'.$k.'[hours]" value="'.esc_attr((string)$x['hours']).'" style="width:5em"></label></p>';
+        if (array_key_exists('on',$x)) echo '<p><label><input type="checkbox" name="'.$k.'[on]" value="1"'.checked(!empty($x['on']),true,false).'> Parte</label>'.(array_key_exists('hours',$x)?' · <label>ore '.($k==='review'?'dopo':'prima').' <input type="number" min="1" max="168" name="'.$k.'[hours]" value="'.esc_attr((string)$x['hours']).'" style="width:5em"></label>':'').'</p>';
+        if (array_key_exists('url',$x)) echo '<p><label>Link per la recensione <input type="url" class="regular-text" name="'.$k.'[url]" value="'.esc_attr($x['url']).'" maxlength="500" placeholder="https://g.page/r/…/review"></label> <span class="description">per esempio quello di Google: profilo dell’attività › Chiedi recensioni. Senza link non parte</span></p>';
         echo '<p><input type="text" class="large-text" id="'.$id.'-s" name="'.$k.'[subject]" value="'.esc_attr($x['subject']).'" maxlength="150"></p><p><textarea class="large-text" rows="4" name="'.$k.'[body]" maxlength="4000">'.esc_textarea($x['body']).'</textarea></p></td></tr>';
     }
     echo '</table>';submit_button('Salva le email','secondary');echo '</form>';
@@ -302,7 +408,9 @@ add_action('admin_post_tdbs_mail_save',function(){
         $x=(array)wp_unslash($_POST[$k]??array());
         $subject=trim(sanitize_text_field((string)($x['subject']??'')));$body=trim(sanitize_textarea_field((string)($x['body']??'')));
         $out[$k]=array('subject'=>mb_substr($subject!==''?$subject:$d[$k]['subject'],0,150),'body'=>mb_substr($body!==''?$body:$d[$k]['body'],0,4000));
-        if (array_key_exists('on',$d[$k])) {$out[$k]['on']=!empty($x['on']);$out[$k]['hours']=max(1,min(72,absint($x['hours']??$d[$k]['hours'])));}
+        if (array_key_exists('on',$d[$k])) $out[$k]['on']=!empty($x['on']);
+        if (array_key_exists('hours',$d[$k])) $out[$k]['hours']=max(1,min(168,absint($x['hours']??$d[$k]['hours'])));
+        if (array_key_exists('url',$d[$k])) {$url=esc_url_raw(trim((string)($x['url']??'')));if ($url!=='' && !preg_match('#^https?://#',$url)) {tdbs_flash('Dopo la visita: il link della recensione non è valido.');tdbs_back();}$out[$k]['url']=mb_substr($url,0,500);}
     }
     update_option('tdbs_mail',$out,false);
     tdbs_flash('Email ai clienti salvate.','success');tdbs_back();

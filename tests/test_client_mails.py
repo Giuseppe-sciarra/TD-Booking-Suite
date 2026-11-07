@@ -186,7 +186,12 @@ def test_windows_shop_switches_every_email_itself(sample,settings):
     settings.SHOP_MAILS=True
     t,o,s=sample;assert not t.client_mails_enabled
     owner,_=client_as(t);url=f"/t/{t.slug}/notifications/"
+    # 2.22.1: on Windows too the owner sees the email parts only once the administrator set up the mail server; never Telegram
     page=owner.get(url).content.decode()
+    assert "Email ai clienti" not in page and "Telegram" not in page
+    settings.EMAIL_HOST="smtp.example.invalid";settings.DEFAULT_FROM_EMAIL="negozio@example.invalid"
+    page=owner.get(url).content.decode()
+    assert "Avvisi per voi" not in page and 'name="telegram_token"' not in page
     assert ' disabled data-mail-on' not in page and 'name="reminder_hours" disabled' not in page and 'name="confirmed_subject"' in page and "chiedi all" not in page
     assert owner.post(url,{"action":"client_mails","reminder_hours":"48","reminder_autocancel":"0","reminder2_on":"on","reminder2_hours":"2","confirmed_subject":"Mio"}).status_code==302
     t.refresh_from_db();now=current(t)

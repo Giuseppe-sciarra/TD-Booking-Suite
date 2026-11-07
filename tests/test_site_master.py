@@ -147,3 +147,32 @@ def test_the_switch_wants_the_archive_and_puts_the_bookings_to_come_on_the_site(
     with scope(t):assert SiteOutbox.objects.filter(kind="booking",ref=str(b.pk)).exists()
     snap=wpsync.snapshot(t,3)
     assert snap["master"]["on"] and all("approval" in x and "cutoff" in x for x in snap["services"])
+
+def test_the_site_in_charge_gets_the_waiting_list_and_the_services_extra(monkeypatch):
+    """2.22.0: Prima dell'arrivo, Dopo la visita, Richiamo and Si è liberato un posto are the site's own decisions (plugin,
+    tdbs_decide): the PC sends the instructions and the recall days of the services with the snapshot and the waiting
+    list with the archive; its own waiting-list worker stands aside."""
+    from tests.test_waitlist import salon,book,waiting,cancel_desk
+    from core.waitlist import run
+    t,svc,_=salon.__wrapped__()
+    with scope(t):Service.objects.filter(pk=svc.pk).update(recall_days=45,instructions="Suona al citofono B.")
+    site=Site();in_charge(t,site,monkeypatch)
+    with scope(t):assert wpsync.snapshot(t,3)["extra"]=={str(svc.pk):{"instructions":"Suona al citofono B.","recall":45}}
+    b=book(t,svc);e=waiting(t,svc)
+    with scope(t):
+        assert SiteOutbox.objects.filter(kind="wait",ref=str(e.pk)).exists()
+        rec=wpsync.pack("wait",WaitEntry.objects.get(pk=e.pk),timezone.get_current_timezone())
+        assert rec["data"]["email"]=="giulia@example.invalid" and rec["status"]=="waiting" and rec["service_id"]==str(svc.pk) and rec["first"]==rec["last"] and "pii" not in rec
+        b=Booking.objects.select_related("service","contact","location").get(pk=b.pk)
+    cancel_desk(t,b)
+    assert run()==0  # the site tells the list, not the PC
+    with scope(t):
+        assert WaitEntry.objects.get(pk=e.pk).due and not Delivery.objects.exists()
+    wpsync.sync(t)
+    pushed={o["kind"] for u,body in site.calls if u.endswith("/archive/push") for o in body["ops"]}
+    assert "wait" in pushed and "booking" in pushed
+    # the entry done (the client booked): the site gets it too, and gone when it expires
+    with scope(t):WaitEntry.objects.filter(pk=e.pk).update(status="done");wpsync.touch(t.pk,"wait",[e.pk])
+    wpsync.sync(t)
+    last=[o for u,body in site.calls if u.endswith("/archive/push") for o in body["ops"] if o["kind"]=="wait"][-1]
+    assert wpsync.unseal(SECRET,last["data"])["status"]=="done"

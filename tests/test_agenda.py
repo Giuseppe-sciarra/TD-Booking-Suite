@@ -28,7 +28,7 @@ def test_the_day_has_a_column_for_each_operator(sample):
         Schedule.objects.create(tenant=t,resource=bruno,weekday=day.weekday(),start=time(14),end=time(19))
     page=owner.get(f"/t/{t.slug}/bookings/?data={day.isoformat()}").content.decode()
     assert "data-agenda" in page and ">Anna</strong>" in page and ">Bruno</strong>" in page
-    assert "10:00–10:30 Giulia Rossi" in page and "<small>Taglio</small>" in page
+    assert '10:00<span class="to">–10:30</span> Giulia Rossi' in page and "<small>Taglio</small>" in page
     # free spaces book with that operator, day and time; Anna's 10:00 is taken, Bruno's morning is closed
     new=f"/t/{t.slug}/bookings/new/?operatore={anna.pk}&amp;data={day.isoformat()}&amp;ora="
     assert new+"09:00" in page and new+"10:30" in page and new+"10:00" not in page
@@ -70,7 +70,7 @@ def test_week_and_month_of_a_salon(sample):
     assert 'class="agenda week"' in week and "3 prenotazioni" in week
     # Giulia and Marta at 10 side by side, each with her operator's colour; Elena alone at 15 takes the width
     assert 'data-lanes="2"' in week and "10:00 Giulia Rossi" in week and "10:00 Marta Bianchi" in week and 'data-col="1 / -1"' in week
-    assert 'class="agenda-item op-1 confirmed" data-col="1"' in week and 'class="agenda-item op-2 confirmed" data-col="2"' in week
+    assert 'class="agenda-item op-1 confirmed op-full" data-col="1"' in week and 'class="agenda-item op-2 confirmed op-full" data-col="2"' in week
     assert '<li class="op-1">Anna</li>' in week and 'name="operatore"' in week
     assert f"?vista=giorno&amp;data={day.isoformat()}" in week and f"/t/{t.slug}/bookings/new/?data={day.isoformat()}&amp;ora=" in week
     # one operator: only hers, and a free space books with her

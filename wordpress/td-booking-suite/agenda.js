@@ -48,3 +48,23 @@ document.querySelectorAll(".tdbs-agenda-form").forEach(f=>{
  });
  chosen();
 });
+
+// 2.22.1: the agenda grid: a tap on a booking opens its detail in the sheet; × , the backdrop or Esc close it
+(()=>{const sheet=document.querySelector(".tdbs-ag-sheet");if(!sheet)return;
+ const list=sheet.querySelector("[data-detail-list]"),labels={quando:"Quando",servizio:"Servizio",con:"Con",cliente:"Cliente",telefono:"Telefono",note:"Note",stato:"Stato"};
+ document.addEventListener("click",e=>{const b=e.target.closest(".tdbs-ag-item");if(!b)return;
+  let d={};try{d=JSON.parse(b.dataset.detail||"{}");}catch{}
+  list.replaceChildren();
+  for(const k in labels){const v=d[k];if(!v)continue;const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=labels[k];
+   if(k==="telefono"){const a=document.createElement("a");a.href="tel:"+v.replace(/[^0-9+]/g,"");a.textContent=v;dd.append(a);}else dd.textContent=v;
+   list.append(dt,dd);}
+  if(typeof sheet.showModal==="function")sheet.showModal();else sheet.setAttribute("open","");});
+ sheet.addEventListener("click",e=>{if(e.target===sheet||e.target.closest("[data-close]"))sheet.close?sheet.close():sheet.removeAttribute("open");});
+ // the operators' drop-down closes with a click outside or Esc
+ const pick=document.querySelector("[data-pick]");
+ if(pick){document.addEventListener("click",e=>{if(pick.open&&!pick.contains(e.target))pick.open=false;});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&pick.open){pick.open=false;pick.querySelector("summary").focus();}});}
+ // the agenda opens on the working hours, not at the top of the night
+ const scroll=document.querySelector(".tdbs-ag-scroll"),now=document.querySelector(".tdbs-ag-now"),first=document.querySelector(".tdbs-ag-item");
+ if(scroll){const row=parseFloat(getComputedStyle(scroll.querySelector(".tdbs-ag")).getPropertyValue("--row"))||24;const at=now?parseFloat(now.style.getPropertyValue("--at")):first?parseFloat(first.style.getPropertyValue("--top")):0;scroll.scrollTop=Math.max(0,at*row-row*4);}
+})();
