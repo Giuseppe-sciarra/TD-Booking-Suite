@@ -955,7 +955,7 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .agenda-item.completed{background:var(--ok-soft);border-left-color:var(--ok)}
 .peek-edit{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.peek-edit .form-grid{gap:10px}.peek-edit .actions{margin-top:10px}
 .wa-day.is-due{border-color:var(--brand)}.wa-day .section-heading h2 .pill{margin-left:8px;font-size:12px;vertical-align:middle}.agenda-item.no_show{background:var(--danger-soft);border-left-color:var(--danger)}
-/* 2.22.2: the part of the day already gone is hatched: there one cannot book, the free spaces start at the pink line */
+/* 2.22.3: the part of the day already gone is hatched: there one cannot book, the free spaces start at the pink line */
 .agenda-past{position:absolute;left:var(--hours);right:0;top:0;height:0;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 9%,transparent) 0 5px,transparent 5px 11px);pointer-events:none;z-index:0}
 .agenda-now{position:absolute;left:var(--hours);right:0;height:2px;background:var(--pink,#e0569b);z-index:4;pointer-events:none}
 .agenda-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:inherit}

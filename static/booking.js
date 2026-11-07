@@ -51,19 +51,25 @@
   holder.addEventListener("input",conditions);holder.addEventListener("change",conditions);conditions();
  }
  // 2.14.0: more services in the same visit, one after the other: the appointments of the same location
- const visitAdd=$("visit-add");let extras=config.editing?.extra||[];
+ // 2.22.3: one list only: the first pick is the service, every pick after adds another to the same visit (same location,
+ // one after the other); the chips under the list show them all, with × to take one away
+ let extras=config.editing?.extra||[],main="";
  function visitPick(){
   const s=current(),wrap=$("visit-wrap");if(!wrap)return;
-  const more=s?.kind==="resource"&&!config.walkin&&!config.editing?config.services.filter(x=>x.kind==="resource"&&x.location===s.location&&x.id!==s.id):[];
-  wrap.hidden=!more.length&&!extras.length;visitAdd.hidden=!more.length||extras.length>=4;$("visit-add-label").hidden=visitAdd.hidden;
-  select(visitAdd,more.map(x=>({id:x.id,name:x.name+(x.price?" · "+x.price:"")})),t("Nessun altro servizio"));
-  $("visit-list").replaceChildren(...extras.map((x,i)=>{const chip=document.createElement("span");chip.className="pill";chip.textContent="+ "+x.name;
-   if(!config.editing){const b=document.createElement("button");b.type="button";b.className="ghost small";b.textContent="×";b.setAttribute("aria-label",t("Togli ")+x.name);b.addEventListener("click",()=>{extras.splice(i,1);visitPick();loadSlots();});chip.append(b);}
-   return chip;}));
+  wrap.hidden=!(s?.kind==="resource"&&!config.walkin&&!config.editing)&&!extras.length;
+  const chip=(x,more,drop)=>{const c=document.createElement("span");c.className="pill";c.textContent=(more?"+ ":"")+x.name;
+   if(!config.editing){const b=document.createElement("button");b.type="button";b.className="ghost small";b.textContent="×";b.setAttribute("aria-label",t("Togli ")+x.name);b.addEventListener("click",drop);c.append(b);}
+   return c;};
+  $("visit-list").replaceChildren(...(s?[chip(s,false,()=>{const next=extras.shift();main=next?next.id:"";service.value=main;changeService(true);})]:[]),
+   ...extras.map((x,i)=>chip(x,true,()=>{extras.splice(i,1);visitPick();loadSlots();})));
  }
- visitAdd?.addEventListener("change",()=>{const x=config.services.find(v=>v.id===visitAdd.value);if(x){extras.push({id:x.id,name:x.name});visitPick();loadSlots();}});
- function changeService(){
-  const s=current();if(!config.editing)extras=[];visitPick();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
+ service.addEventListener("change",()=>{
+  const s=current(),first=config.services.find(v=>v.id===main);
+  if(main&&s&&s.id!==main&&!config.editing&&s.kind==="resource"&&first&&s.location===first.location&&extras.length<4){
+   if(!extras.some(x=>x.id===s.id))extras.push({id:s.id,name:s.name});service.value=main;visitPick();loadSlots();return;}
+  changeService();});
+ function changeService(keep){
+  const s=current();main=service.value;if(!config.editing&&!keep)extras=[];visitPick();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
   // 2.10.0: from the agenda, the operator of the free space clicked
   if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   pickers();
@@ -144,7 +150,6 @@
    waitBox.dataset.done="1";$("wait-form").hidden=true;$("wait-title").textContent=t("Fatto: ti scriviamo appena si libera un posto.");
   }catch(e){$("wait-status").textContent=e.message;}finally{b.disabled=false;}
  });
- service.addEventListener("change",changeService);
  [option,resource,party,day,departure,force,forceAt,area].forEach(el=>el?.addEventListener("change",loadSlots));
  // 2.12.0: with operators' photos, one face each to choose with whom; the select stays, for the keyboard and the logic
  function pickers(){
@@ -222,9 +227,8 @@
   if(config.editing.extra)service.disabled=true;  // 2.14.0: a visit moves with its services
   loadSlots();
  }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
- // 2.22.2: from a free space of the agenda the appointment opens already at that time: the first service of that
- // operator is chosen for it, the times load and the one clicked is pressed; the service is changed after, if it is another
- else if(config.prefill?.time){const p=config.prefill,first=config.services.find(s=>s.kind==="resource"&&(!p.resource||s.resources.some(r=>r.id===p.resource)))||config.services.find(s=>s.kind==="resource");if(first){service.value=first.id;changeService();}}
+ // 2.22.3: from a free space of the agenda the time comes first and the service is chosen after, never for the person:
+ // once the service is picked, the times load and the one clicked is the one pressed (config.prefill.time, in loadSlots)
  // 2.14.0: from the waiting list's link: how many, the departure and who, then the times of that day
  if(config.prefill?.contact){const p=config.prefill;party.value=p.party||1;if(p.end_date)departure.value=p.end_date;
   [["first-name","first_name"],["last-name","last_name"],["customer-email","email"],["phone","phone"]].forEach(([id,k])=>{if($(id))$(id).value=p.contact[k]||"";});loadSlots();}

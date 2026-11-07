@@ -8,15 +8,15 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
  const fill=(sel,items,first)=>sel.replaceChildren(...(first?[new Option(first,"")]:[]),...items.map(([v,t])=>new Option(t,v)));
  const service=()=>c.services.find(s=>s.id===el("service").value);
  const label=d=>new Date(d+"T12:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
- fill(el("service"),c.services.map(s=>[s.id,s.name]));
+ fill(el("service"),c.services.map(s=>[s.id,s.name]),"Scegli il servizio");  // 2.22.3: the service is chosen by the person, never the first for them
  // the other appointment services of the same location can join the visit, one after the other
  const others=()=>c.services.filter(x=>x.id!==service().id&&x.location_id===service().location_id&&!extra.includes(x.id));
  function visit(){
-  const box=q(".tdbs-pc-extra"),list=q(".tdbs-pc-extra-list");list.replaceChildren();
+  const box=q(".tdbs-pc-extra"),list=q(".tdbs-pc-extra-list");list.replaceChildren();if(!service())return;
   extra.forEach(id=>{const x=c.services.find(s=>s.id===id);if(!x)return;const span=document.createElement("span");span.className="tdbs-pc-extra-item";span.textContent="+ "+x.name+" ";
    const b=document.createElement("button");b.type="button";b.className="tdbs-pc-remove";b.textContent="×";b.setAttribute("aria-label","Togli "+x.name);b.title="Togli";
    b.addEventListener("click",()=>{extra=extra.filter(v=>v!==id);visit();load();});span.append(b);list.append(span);});
-  const add=q(".tdbs-pc-add");add.hidden=!others().length||extra.length>=4;box.hidden=!service().location_id||!c.services.some(x=>x.id!==service().id&&x.location_id===service().location_id);
+  const add=q(".tdbs-pc-add");add.hidden=true;box.hidden=!service().location_id||!c.services.some(x=>x.id!==service().id&&x.location_id===service().location_id);  // 2.22.3: one list only: a second pick from Servizio adds
   q(".tdbs-pc-pick")?.remove();
  }
  q(".tdbs-pc-add").addEventListener("click",()=>{
@@ -26,7 +26,8 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
   q(".tdbs-pc-extra-list").append(sel);sel.focus();
  });
  function chosen(){
-  const s=service();q(".tdbs-pc-description").textContent=s.description||"";q(".tdbs-pc-description-box").hidden=!s.description;extra=extra.filter(id=>id!==s.id&&c.services.some(x=>x.id===id&&x.location_id===s.location_id));visit();
+  const s=service();
+  if(!s){["description-box","option","resource","extra"].forEach(k=>{const b=q(".tdbs-pc-"+k);if(b)b.hidden=true;});fill(el("date"),[]);fill(el("time"),[],"Scegli l'orario");status("Scegli il servizio.");return;}q(".tdbs-pc-description").textContent=s.description||"";q(".tdbs-pc-description-box").hidden=!s.description;extra=extra.filter(id=>id!==s.id&&c.services.some(x=>x.id===id&&x.location_id===s.location_id));visit();
   fill(el("option"),s.options.map(o=>[o.id,o.name]));q(".tdbs-pc-option").hidden=!s.options.length;
   fill(el("resource"),s.resources.map(r=>[r.id,r.name]),"Il primo disponibile");q(".tdbs-pc-resource").hidden=!s.picks||s.resources.length<2;
   load();
@@ -45,10 +46,15 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
   const list=days[el("date").value]||[];
   fill(el("time"),list.map(([range])=>[range.slice(0,5),range.slice(0,5)]),"Scegli l'orario");  // 2.22.0: the start only, as at the desk: the end is never a promise
  }
- el("service").addEventListener("change",chosen);el("option").addEventListener("change",load);el("resource").addEventListener("change",load);el("date").addEventListener("change",day);
+ let main="";
+ el("service").addEventListener("change",()=>{  // 2.22.3: the first pick is the service, the next ones join the visit (same location), the list shows the first again
+  const s=service(),first=c.services.find(x=>x.id===main);
+  if(main&&s&&s.id!==main&&first&&s.location_id===first.location_id&&extra.length<4){if(!extra.includes(s.id))extra.push(s.id);el("service").value=main;visit();load();return;}
+  main=el("service").value;chosen();});el("option").addEventListener("change",load);el("resource").addEventListener("change",load);el("date").addEventListener("change",day);
  el("time").addEventListener("change",()=>{const hit=(days[el("date").value]||[]).find(x=>x[0].slice(0,5)===el("time").value);pick=hit?[hit[0],hit[1]]:null;status("");});
  f.addEventListener("submit",async e=>{
   e.preventDefault();
+  if(!service()){status("Scegli il servizio.");el("service").focus();return;}
   if(!pick){status("Scegli un orario.");el("time").focus();return;}
   if(!f.reportValidity())return;
   const body={nonce:c.nonce,service:service().id,option:el("option").value,resource:pick[1],any:!el("resource").value,date:el("date").value,time:pick[0].slice(0,5),extra,

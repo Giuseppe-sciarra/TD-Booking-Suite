@@ -552,7 +552,7 @@ def test_a_corrected_document_number_teaches_the_rch_count(shop):
         cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[{"desc":"X","qty":1,"cents":1000,"dept":1}],"payments":[["cash",1000]]});s7=mk();assert s7.doc=="2040-0022"
 
 def test_the_agenda_view_stays_the_one_chosen_and_the_past_is_marked(shop):
-    """2.22.2: Giorno, Settimana, Mese or Elenco chosen once stay for the next openings of the agenda (session);
+    """2.22.3: Giorno, Settimana, Mese or Elenco chosen once stay for the next openings of the agenda (session);
     an explicit date or period still wins; the day already gone is hatched and has no free spaces."""
     t,loc,svc=shop
     with scope(t):

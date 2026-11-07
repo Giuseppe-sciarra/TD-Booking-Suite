@@ -97,7 +97,7 @@ def test_outlook_connect_read_and_write(sample,monkeypatch):
     assert owner.get(back["Location"])["Location"]==card
     with scope(t):marco.refresh_from_db();assert mscal.state(marco)["account"]=="marco@outlook.com" and "r2" not in marco.microsoft
     with scope(t):b=create_booking(t,payload(svc,resource=str(marco.pk)))[0]
-    soon=(timezone.now()+timedelta(days=1)).replace(microsecond=0)
+    soon=(timezone.now()+timedelta(days=1)).replace(hour=10,minute=0,second=0,microsecond=0)  # a fixed hour: late in the evening the event would cross midnight in Rome and make two blocks
     g.outside=[{"id":"x","start":{"dateTime":soon.strftime("%Y-%m-%dT%H:%M:%S.0000000"),"timeZone":"UTC"},"end":{"dateTime":(soon+timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.0000000"),"timeZone":"UTC"},"showAs":"busy"},{"id":"f","showAs":"free","start":{},"end":{}}]
     assert mscal.refresh()==1
     with scope(t):

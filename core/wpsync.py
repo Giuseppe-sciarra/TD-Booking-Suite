@@ -40,6 +40,7 @@ EVERY=120
 WINDOW=300
 MAX_DAYS=90
 FULL=timedelta(minutes=15)  # the free times are slow to count: again only after a change in the register, or after this
+SOON=timedelta(minutes=3)  # 2.22.3: and after a change not before this: a busy desk (a receipt a minute) does not keep the worker counting
 RUNNING=timedelta(minutes=10)  # a sync that never ended (the PC switched off meanwhile) is no longer "in corso"
 
 def sign(secret,ts,body):return hmac.new(secret.encode(),str(ts).encode()+b"."+body,hashlib.sha256).hexdigest()
@@ -212,10 +213,14 @@ def sync(tenant,full=False):
     old=tenant.wp_state or {}
     state(tenant,running=timezone.now().isoformat())
     try:
+        # 2.22.3: after a call that did not get through, a light call first: the free times are slow to count and a site
+        # that is down (the PC in a VM, the line gone) must not keep the worker and the database busy every two minutes
+        if old.get("down"):call(c,"/sync",{"ack":[],"changes_ack":[],"refused":[]})
         with scope(tenant):
             mark=str(Audit.objects.exclude(action__startswith="wpsync.").order_by("-created").values_list("created","pk").first() or "")
-            # 2.20.0: right after a call that did not get through, the free times and the agenda again (the site may be a new one or restored)
-            due=full or old.get("down") or mark!=old.get("mark") or not old.get("sent") or timezone.now()-datetime.fromisoformat(old["sent"])>FULL
+            # 2.20.0: after a call that did not get through, the free times and the agenda again (the site may be a new one or restored)
+            age=timezone.now()-datetime.fromisoformat(old["sent"]) if old.get("sent") else None
+            due=full or old.get("down") or age is None or age>FULL or mark!=old.get("mark") and age>SOON
             # 2.21.0: the changes done (acked) and the site's bookings that could not be kept, for the site to tell the client
             body={"ack":old.get("ack",[]),"changes_ack":old.get("changes_ack",[]),"refused":old.get("refused",[]),**({"snapshot":snapshot(tenant,int(c.get("days",30))),"agenda":agenda(tenant,c)} if due else {})}
         data=call(c,"/sync",body)

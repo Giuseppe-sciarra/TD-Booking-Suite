@@ -1,7 +1,7 @@
 === TD Booking Suite — Prenotazioni ===
 Requires at least: 6.2
 Requires PHP: 8.0
-Stable tag: 2.22.2
+Stable tag: 2.22.3
 License: GPL-2.0-or-later
 
 Mostra nel sito il modulo di prenotazione di TD Booking Suite, edizione Cloud o Private, in HTTPS.
@@ -85,7 +85,7 @@ primo"), con la pagina Prenota. Interruttori, ore e link della recensione stanno
 serie, Dopo la visita accesa (parte solo con il link), Richiamo spento, Si è liberato un posto acceso. Il PC spento non ferma
 niente, se non l'arrivo di dati nuovi.
 
-Più servizi nella stessa visita (2.22.0). Nel modulo, con "Aggiungi un altro servizio", il cliente mette altri servizi della
+Più servizi nella stessa visita (2.22.0). Nel modulo, scegliendo ancora dalla lista Servizio (2.22.2: una lista sola, niente "Aggiungi un altro servizio"), il cliente mette altri servizi della
 stessa sede, uno dopo l'altro: il sito mostra solo gli orari in cui ci stanno tutti, con lo stesso operatore o divisi come
 deciso nel programma (Sedi), li tiene occupati finché il PC non li prende e scrive un'email sola con tutti i servizi. Il PC
 li riceve come una visita, come al banco. Serve il programma 2.22.0, che manda anche gli orari liberi senza variante.

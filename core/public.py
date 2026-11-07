@@ -148,7 +148,9 @@ def manual_booking(request,slug):
     if request.GET.get("adesso"):
         widget["walkin"]=True;widget["services"]=[x for x in widget["services"] if x["kind"] in ("resource","capacity")]
         return render(request,"booking.html",{"widget":widget,"walkin":True,"intro":"Chi entra adesso: servizio e con chi. Nome e recapiti sono facoltativi"})
-    return render(request,"booking.html",{"widget":widget,"intro":INTRO[first_step(widget)].replace("il servizio","il "+widget["service_label"].lower())})
+    intro=INTRO[first_step(widget)].replace("il servizio","il "+widget["service_label"].lower())
+    if first_step(widget)=="service":intro="Operatore, giorno e orario, poi i servizi: uno dopo l'altro dalla stessa lista"  # 2.22.3: at the desk the time comes first
+    return render(request,"booking.html",{"widget":widget,"intro":intro})
 @json_denied
 def slots_api(request,slug,booking_id=None):
     throttle(request,"availability:"+str(request.tenant.pk),120,60)

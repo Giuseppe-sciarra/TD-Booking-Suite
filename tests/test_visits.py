@@ -113,7 +113,7 @@ def test_client_link_cancels_and_page_offers_the_visit(sample):
     assert r.status_code==200 and r.json()["slots"] and "plan" not in r.json()["slots"][0]
     r=c.get(f"/action/{t.slug}/{token}/sposta/orari/",{"date":day_of(colore).isoformat()})
     assert r.status_code==200 and r.json()["slots"]
-    assert 'id="visit-add"' in c.get(f"/book/{t.slug}/").content.decode()
+    assert 'id="visit-list"' in c.get(f"/book/{t.slug}/").content.decode()  # 2.22.3: one list, the chips of the visit under it
     desk=client_as(t)[0];page=desk.get(f"/t/{t.slug}/bookings/{first.pk}/move/")
     assert page.status_code==200 and '"extra": [{"id": "'+str(taglio.pk) in page.content.decode()
     assert "Visita con 2 servizi" in desk.get(f"/t/{t.slug}/bookings/{first.pk}/").content.decode()

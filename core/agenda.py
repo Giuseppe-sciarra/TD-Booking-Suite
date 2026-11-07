@@ -183,7 +183,7 @@ def day_view(request):
     if day==today and frame_a<=now.astimezone(tz)<frame_b:
         now_row=(now.astimezone(tz)-frame_a).total_seconds()/60/STEP
     if day<today:past_rows=count
-    elif day==today:past_rows=min(count,max(0,(now.astimezone(tz)-frame_a).total_seconds()/60/STEP))  # 2.22.2: the part gone, hatched
+    elif day==today:past_rows=min(count,max(0,(now.astimezone(tz)-frame_a).total_seconds()/60/STEP))  # 2.22.3: the part gone, hatched
     ctx=common(request,"giorno",day,today,places,location,everyone,chosen)
     ctx.update({"prev":day-timedelta(days=1),"next":day+timedelta(days=1),"title":day,
         "columns":columns,"hours":hours,"count":count,"now_row":now_row,"past_rows":past_rows,"legend":[],"off":[o.name for o in off],

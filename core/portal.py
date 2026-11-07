@@ -462,7 +462,7 @@ def bookings(request,slug):
     # 2.11.0: the week and the month too, for every business
     from .agenda import fits,day_view,week_view,month_view
     agenda=fits(request);view=request.GET.get("vista","")
-    # 2.22.2: the view chosen (Giorno, Settimana, Mese, Elenco) stays the one for the next openings of the agenda
+    # 2.22.3: the view chosen (Giorno, Settimana, Mese, Elenco) stays the one for the next openings of the agenda
     if view in ("giorno","settimana","mese","elenco"):request.session["agenda_vista"]=view
     elif not view and "from" not in request.GET and "to" not in request.GET:view=request.session.get("agenda_vista","")
     if view=="settimana":return week_view(request)

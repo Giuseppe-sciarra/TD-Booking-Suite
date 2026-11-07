@@ -1,6 +1,13 @@
-# TD Booking Suite 2.22.2 — registro modifiche
+# TD Booking Suite 2.22.3 — registro modifiche
 
-**7 novembre 2026 · versione 2.22.2**
+**7 novembre 2026 · versione 2.22.3**
+
+## 2.22.3 — prima l'orario poi i servizi da una lista sola, sincronizzazione che non rallenta, vista dell'agenda che resta
+
+- **Nuova prenotazione: prima l'orario, poi i servizi, da una lista sola**: al banco il modulo ha operatore, giorno e orari in alto e i servizi sotto; la lista dei servizi è una: il primo scelto è il servizio, ogni scelta in più aggiunge un altro servizio alla stessa visita (stessa sede, uno dopo l'altro), con le etichette e la × per toglierlo. Sparisce «Aggiungi un altro servizio». Lo stesso nel plugin (Modalità PC): la lista parte vuota, il servizio lo scegli tu, le scelte in più si aggiungono.
+- **Dallo spazio libero dell'agenda nessun servizio scelto al posto tuo**: la prenotazione si apre con operatore, giorno e ora; il servizio lo scegli tu e l'ora cliccata resta premuta (nella 2.22.2 veniva messo il primo servizio dell'operatore).
+- **Sincronizzazione col sito, senza rallentare**: con il sito spento o irraggiungibile il programma non ricalcola più gli orari liberi a ogni giro (era quello che teneva occupato il database e rallentava l'agenda: nel log del worker Postgres finiva la memoria); chiama leggero, e ricalcola solo quando il sito risponde di nuovo. Dopo una modifica in agenda o in cassa il ricalcolo aspetta almeno 3 minuti dall'ultimo, non parte a ogni scontrino.
+- **Agenda, piccole cose**: la vista scelta (Giorno, Settimana, Mese, Elenco) resta quella anche riaprendo l'agenda dal menu; la parte del giorno già passata è tratteggiata, così si vede che gli spazi liberi (e il «+» del mese) iniziano da adesso, nel passato non si prenota; la × del pannello si vede anche sul colore; i pulsanti dello Storico sopra il conto sono allineati.
 
 ## 2.22.2 — Cassa con gli operatori a lato, Riepilogo di cassa in PDF, Storico sopra il conto, WhatsApp del giorno dopo, agenda già a quell'ora
 
@@ -20,7 +27,6 @@
 - **Annullo sulla RCH: il numero è quello che si legge sullo scontrino.** Il campo di *Annulla* è vuoto e si scrive il numero stampato in fondo (es. `2039-0013`): la cassa annulla quello, qualunque sia la sua numerazione. Il programma non lo propone più da solo (il «n. 3» del video, sbagliato).
 - **Numeri dei documenti sulla RCH, imparati dalla correzione**: la RCH non dice il numero, il programma conta; se la cassa ha fatto scontrini da sola (la mattina sui tasti) il conto era indietro e l'annullo partiva col numero sbagliato («Annullo del n. 3, errore 1» nel video). Ora in *Annulla* (o in *È uscito*) si scrive il numero stampato in fondo, es. `2039-0013`: il programma impara la chiusura e quanti documenti ha fatto la cassa da sola, rinumera quelli della giornata e da lì numera giusto. I documenti li numera di seguito come fa la cassa: la chiusura non riparte da 1 (prima sì, ed era quello che sballava il conto il giorno dopo). I numeri si vedono come stampati (`2039-0013`) in *Scontrini di oggi*, *Da incassare*, copie, storico e PDF.
 - **Riepilogo di cassa in PDF, rifinito**: gli eventi del giorno in ordine di ora (scontrini, annulli, chiusure, Da pagare incassati, Non nello scontrino), ogni scontrino intero su una pagina, provato su tre pagine con accenti ed €.
-- **Agenda, piccole cose**: la vista scelta (Giorno, Settimana, Mese, Elenco) resta quella anche riaprendo l'agenda dal menu; la parte del giorno già passata è tratteggiata, così si vede che gli spazi liberi (e il «+» del mese) iniziano da adesso, nel passato non si prenota; la × del pannello si vede anche sul colore; i pulsanti dello Storico sopra il conto sono allineati.
 - **Apertura cassa**: niente da fare la mattina: il giorno fiscale si apre col primo scontrino e si chiude con la chiusura; il «con quanto apri la cassa» di Exagon era solo il fondo cassa per la conta, non c'è (si aggiunge a parte se serve).
 
 ## 2.22.1 — finestre che non si bloccano, Non nello scontrino, Configurazione promemoria, email dal sito, agenda come app

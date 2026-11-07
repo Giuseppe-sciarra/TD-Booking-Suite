@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
- * Version: 2.22.2
+ * Version: 2.22.3
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.22.2';
+const TDBS_VERSION='2.22.3';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());
@@ -555,7 +555,7 @@ function tdbs_pc_shortcode($atts) {
     return '<div class="tdbs-pc uk-form-stacked" data-config="'.esc_attr(wp_json_encode($config)).'"><form class="tdbs-pc-form" novalidate>'
         .'<div class="tdbs-pc-grid">'.$select('service','Servizio').'<div class="tdbs-pc-field tdbs-pc-description-box" hidden><small class="tdbs-pc-description"></small></div>'
         .$select('option','Prestazione','tdbs-pc-option',true).$select('resource','Con chi','tdbs-pc-resource',true).'</div>'
-        .'<div class="tdbs-pc-extra" hidden><div class="tdbs-pc-extra-list"></div><p class="tdbs-pc-extra-foot"><button type="button" class="uk-button uk-button-default uk-button-small tdbs-pc-add">+ Aggiungi un altro servizio</button> <small>Nella stessa visita, uno dopo l\'altro</small></p></div>'
+        .'<div class="tdbs-pc-extra" hidden><div class="tdbs-pc-extra-list"></div><p class="tdbs-pc-extra-foot"><button type="button" class="tdbs-pc-add" hidden></button><small>Nella stessa visita, uno dopo l\'altro: scegli ancora dalla lista per aggiungerne</small></p></div>'
         .'<div class="tdbs-pc-grid">'.$select('date','Giorno').$select('time','Orario').'</div>'
         .'<p class="tdbs-pc-status" role="status" aria-live="polite"></p>'
         .'<fieldset class="uk-fieldset tdbs-pc-who"><legend class="uk-legend">I tuoi recapiti</legend><div class="tdbs-pc-grid">'.$field('first_name','Nome','text','given-name').$field('last_name','Cognome','text','family-name').$field('email','Email','email','email').$field('phone','Telefono','tel','tel').'</div></fieldset>'

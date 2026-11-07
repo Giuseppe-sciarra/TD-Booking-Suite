@@ -1,6 +1,6 @@
 """2.17.0: il sito WordPress collegato al PC anche spento (core/wpsync.py)."""
 import json,time
-from datetime import datetime,time as clock
+from datetime import datetime,timedelta,time as clock
 from zoneinfo import ZoneInfo
 import pytest
 from django.utils import timezone
@@ -18,8 +18,10 @@ SECRET="s"*43
 
 class Site:
     """The plugin's /wp-json/tdbs/v1/sync: the requests it got, and the bookings it answers with, signed."""
-    def __init__(self,bookings=(),secret=SECRET):self.calls=[];self.bookings=list(bookings);self.secret=secret
+    def __init__(self,bookings=(),secret=SECRET):self.calls=[];self.bookings=list(bookings);self.secret=secret;self.down=False
     def __call__(self,req,timeout=None):
+        import urllib.error
+        if self.down:raise urllib.error.URLError("spento")
         assert req.full_url=="https://www.salone.example/wp-json/tdbs/v1/sync"
         assert wpsync.verify(SECRET,req.headers["X-tdbs-time"],req.data,req.headers["X-tdbs-signature"])
         self.calls.append(json.loads(req.data))
@@ -65,8 +67,12 @@ def test_site_bookings_are_created_acked_and_once(sample,monkeypatch):
     assert (b.origin,b.status,b.resource_id,b.data["phone"])==("wordpress","confirmed",anna.pk,"+393337654321")
     assert t.wp_state["ack"]==["a"*32] and t.wp_state["new"]==1 and not t.wp_state["error"]
     assert wpsync.sync(t)==0  # answered again before the ack arrived: not twice
-    assert site.calls[1]["ack"]==["a"*32] and site.calls[0]["snapshot"]["name"]==t.name and "snapshot" in site.calls[1]  # a new booking: the times again
-    wpsync.sync(t);assert "snapshot" not in site.calls[2]  # nothing changed: only the ack and the bookings
+    assert site.calls[1]["ack"]==["a"*32] and site.calls[0]["snapshot"]["name"]==t.name and "snapshot" not in site.calls[1]  # 2.22.3: a new booking: the times again, but not within SOON of the last count
+    wpsync.state(t,sent=(timezone.now()-wpsync.SOON-timedelta(seconds=1)).isoformat());assert wpsync.sync(t)==0 and "snapshot" in site.calls[2]
+    # the site down: light calls only, no counting; back again: a light call first, then the times in the same sync
+    site.down=True;n=len(site.calls);assert wpsync.sync(t)==0 and t.wp_state["down"] and len(site.calls)==n
+    site.down=False;assert wpsync.sync(t)==0 and len(site.calls)==n+2 and "snapshot" not in site.calls[-2] and "snapshot" in site.calls[-1] and not t.wp_state["down"]
+    wpsync.sync(t);assert "snapshot" not in site.calls[-1]  # nothing changed: only the ack and the bookings
     with scope(t):assert Booking.objects.filter(origin="wordpress").count()==1
 
 def test_time_taken_at_the_desk_becomes_a_request_with_email(sample,monkeypatch):
