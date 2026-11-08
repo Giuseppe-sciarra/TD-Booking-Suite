@@ -1465,7 +1465,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .till-item.is-on[class*=op-]{color:#241a30}:root:not([data-theme=light]) .till-item.is-on[class*=op-] span{color:#241a30}:root:not([data-theme=light]) .till-item[class*=op-] .till-flag{background:#241a30;color:#fff}}
 .till-item[hidden],[data-till-group][hidden]{display:none}
 #till-search{width:100%;margin:4px 0 8px}
-/* 2.22.4: under the bill the sections of the day, each one well apart: a title line, cards with the accent on top, and the
+/* 2.22.5: under the bill the sections of the day, each one well apart: a title line, cards with the accent on top, and the
    three things of the evening (closing, PDF, void) in their own boxes */
 .till-divider{display:flex;align-items:center;gap:14px;margin:34px 0 14px;font-size:.95rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .till-divider::before,.till-divider::after{content:"";flex:1;height:2px;background:var(--line)}
@@ -1474,7 +1474,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start}
 .till-block{border:2px solid var(--pastel);border-radius:12px;padding:14px 16px;background:var(--soft)}.till-block h3{margin:0 0 8px;font-size:1.05rem}
 .till-low p.small{padding-left:0;padding-right:0}.till-block .form-grid{grid-template-columns:1fr 1fr}.till-block .field{margin-bottom:8px}
-/* 2.22.4: under each receipt of the day, what was done */
+/* 2.22.5: under each receipt of the day, what was done */
 .till-detail{margin-top:6px}.till-detail summary{cursor:pointer;font-size:.9em;font-weight:600;color:var(--brand)}.till-detail ul{margin:6px 0 0;padding:6px 12px;border-left:3px solid var(--pastel);font-size:.9em;display:grid;gap:0}.till-today .till-detail li{padding:2px 0;border:0;display:block}
 .till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-who{display:block;margin-top:4px;font-size:.85em;color:var(--muted);font-weight:600}
 /* 2.22.2: the operators beside the services (Exagon style); the current row of the bill is the one the operator goes to */

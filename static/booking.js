@@ -92,7 +92,7 @@
   $("group-note").hidden=!big;$("group-note").textContent=big?`Per gruppi oltre ${n} persone la richiesta va confermata dall'attività: ti scriviamo appena possibile.`:"";
   submit.textContent=big?"Invia la richiesta":label;}
  party.addEventListener("input",groupNote);
- // 2.22.4: the time clicked in the agenda holds while the day and the operator are the ones clicked, until «Altri orari»
+ // 2.22.5: the time clicked in the agenda holds while the day and the operator are the ones clicked, until «Altri orari»
  let unpinned=false;const pinned=()=>!!config.prefill?.time&&!unpinned&&day.value===config.prefill.date&&(!config.prefill.resource||!resource.value||resource.value===config.prefill.resource);
  async function loadSlots(){
   const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();if(waitBox)waitBox.hidden=true;
@@ -127,7 +127,7 @@
     $("slots").append(button);
    }
    // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
-   // 2.22.4: and it stays the only one in view: the other times open with «Altri orari», not by themselves once the service is chosen
+   // 2.22.5: and it stays the only one in view: the other times open with «Altri orari», not by themselves once the service is chosen
    let said=false;
    if(pinned()&&!selected){said=true;const all=[...$("slots").querySelectorAll("button")],hit=all.find(b=>b.firstChild?.textContent===config.prefill.time);
     if(hit){hit.click();all.forEach(b=>{b.hidden=b!==hit;});const more=document.createElement("button");more.type="button";more.className="ghost small slot-more";more.textContent=t("Altri orari");

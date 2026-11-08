@@ -515,7 +515,7 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 // 2.22.0: Gift card page: an amount pressed goes in the field; the form opens the Cassa with the card in the bill
 document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("click",()=>{const f=b.closest("form").querySelector("[data-gift-amount]");f.value=b.dataset.giftPreset;f.focus();}));
 // 2.16.0: Cassa: tap a service to add it, quantity, price and lines by hand, the total as it is typed, the client looked up
-// 2.22.4: the Cassa stays as it was left, whatever was put in it: rows (services, products, gift cards sold, free rows,
+// 2.22.5: the Cassa stays as it was left, whatever was put in it: rows (services, products, gift cards sold, free rows,
 // operators, discounts, «Non nello scontrino»), client, codice fiscale, lotteria, discount on the total, gift card that pays,
 // payment and its split, copy by email, the gift card being typed, the operator pressed. Kept on this PC (localStorage, per
 // register), also after closing the program; it goes when the bill is sent or emptied. Restored before the Cassa starts.
@@ -627,7 +627,7 @@ const tillDraft={key:()=>"tdbs-till-"+(document.querySelector("form[data-till] [
 
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
 })();
-// 2.22.4: every change of the Cassa is kept at once (see tillDraft above); leaving the page keeps the last one too
+// 2.22.5: every change of the Cassa is kept at once (see tillDraft above); leaving the page keeps the last one too
 (()=>{const form=document.querySelector("form[data-till]");if(!form||!window.localStorage)return;
  const key=tillDraft.key(),body=form.querySelector(".till-lines tbody");let sent=false;
  const read=()=>{const lines=[...body.querySelectorAll("tr")].map(tr=>Object.fromEntries([...tr.querySelectorAll("input,select")].filter(i=>i.name).map(i=>[i.name,i.value]))).filter(l=>l.desc||l.price);
