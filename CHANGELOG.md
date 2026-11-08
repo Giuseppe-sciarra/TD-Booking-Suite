@@ -1,6 +1,10 @@
-# TD Booking Suite 2.22.6 — registro modifiche
+# TD Booking Suite 2.22.7 — registro modifiche
 
-**8 novembre 2026 · versione 2.22.6**
+**8 novembre 2026 · versione 2.22.7**
+
+## 2.22.7 — nella lista dei servizi si vede l'ultimo scelto
+
+- **Nella prenotazione la lista mostra l'ultimo servizio scelto**: aggiungendo servizi uno dopo l'altro la lista *Servizio* non torna più al primo (sembrava che l'ultimo non fosse stato preso): resta sull'ultimo scelto; sotto, le etichette dicono il servizio della prenotazione (il primo) e quelli aggiunti, con la × per toglierli. Riscegliere il primo non cambia niente; togliendo l'ultimo la lista mostra quello prima. Lo stesso nel plugin (Modalità PC), dove ora c'è anche l'etichetta del primo servizio con la ×.
 
 ## 2.22.6 — aggiungere un servizio alla prenotazione non fa più tornare su
 

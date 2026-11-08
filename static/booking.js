@@ -9,7 +9,8 @@
  const force=$("force"),forceAt=$("force-at"),label=submit.textContent;
  const forcing=()=>!!force?.checked&&current()?.kind!=="day",typed=()=>!config.walkin&&forcing()&&["resource","capacity"].includes(current()?.kind);
  const select=(el,items,label)=>{el.replaceChildren();if(label)el.add(new Option(label,""));items.forEach(v=>el.add(new Option(v.name,v.id)));};
- const current=()=>config.services.find(s=>s.id===service.value);
+ // 2.22.7: the service of the booking is the first one picked (main); the list shows the last one picked
+ const current=()=>config.services.find(s=>s.id===(main||service.value));
  // one service: nothing to choose. The same service in several locations: choose the location.
  // Different services in several locations: the service, with its location.
  const places=new Set(config.services.map(s=>s.location)).size,names=new Set(config.services.map(s=>s.name)).size;
@@ -60,16 +61,17 @@
   const chip=(x,more,drop)=>{const c=document.createElement("span");c.className="pill";c.textContent=(more?"+ ":"")+x.name;
    if(!config.editing){const b=document.createElement("button");b.type="button";b.className="ghost small";b.textContent="×";b.setAttribute("aria-label",t("Togli ")+x.name);b.addEventListener("click",drop);c.append(b);}
    return c;};
-  $("visit-list").replaceChildren(...(s?[chip(s,false,()=>{const next=extras.shift();main=next?next.id:"";service.value=main;changeService(true);})]:[]),
-   ...extras.map((x,i)=>chip(x,true,()=>{extras.splice(i,1);visitPick();loadSlots();})));
+  $("visit-list").replaceChildren(...(s?[chip(s,false,()=>{const next=extras.shift();main=next?next.id:"";service.value=extras.at(-1)?.id||main;changeService(true);})]:[]),
+   ...extras.map((x,i)=>chip(x,true,()=>{extras.splice(i,1);service.value=extras.at(-1)?.id||main;visitPick();loadSlots();})));
  }
  service.addEventListener("change",()=>{
-  const s=current(),first=config.services.find(v=>v.id===main);
+  const s=config.services.find(v=>v.id===service.value),first=config.services.find(v=>v.id===main);
+  if(main&&s&&s.id===main&&extras.length)return;  // already the service of the visit: nothing changes
   if(main&&s&&s.id!==main&&!config.editing&&s.kind==="resource"&&first&&s.location===first.location&&extras.length<4){
-   if(!extras.some(x=>x.id===s.id))extras.push({id:s.id,name:s.name});service.value=main;visitPick();loadSlots();return;}
+   if(!extras.some(x=>x.id===s.id)){extras.push({id:s.id,name:s.name});visitPick();loadSlots();}return;}
   changeService();});
  function changeService(keep){
-  const s=current();main=service.value;if(!config.editing&&!keep)extras=[];visitPick();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
+  main=service.value;const s=current();if(!config.editing&&!keep)extras=[];visitPick();select(option,(s?.options||[]).map(o=>({id:o.id,name:o.name+(o.price?" · "+o.price:"")})),t("Prestazione standard")+(s?.price?" · "+s.price:""));select(resource,s?.resources||[],t(s?.kind==="day"?"Qualsiasi unità libera":"Il primo disponibile"));
   // 2.10.0: from the agenda, the operator of the free space clicked
   if(config.prefill?.resource&&s?.resources.some(r=>r.id===config.prefill.resource))resource.value=config.prefill.resource;
   pickers();

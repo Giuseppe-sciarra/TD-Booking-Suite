@@ -6,16 +6,20 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
  if(!window.UIkit)box.classList.add("tdbs-plain");  // 2.22.0: with no UIkit (YOOtheme) the plugin draws the fields itself
  let days={},pick=null,extra=[];  // 2.22.0: the services added to the visit after the first
  const fill=(sel,items,first)=>sel.replaceChildren(...(first?[new Option(first,"")]:[]),...items.map(([v,t])=>new Option(t,v)));
- const service=()=>c.services.find(s=>s.id===el("service").value);
+ const service=()=>c.services.find(s=>s.id===(main||el("service").value));  // 2.22.7: the first picked; the list shows the last
  const label=d=>new Date(d+"T12:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
  fill(el("service"),c.services.map(s=>[s.id,s.name]),"Scegli il servizio");  // 2.22.3: the service is chosen by the person, never the first for them
  // the other appointment services of the same location can join the visit, one after the other
  const others=()=>c.services.filter(x=>x.id!==service().id&&x.location_id===service().location_id&&!extra.includes(x.id));
  function visit(){
   const box=q(".tdbs-pc-extra"),list=q(".tdbs-pc-extra-list");list.replaceChildren();if(!service())return;
+  const shown=()=>{el("service").value=extra[extra.length-1]||main;};
+  // 2.22.7: the list shows the last service picked, so the first one is written here too
+  if(extra.length){const m=document.createElement("span");m.className="tdbs-pc-extra-item";m.textContent=service().name+" ";const b=document.createElement("button");b.type="button";b.className="tdbs-pc-remove";b.textContent="×";b.setAttribute("aria-label","Togli "+service().name);b.title="Togli";
+   b.addEventListener("click",()=>{main=extra.shift()||"";shown();visit();chosen();});m.append(b);list.append(m);}
   extra.forEach(id=>{const x=c.services.find(s=>s.id===id);if(!x)return;const span=document.createElement("span");span.className="tdbs-pc-extra-item";span.textContent="+ "+x.name+" ";
    const b=document.createElement("button");b.type="button";b.className="tdbs-pc-remove";b.textContent="×";b.setAttribute("aria-label","Togli "+x.name);b.title="Togli";
-   b.addEventListener("click",()=>{extra=extra.filter(v=>v!==id);visit();load();});span.append(b);list.append(span);});
+   b.addEventListener("click",()=>{extra=extra.filter(v=>v!==id);shown();visit();load();});span.append(b);list.append(span);});
   const add=q(".tdbs-pc-add");add.hidden=true;box.hidden=!service().location_id||!c.services.some(x=>x.id!==service().id&&x.location_id===service().location_id);  // 2.22.3: one list only: a second pick from Servizio adds
   q(".tdbs-pc-pick")?.remove();
  }
@@ -50,8 +54,9 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
  }
  let main="";
  el("service").addEventListener("change",()=>{  // 2.22.3: the first pick is the service, the next ones join the visit (same location), the list shows the first again
-  const s=service(),first=c.services.find(x=>x.id===main);
-  if(main&&s&&s.id!==main&&first&&s.location_id===first.location_id&&extra.length<4){if(!extra.includes(s.id))extra.push(s.id);el("service").value=main;visit();load();return;}
+  const s=c.services.find(x=>x.id===el("service").value),first=c.services.find(x=>x.id===main);
+  if(main&&s&&s.id===main&&extra.length)return;  // 2.22.7: already the service of the visit
+  if(main&&s&&s.id!==main&&first&&s.location_id===first.location_id&&extra.length<4){if(!extra.includes(s.id)){extra.push(s.id);visit();load();}return;}
   main=el("service").value;chosen();});el("option").addEventListener("change",load);el("resource").addEventListener("change",load);el("date").addEventListener("change",day);
  el("time").addEventListener("change",()=>{const hit=(days[el("date").value]||[]).find(x=>x[0].slice(0,5)===el("time").value);pick=hit?[hit[0],hit[1]]:null;status("");});
  f.addEventListener("submit",async e=>{
