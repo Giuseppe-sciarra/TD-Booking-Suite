@@ -1,6 +1,10 @@
-# TD Booking Suite 2.22.7 — registro modifiche
+# TD Booking Suite 2.22.8 — registro modifiche
 
-**8 novembre 2026 · versione 2.22.7**
+**8 novembre 2026 · versione 2.22.8**
+
+## 2.22.8 — il grazie del giorno dopo anche in alto
+
+- **Banner del grazie WhatsApp su ogni pagina**: come quello dei promemoria, in alto compare «Grazie WhatsApp: N clienti di ieri da ringraziare» con *Ringrazia*, che apre la parte *Grazie e recensione* di Promemoria WhatsApp. Conta chi è venuto ieri, ha il telefono e non è ancora segnato come ringraziato; sparisce quando sono fatti tutti. Non compare senza il link della recensione (Configurazione promemoria), né a chi non può vedere i dati dei clienti, né nella pagina Promemoria WhatsApp.
 
 ## 2.22.7 — nella lista dei servizi si vede l'ultimo scelto
 

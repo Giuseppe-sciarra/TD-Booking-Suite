@@ -436,6 +436,7 @@ def test_whatsapp_thanks_of_yesterday_with_the_review_link(shop):
     c,_=client_as(t,role="reception")
     page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
     assert "Grazie e recensione" in page and "metti il link" in page and "Da ringraziare" not in page
+    assert "da ringraziare" not in c.get("/t/salone/").content.decode()  # 2.22.8: no banner without the review link
     owner,_=client_as(t)
     r=owner.post("/t/salone/notifications/",{"action":"whatsapp","whatsapp_text":"","whatsapp_reminder":"","whatsapp_thanks":"Grazie {nome}! Recensione: {link}","review_url":"https://g.page/r/abc/review"})
     assert r.status_code==302
@@ -443,11 +444,17 @@ def test_whatsapp_thanks_of_yesterday_with_the_review_link(shop):
     page=c.get("/t/salone/promemoria-whatsapp/").content.decode()
     assert "Da ringraziare: 1" in page and "Ieri, " in page and "Nessuno Venuto" not in page
     assert "Grazie Mario! Recensione: https://g.page/r/abc/review" in unquote(page) and 'data-wa-kind="thanks"' in page
+    # 2.22.8: the banner on top of every page, like the reminders', with the button to the thanks; not on the page itself
+    for where in ("/t/salone/","/t/salone/cassa/","/t/salone/bookings/"):
+        assert "Grazie WhatsApp: 1 cliente di ieri da ringraziare" in c.get(where).content.decode(),where
+    assert "promemoria-whatsapp/#grazie" in c.get("/t/salone/").content.decode()
+    assert "di ieri da ringraziare" not in page
     r=c.post("/t/salone/promemoria-whatsapp/",{"booking":str(b.pk),"sent":"1","kind":"thanks"})
     assert r.json()["ok"]
     with scope(t):
         b.refresh_from_db();assert b.snapshot.get("wa_thanked") and not b.snapshot.get("wa_reminded")
     assert "Tutti ringraziati" in c.get("/t/salone/promemoria-whatsapp/").content.decode()
+    assert "da ringraziare" not in c.get("/t/salone/").content.decode()  # 2.22.8: done, the banner goes
     # the review link must be a web address
     r=owner.post("/t/salone/notifications/",{"action":"whatsapp","whatsapp_text":"","whatsapp_reminder":"","whatsapp_thanks":"","review_url":"g.page/x"})
     assert "deve iniziare con https" in r.content.decode()

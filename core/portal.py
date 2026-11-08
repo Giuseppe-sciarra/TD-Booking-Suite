@@ -1008,6 +1008,15 @@ def wa_due(request):
     if not w:return 0
     rows=to_remind(request,*w).exclude(snapshot__has_key="wa_reminded").values_list("visit","pk")
     return len({v or p for v,p in rows})
+def thanks_todo(request):
+    """2.22.8: how many clients of yesterday still to thank on WhatsApp (with a phone, not marked done), for the banner on
+    every page; 0 without the review link or when this person cannot do it. The cheap count first: most pages pay one query."""
+    from .client_mails import current
+    t=getattr(request,"tenant",None)
+    if not t or not (can(request,"booking.write") and can(request,"pii.read")) or not current(t)["review"].get("url"):return 0
+    tz=ZoneInfo(t.timezone);a=datetime.combine(timezone.now().astimezone(tz).date()-timedelta(days=1),time.min,tz)
+    if not visible_bookings(request,Booking.objects.filter(start__gte=a,start__lt=a+timedelta(days=1),status__in=("arrived","in_progress","completed"))).exclude(snapshot__has_key="wa_thanked").exists():return 0
+    return sum(1 for r in thanks_due(request,a.date()) if r.wa and not r.sent)
 def reminders_due(request,a,b):
     """The appointments from a to b to remind on WhatsApp, with the chat ready when there is a phone."""
     from .client_mails import whatsapp,REMINDER
