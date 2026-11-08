@@ -33,18 +33,20 @@ document.querySelectorAll(".tdbs-pc").forEach(box=>{
   load();
  }
  async function load(){
-  pick=null;fill(el("time"),[],"Scegli l'orario");status("Carico gli orari…");
+  const was=el("time").value;pick=null;fill(el("time"),[],"Scegli l'orario");status("Carico gli orari…");
   const s=service(),p=new URLSearchParams({service:s.id,option:el("option").value,resource:el("resource").value,extra:extra.join(",")});
   try{const r=await fetch(c.rest+"slots?"+p,{credentials:"omit"});days=r.ok?(await r.json()).days:{};}catch{days={};}
   const keep=el("date").value;fill(el("date"),Object.keys(days).map(d=>[d,label(d)]));
   if(keep&&days[keep])el("date").value=keep;
   if(!Object.keys(days).length){status("Nessun orario libero nei prossimi giorni: contattaci.");fill(el("time"),[],"Nessun orario");return;}
-  day();
+  day(was);
  }
- function day(){
+ // 2.22.6: a service added keeps the time chosen when it is still free that day
+ function day(was){
   pick=null;status("");
   const list=days[el("date").value]||[];
   fill(el("time"),list.map(([range])=>[range.slice(0,5),range.slice(0,5)]),"Scegli l'orario");  // 2.22.0: the start only, as at the desk: the end is never a promise
+  if(typeof was==="string"&&was&&list.some(([range])=>range.slice(0,5)===was)){el("time").value=was;el("time").dispatchEvent(new Event("change"));}
  }
  let main="";
  el("service").addEventListener("change",()=>{  // 2.22.3: the first pick is the service, the next ones join the visit (same location), the list shows the first again

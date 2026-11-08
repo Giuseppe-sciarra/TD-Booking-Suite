@@ -1,6 +1,10 @@
-# TD Booking Suite 2.22.5 — registro modifiche
+# TD Booking Suite 2.22.6 — registro modifiche
 
-**8 novembre 2026 · versione 2.22.5**
+**8 novembre 2026 · versione 2.22.6**
+
+## 2.22.6 — aggiungere un servizio alla prenotazione non fa più tornare su
+
+- **Aggiungere un servizio non fa più tornare su**: nella prenotazione, aggiungendo (o togliendo) un servizio l'orario scelto resta premuto se è ancora libero per tutta la visita, e la pagina resta dov'è: prima l'ora veniva ritrovata e portata in vista (la pagina saltava sugli orari) e, scelta un'ora a mano, andava riscelta. Lo stesso nel plugin (Modalità PC): l'orario scelto resta se è ancora libero.
 
 ## 2.22.5 — dall'agenda solo l'ora cliccata anche dopo il trattamento, conto della Cassa che resta sempre, vedi cosa è stato battuto, sezioni divise e ultimi 5 scontrini, Esci in basso a sinistra
 
