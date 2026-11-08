@@ -1465,6 +1465,15 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .till-item.is-on[class*=op-]{color:#241a30}:root:not([data-theme=light]) .till-item.is-on[class*=op-] span{color:#241a30}:root:not([data-theme=light]) .till-item[class*=op-] .till-flag{background:#241a30;color:#fff}}
 .till-item[hidden],[data-till-group][hidden]{display:none}
 #till-search{width:100%;margin:4px 0 8px}
+/* 2.22.4: under the bill the sections of the day, each one well apart: a title line, cards with the accent on top, and the
+   three things of the evening (closing, PDF, void) in their own boxes */
+.till-divider{display:flex;align-items:center;gap:14px;margin:34px 0 14px;font-size:.95rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.till-divider::before,.till-divider::after{content:"";flex:1;height:2px;background:var(--line)}
+.card.till-low{border-top:5px solid var(--brand);margin-bottom:22px}.card.till-low-due{border-top-color:#d88a2b}
+.till-low>.section-heading{padding-bottom:10px;margin-bottom:12px;border-bottom:2px solid var(--line)}
+.till-blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start}
+.till-block{border:2px solid var(--pastel);border-radius:12px;padding:14px 16px;background:var(--soft)}.till-block h3{margin:0 0 8px;font-size:1.05rem}
+.till-low p.small{padding-left:0;padding-right:0}.till-block .form-grid{grid-template-columns:1fr 1fr}.till-block .field{margin-bottom:8px}
 /* 2.22.4: under each receipt of the day, what was done */
 .till-detail{margin-top:6px}.till-detail summary{cursor:pointer;font-size:.9em;font-weight:600;color:var(--brand)}.till-detail ul{margin:6px 0 0;padding:6px 12px;border-left:3px solid var(--pastel);font-size:.9em;display:grid;gap:0}.till-today .till-detail li{padding:2px 0;border:0;display:block}
 .till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-who{display:block;margin-top:4px;font-size:.85em;color:var(--muted);font-weight:600}
@@ -1490,7 +1499,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .pay-choice:has(input:checked) span::before{border-color:var(--brand);background:var(--brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/14px no-repeat}
 .pay-choice:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
 .till-bill details{margin:10px 0}.till-found{margin-top:6px;display:grid;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper)}.till-found:empty{display:none}.till-found li+li{border-top:1px solid var(--line)}.till-found button{display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-radius:0;background:transparent;font-weight:600;cursor:pointer}.till-found button:hover,.till-found button:focus-visible{background:var(--soft);color:var(--ink)}
-.till-today li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}.till-today .actions{margin:0}
+.till-today li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:2px solid var(--line)}.till-today>li:last-child{border-bottom:0}.till-today .actions{margin:0}
 .till-copy{max-width:440px}.till-copy li{padding:2px 0}
 @media print{
  @page{size:A4;margin:16mm 15mm}
