@@ -2,12 +2,13 @@
 
 **8 novembre 2026 · versione 2.22.5**
 
-## 2.22.5 — dall'agenda solo l'ora cliccata anche dopo il trattamento, conto della Cassa che resta sempre, vedi cosa è stato battuto, sezioni divise e ultimi 5 scontrini
+## 2.22.5 — dall'agenda solo l'ora cliccata anche dopo il trattamento, conto della Cassa che resta sempre, vedi cosa è stato battuto, sezioni divise e ultimi 5 scontrini, Esci in basso a sinistra
 
 - **Dall'agenda l'ora resta sola anche dopo il trattamento**: scelto il trattamento (e anche gli altri servizi della visita) si vede solo l'ora cliccata, premuta, con accanto *Altri orari* per aprire tutti gli altri; se quell'ora non è libera per il servizio scelto lo dice e mostra gli orari liberi. Cambiando giorno o operatore si torna alla griglia completa.
 - **Cassa, il conto resta com'era, sempre**: tornando alla Cassa (da un'altra pagina, con Indietro, o riaprendo il programma) tutto quello messo è ancora lì: righe di servizi e prodotti, operatori, quantità, sconti di riga, *Non nello scontrino*, gift card venduta (resta bloccata), cliente, codice fiscale e lotteria, sconto sul totale, codice della gift card che paga e quanto usarne, pagamento e pagamento diviso, copia per email, la gift card che stavi scrivendo, l'operatore premuto, la prenotazione da cui era partito. Prima restavano solo righe e cliente e si perdeva chiudendo la finestra; ora è salvato su questo PC per registratore. Sparisce quando il conto parte o con il nuovo *Svuota il conto* (chiede conferma). Aperta la Cassa da un'altra prenotazione o preventivo, quello è un conto nuovo.
 - **Scontrini di oggi, vedi cosa è stato battuto**: sotto ogni scontrino *Vedi cosa è stato battuto* apre le righe con l'operatore, gli sconti, la gift card, il totale e come ha pagato, senza stampare niente. Il vecchio *Copia* si chiama *Stampa la copia per il cliente* (è la copia di cortesia da stampare).
 - **Cassa, sotto il conto sezioni ben divise e solo gli ultimi 5 scontrini**: dopo il conto una riga *Incassi e fine giornata* separa la parte della giornata; *Da incassare*, *Scontrini di oggi* e *Chiusura, riepilogo e annulli* sono card con la barra colorata in alto e il titolo sottolineato (Da incassare in arancione); dentro l'ultima, *Chiusura giornaliera*, *Riepilogo di cassa in PDF* e *Annulla un altro scontrino* stanno in tre riquadri affiancati. In *Scontrini di oggi* si vedono gli ultimi 5 (il numero accanto al titolo resta quello di tutti); gli altri sono nel Riepilogo di oggi (PDF).
+- **Esci in basso a sinistra**: il pulsante per uscire dall'account non sta più in alto accanto al tema, dove sembrava chiudere la pagina: è in fondo al menu a sinistra, sotto il nome e *Account e sicurezza*, più discreto (sul telefono si apre con il menu). In alto resta solo nelle pagine prima del secondo fattore, dove il menu non c'è.
 
 ## 2.22.4 — dall'agenda data e ora subito, Cassa con un tocco e la ×, colore dell'operatore
 

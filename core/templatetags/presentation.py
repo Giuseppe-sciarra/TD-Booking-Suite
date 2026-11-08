@@ -92,6 +92,7 @@ ICONS.update({
  "plug":'<path d="M9 3v4M15 3v4M6.5 7h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 15.5V21"/>',
  "chat":'<path d="M5 19.5 6.2 16A7.5 7.5 0 1 1 9 18.6z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/>',
  "user":'<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.9-4 3.8-6 7.5-6s6.6 2 7.5 6"/>',
+ "logout":'<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>',
  # 2.14.0: a booking forced at the desk; Nascondi nomi
  "bolt":'<path d="M13 2.5 4.5 13.5H11L10 21.5l8.5-11H13z"/>',
  "eye":'<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',

@@ -981,6 +981,8 @@ img.client-logo.wide{width:72px}img.client-logo.lg.wide{width:110px}img.client-l
 .nav-help{border:0;background:none;box-shadow:none}
 .sidebar .workspace{margin-bottom:10px}
 .sidebar-bottom a{display:inline-flex;align-items:center;gap:8px}
+/* 2.22.5: Esci is down here, under the name and Account e sicurezza, not in the top bar where it looked like closing the page */
+.sidebar-bottom .side-logout{margin:6px 0 0;padding:0;display:block}.side-logout button{display:inline-flex;align-items:center;gap:8px;padding:0;margin:0;min-height:0;font-weight:400;background:none;border:0;box-shadow:none;color:var(--side-muted);font:inherit;font-size:13px;cursor:pointer}.side-logout button:hover,.side-logout button:focus-visible{color:var(--pastel);text-decoration:underline}
 @media(max-width:850px){.sidebar details.nav-admin{display:none}.sidebar.open details.nav-admin{display:block}.sidebar.open .nav-group .nav-label{display:flex}}
 /* 2.10.0: Full HD and up, often at 125% scaling (about 1400x720 points in a window): less air than before, smaller
    headings, tighter cards, fields and menu, the sign-in in one screen. Phones and narrow windows keep the layout above. */
