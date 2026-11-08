@@ -611,7 +611,7 @@ def till_view(request,slug):
     kinds=dict(Service._meta.get_field("kind").choices);items=[]
     for s in Service.objects.filter(location=loc,active=True).order_by("kind","name"):
         opts=[o for o in Option.objects.filter(service=s,active=True).order_by("name")]
-        # 2.22.3: the tile shows the whole name; "name" is what the register prints (32 characters, no accents)
+        # 2.22.4: the tile shows the whole name; "name" is what the register prints (32 characters, no accents)
         items+=[{"group":kinds.get(s.kind,""),"label":f"{s.name} {o.name}","name":text(f"{s.name} {o.name}"),"price":str(o.price if o.price is not None else s.price or "").replace(".",","),"svc":str(s.pk)} for o in opts] or [{"group":kinds.get(s.kind,""),"label":s.name,"name":text(s.name),"price":str(s.price or "").replace(".",","),"svc":str(s.pk)}]
     items+=[{"group":"Prodotti","label":p.name,"name":text(p.name),"price":str(p.price or "").replace(".",","),"svc":"p:"+str(p.pk)} for p in Product.objects.filter(active=True).order_by("name")]  # 2.22.0
     groups={}

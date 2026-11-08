@@ -2,7 +2,7 @@
 /**
  * Plugin Name: TD Booking Suite — Prenotazioni
  * Description: Mostra nel sito il modulo di prenotazione di TD Booking Suite. Due modi: collegato al portale con un codice, e si configura da solo; oppure in modalità PC, con il programma su un PC spesso spento: il modulo usa i dati che il PC manda e le richieste restano cifrate nel sito solo finché il PC non le prende. Con una password, [tdbs_agenda] mostra al titolare e ai collaboratori le prenotazioni mandate cifrate dal PC e può aggiungere appuntamenti, che il PC prende alla sincronizzazione. Il sito può fare da archivio centrale cifrato del programma, da cui un PC nuovo riprende tutto: di ogni record tiene la versione modificata per ultima. Può anche gestire prenotazioni ed email: conferma subito chi prenota dal sito e manda conferme, promemoria, modifiche e annullamenti anche con il PC spento.
- * Version: 2.22.3
+ * Version: 2.22.4
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Tastiere Digitali
@@ -10,7 +10,7 @@
  */
 defined('ABSPATH') || exit;
 
-const TDBS_VERSION='2.22.3';
+const TDBS_VERSION='2.22.4';
 
 function tdbs_settings() {
     $s=get_option('tdbs_settings',array());

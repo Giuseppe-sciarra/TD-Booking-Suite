@@ -102,7 +102,7 @@
    if(day.value&&forceAt.value){selected={start:day.value+"T"+forceAt.value,resource:"",occurrence:""};submit.disabled=busy;}
    $("slot-status").textContent="Scrivi giorno e ora: quando confermi il programma dice cosa stai superando.";return;
   }
-  // 2.22.3: from the agenda the time clicked is shown pressed at once, before the service is chosen
+  // 2.22.4: from the agenda the time clicked is shown pressed at once, before the service is chosen
   if(!s&&config.prefill?.time&&day.value===config.prefill.date){const b=document.createElement("button");b.type="button";b.className="slot";b.setAttribute("aria-pressed","true");b.disabled=true;b.append(config.prefill.time);$("slots").append(b);const who=config.services.flatMap(x=>x.resources).find(r=>r.id===config.prefill.resource)?.name;$("slot-status").textContent=t("Orario scelto dall'agenda")+(who?" con "+who:"")+t(": ora scegli il servizio.");return;}
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=t($("service-label").textContent===t("Sede")?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.");return;}
   $("slot-status").textContent=t("Controllo delle disponibilità…");$("slots").setAttribute("aria-busy","true");

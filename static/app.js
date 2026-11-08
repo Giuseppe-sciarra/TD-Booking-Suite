@@ -530,7 +530,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   const want=form.querySelector("[data-till-gift-take]").value.trim(),use=Math.min(t,want?Math.min(credit,num(want)):credit),g=form.querySelector("[data-till-gift-total]");
   total.textContent=eur(t-use);g.hidden=!use;g.textContent=use?"Gift card −"+eur(use)+" su "+eur(t):"";
   const p=form.querySelector("[data-till-parked]");p.hidden=!later;p.textContent=later?"Non nello scontrino: "+eur(later):"";};
- // 2.22.3: a tap puts the service on the bill once (the flag); a tap on a service already there only makes its row the current
+ // 2.22.4: a tap puts the service on the bill once (the flag); a tap on a service already there only makes its row the current
  // one, to change the operator; it leaves the bill with the × on the tile or on the row. The quantity is changed on the row.
  document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",e=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
@@ -552,7 +552,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
   if(k){const r=k.closest("tr"),f=r.querySelector("[name=park]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));r.classList.toggle("is-parked",on);}
   if(x)x.closest("tr").remove();sum();});
- // 2.22.3: the tiles of the services on the bill light up in the colour of the operator of their row
+ // 2.22.4: the tiles of the services on the bill light up in the colour of the operator of their row
  const tone=who=>[...(ops.find(o=>o.dataset.tillOp===who)?.classList||[])].find(c=>/^op-\d+$/.test(c))||"";
  const tiles=[...document.querySelectorAll(".till-item[data-till-add]")],lit=()=>{const on=new Map();body.querySelectorAll("tr").forEach(r=>{const k=r.querySelector("[name=svc]").value||"desc:"+r.querySelector("[name=desc]").value.trim().toLowerCase();if(!on.has(k))on.set(k,r.querySelector("[name=staff]").value);});
   tiles.forEach(b=>{const k=b.dataset.svc||"desc:"+(b.dataset.desc||"").trim().toLowerCase(),is=on.has(k);b.classList.toggle("is-on",is);b.setAttribute("aria-pressed",String(is));b.className=b.className.replace(/\bop-\d+\b/g,"").trim()+(is&&tone(on.get(k))?" "+tone(on.get(k)):"");});};

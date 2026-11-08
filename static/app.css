@@ -1457,7 +1457,7 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 /* 2.22.2: all the services in view, smaller tiles so more fit on a row (no «Più usati» and no list to open) */
 .till-item{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:50px;padding:7px 10px;text-align:left;background:var(--paper);color:var(--ink);border:2px solid var(--pastel);border-radius:10px;font-weight:600;line-height:1.25;font-size:13px;overflow-wrap:anywhere}
 .till-item:hover,.till-item:focus-visible{border-color:var(--brand);background:var(--soft)}.till-item span{font-size:12px;font-weight:400;color:var(--muted);padding-right:24px}
-/* 2.22.3: on the bill: the tile takes the colour of the operator of its row (the accent when nobody yet); the flag becomes × on hover and takes it off */
+/* 2.22.4: on the bill: the tile takes the colour of the operator of its row (the accent when nobody yet); the flag becomes × on hover and takes it off */
 .till-item.is-on{background:var(--op,var(--brand));border-color:var(--op,var(--brand));color:var(--brand-ink)}.till-item.is-on span{color:var(--brand-ink);opacity:.85}
 .till-flag{display:none;position:absolute;right:6px;bottom:6px;width:20px;height:20px;border-radius:50%;background:var(--brand-ink);color:var(--op,var(--brand));font-size:14px;font-style:normal;font-weight:800;place-items:center}
 .till-item.is-on .till-flag{display:grid}.till-flag::before{content:"✓"}.till-flag:hover::before{content:"×";font-size:17px}
