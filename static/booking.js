@@ -102,6 +102,8 @@
    if(day.value&&forceAt.value){selected={start:day.value+"T"+forceAt.value,resource:"",occurrence:""};submit.disabled=busy;}
    $("slot-status").textContent="Scrivi giorno e ora: quando confermi il programma dice cosa stai superando.";return;
   }
+  // 2.22.3: from the agenda the time clicked is shown pressed at once, before the service is chosen
+  if(!s&&config.prefill?.time&&day.value===config.prefill.date){const b=document.createElement("button");b.type="button";b.className="slot";b.setAttribute("aria-pressed","true");b.disabled=true;b.append(config.prefill.time);$("slots").append(b);const who=config.services.flatMap(x=>x.resources).find(r=>r.id===config.prefill.resource)?.name;$("slot-status").textContent=t("Orario scelto dall'agenda")+(who?" con "+who:"")+t(": ora scegli il servizio.");return;}
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=t($("service-label").textContent===t("Sede")?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.");return;}
   $("slot-status").textContent=t("Controllo delle disponibilità…");$("slots").setAttribute("aria-busy","true");
   try{
@@ -228,7 +230,8 @@
   loadSlots();
  }else if(config.services.some(s=>s.id===(config.prefill?.service||new URLSearchParams(location.search).get("service")))){service.value=config.prefill?.service||new URLSearchParams(location.search).get("service");changeService();}else if(config.services.length===1){service.value=config.services[0].id;changeService();}
  // 2.22.3: from a free space of the agenda the time comes first and the service is chosen after, never for the person:
- // once the service is picked, the times load and the one clicked is the one pressed (config.prefill.time, in loadSlots)
+ // the time clicked is shown pressed at once, then once the service is picked the times load and that one is the one pressed (loadSlots)
+ else if(config.prefill?.time)loadSlots();
  // 2.14.0: from the waiting list's link: how many, the departure and who, then the times of that day
  if(config.prefill?.contact){const p=config.prefill;party.value=p.party||1;if(p.end_date)departure.value=p.end_date;
   [["first-name","first_name"],["last-name","last_name"],["customer-email","email"],["phone","phone"]].forEach(([id,k])=>{if($(id))$(id).value=p.contact[k]||"";});loadSlots();}

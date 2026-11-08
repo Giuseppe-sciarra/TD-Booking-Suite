@@ -530,10 +530,12 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
   const want=form.querySelector("[data-till-gift-take]").value.trim(),use=Math.min(t,want?Math.min(credit,num(want)):credit),g=form.querySelector("[data-till-gift-total]");
   total.textContent=eur(t-use);g.hidden=!use;g.textContent=use?"Gift card −"+eur(use)+" su "+eur(t):"";
   const p=form.querySelector("[data-till-parked]");p.hidden=!later;p.textContent=later?"Non nello scontrino: "+eur(later):"";};
- document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",()=>{
+ // 2.22.3: a tap puts the service on the bill once (the flag); a tap on a service already there only makes its row the current
+ // one, to change the operator; it leaves the bill with the × on the tile or on the row. The quantity is changed on the row.
+ document.querySelectorAll("[data-till-add]").forEach(b=>b.addEventListener("click",e=>{
   const same=b.dataset.svc&&[...body.querySelectorAll("tr")].find(r=>r.querySelector("[name=svc]").value===b.dataset.svc&&r.querySelector("[name=desc]").value===b.dataset.desc);
-  if(same){const q=same.querySelector("[name=qty]");q.value=Math.min(99,num(q.value)+1);}
-  else{const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;if(active)r.querySelector("[name=staff]").value=active;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
+  if(same&&e.target.closest("[data-till-off]")){same.remove();current(body.lastElementChild);sum();return;}
+  if(!same){const r=row.content.firstElementChild.cloneNode(true);r.querySelector("[name=desc]").value=b.dataset.desc;r.querySelector("[name=price]").value=b.dataset.price;r.querySelector("[name=svc]").value=b.dataset.svc;if(active)r.querySelector("[name=staff]").value=active;body.append(r);if(!b.dataset.desc)r.querySelector("[name=desc]").focus();}
   current(same||body.lastElementChild);sum();}));
  // 2.22.2: the operators as a bar beside the services, Exagon style: the row touched last is the current one (the last added,
  // or the one tapped); tap an operator and it is his; the operator stays pressed for the next services until another is tapped
@@ -543,16 +545,17 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  const paint=()=>{const r=body.querySelector("tr.is-current"),who=r?r.querySelector("[name=staff]").value:active;
   body.querySelectorAll("tr").forEach(x=>{x.querySelector("[data-till-who]").textContent=x.querySelector("[name=staff]").value||"Operatore?";});
   ops.forEach(b=>b.setAttribute("aria-pressed",String(!!who&&b.dataset.tillOp===who)));};
- ops.forEach(b=>b.addEventListener("click",()=>{active=b.dataset.tillOp;const r=body.querySelector("tr.is-current")||body.lastElementChild;if(r)r.querySelector("[name=staff]").value=active;paint();document.dispatchEvent(new Event("till-changed"));}));
+ ops.forEach(b=>b.addEventListener("click",()=>{active=b.dataset.tillOp;const r=body.querySelector("tr.is-current")||body.lastElementChild;if(r)r.querySelector("[name=staff]").value=active;changed();}));
  body.addEventListener("click",e=>{const r=e.target.closest("tr");if(r&&r.isConnected)current(r);});
  if(body.lastElementChild)current(body.lastElementChild);else paint();
  body.addEventListener("click",e=>{const q=e.target.closest("[data-till-qty]"),x=e.target.closest("[data-till-remove]"),k=e.target.closest("[data-till-park]");
   if(q){const i=q.parentElement.querySelector("[name=qty]");i.value=Math.max(1,Math.min(99,num(i.value)+Number(q.dataset.tillQty)));}
   if(k){const r=k.closest("tr"),f=r.querySelector("[name=park]"),on=f.value!=="1";f.value=on?"1":"";k.setAttribute("aria-pressed",String(on));r.classList.toggle("is-parked",on);}
   if(x)x.closest("tr").remove();sum();});
- // 2.22.2: the tiles of the services on the bill light up, with how many
- const tiles=[...document.querySelectorAll(".till-item[data-till-add]")],lit=()=>{const on=new Map();body.querySelectorAll("tr").forEach(r=>{const k=r.querySelector("[name=svc]").value||"desc:"+r.querySelector("[name=desc]").value.trim().toLowerCase();on.set(k,(on.get(k)||0)+num(r.querySelector("[name=qty]").value));});
-  tiles.forEach(b=>{const n=on.get(b.dataset.svc||"desc:"+(b.dataset.desc||"").trim().toLowerCase())||0;b.classList.toggle("is-on",n>0);b.setAttribute("aria-pressed",String(n>0));if(n>0)b.dataset.n=String(n);else delete b.dataset.n;});};
+ // 2.22.3: the tiles of the services on the bill light up in the colour of the operator of their row
+ const tone=who=>[...(ops.find(o=>o.dataset.tillOp===who)?.classList||[])].find(c=>/^op-\d+$/.test(c))||"";
+ const tiles=[...document.querySelectorAll(".till-item[data-till-add]")],lit=()=>{const on=new Map();body.querySelectorAll("tr").forEach(r=>{const k=r.querySelector("[name=svc]").value||"desc:"+r.querySelector("[name=desc]").value.trim().toLowerCase();if(!on.has(k))on.set(k,r.querySelector("[name=staff]").value);});
+  tiles.forEach(b=>{const k=b.dataset.svc||"desc:"+(b.dataset.desc||"").trim().toLowerCase(),is=on.has(k);b.classList.toggle("is-on",is);b.setAttribute("aria-pressed",String(is));b.className=b.className.replace(/\bop-\d+\b/g,"").trim()+(is&&tone(on.get(k))?" "+tone(on.get(k)):"");});};
  const changed=()=>{sum();lit();paint();document.dispatchEvent(new Event("till-changed"));};
  form.addEventListener("input",changed);body.addEventListener("click",()=>setTimeout(changed,0));tiles.forEach(b=>b.addEventListener("click",()=>setTimeout(changed,0)));changed();
  // 2.22.0: sell a gift card: an amount (preset or free) and the expiry, as a row of the bill
@@ -579,7 +582,7 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
  const search=document.querySelector("[data-till-search]");
  search?.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();
   // 2.22.2: all the services are in view; a search leaves only the ones that match
-  document.querySelectorAll(".till-items .till-grid .till-item").forEach(b=>{b.hidden=q&&!b.dataset.desc.toLowerCase().includes(q);});
+  document.querySelectorAll(".till-items .till-grid .till-item").forEach(b=>{b.hidden=q&&!(b.title||b.dataset.desc).toLowerCase().includes(q);});
   document.querySelectorAll("[data-till-group]").forEach(h=>{h.hidden=![...h.nextElementSibling.children].some(b=>!b.hidden);});});
  // 2.22.2: the client is in his own card above the bill (the hidden id is bound to the form by form=)
  const who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]"),found=document.querySelector("[data-till-found]"),history=document.querySelector("[data-till-history]");let timer;

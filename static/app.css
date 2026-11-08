@@ -188,7 +188,7 @@ legend{font-size:19px;padding:0;margin-bottom:4px;letter-spacing:-.01em}
 .slots{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .slot{border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:15px;min-width:96px;display:block;text-align:left;padding:9px 14px}
 .slot:hover{border-color:var(--brand)}
-.slot[aria-pressed=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.slot[aria-pressed=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}.slot[aria-pressed=true]:disabled{opacity:1;cursor:default}
 .slot small{font-size:12px;color:inherit;opacity:.8}
 .booking-bottom{display:flex;justify-content:space-between;align-items:center;gap:20px;font-size:14px}
 .success-mark{display:inline-grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--ok-soft);color:var(--ok);font-size:28px}
@@ -1455,12 +1455,15 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}.till>*{min-width:0}.till-client .section-heading{margin-bottom:6px}.till-client .field{margin:0}.till-client #till-client{max-width:520px}
 .till-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;margin:6px 0 12px}
 /* 2.22.2: all the services in view, smaller tiles so more fit on a row (no «Più usati» and no list to open) */
-.till-item{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:50px;padding:7px 26px 7px 10px;text-align:left;background:var(--paper);color:var(--ink);border:2px solid var(--pastel);border-radius:10px;font-weight:600;line-height:1.25;font-size:13px}
-.till-item:hover,.till-item:focus-visible{border-color:var(--brand);background:var(--soft)}.till-item span{font-size:12px;font-weight:400;color:var(--muted)}
-/* 2.22.2: on the bill: the accent colour and the flag; the number says how many */
-.till-item.is-on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}.till-item.is-on span{color:var(--brand-ink);opacity:.85}
-.till-item.is-on::after{content:"✓";position:absolute;right:6px;top:6px;width:20px;height:20px;border-radius:50%;background:var(--brand-ink);color:var(--brand);font-size:14px;font-weight:800;display:grid;place-items:center}
-.till-item.is-on[data-n]:not([data-n="1"])::after{content:attr(data-n);font-size:12px}.till-item[hidden],[data-till-group][hidden]{display:none}
+.till-item{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:50px;padding:7px 10px;text-align:left;background:var(--paper);color:var(--ink);border:2px solid var(--pastel);border-radius:10px;font-weight:600;line-height:1.25;font-size:13px;overflow-wrap:anywhere}
+.till-item:hover,.till-item:focus-visible{border-color:var(--brand);background:var(--soft)}.till-item span{font-size:12px;font-weight:400;color:var(--muted);padding-right:24px}
+/* 2.22.3: on the bill: the tile takes the colour of the operator of its row (the accent when nobody yet); the flag becomes × on hover and takes it off */
+.till-item.is-on{background:var(--op,var(--brand));border-color:var(--op,var(--brand));color:var(--brand-ink)}.till-item.is-on span{color:var(--brand-ink);opacity:.85}
+.till-flag{display:none;position:absolute;right:6px;bottom:6px;width:20px;height:20px;border-radius:50%;background:var(--brand-ink);color:var(--op,var(--brand));font-size:14px;font-style:normal;font-weight:800;place-items:center}
+.till-item.is-on .till-flag{display:grid}.till-flag::before{content:"✓"}.till-flag:hover::before{content:"×";font-size:17px}
+:root[data-theme=dark] .till-item.is-on[class*=op-]{color:#241a30}:root[data-theme=dark] .till-item.is-on[class*=op-] span{color:#241a30}:root[data-theme=dark] .till-item[class*=op-] .till-flag{background:#241a30;color:#fff}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .till-item.is-on[class*=op-]{color:#241a30}:root:not([data-theme=light]) .till-item.is-on[class*=op-] span{color:#241a30}:root:not([data-theme=light]) .till-item[class*=op-] .till-flag{background:#241a30;color:#fff}}
+.till-item[hidden],[data-till-group][hidden]{display:none}
 #till-search{width:100%;margin:4px 0 8px}
 .till-lines td{vertical-align:middle;padding-left:4px;padding-right:4px}.till-lines th{padding-left:4px;padding-right:4px}.till-lines input{width:100%;min-width:0}.till-qty{white-space:nowrap}.till-qty>*{vertical-align:middle;margin:0 2px}.till-qty input{width:48px;text-align:center}.till-lines [name=off]{width:64px}.till-lines td:first-child{min-width:140px}.till-lines [name=price]{width:80px}.till-who{display:block;margin-top:4px;font-size:.85em;color:var(--muted);font-weight:600}
 /* 2.22.2: the operators beside the services (Exagon style); the current row of the bill is the one the operator goes to */
