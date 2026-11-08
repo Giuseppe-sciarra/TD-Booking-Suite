@@ -92,6 +92,8 @@
   $("group-note").hidden=!big;$("group-note").textContent=big?`Per gruppi oltre ${n} persone la richiesta va confermata dall'attività: ti scriviamo appena possibile.`:"";
   submit.textContent=big?"Invia la richiesta":label;}
  party.addEventListener("input",groupNote);
+ // 2.22.4: the time clicked in the agenda holds while the day and the operator are the ones clicked, until «Altri orari»
+ let unpinned=false;const pinned=()=>!!config.prefill?.time&&!unpinned&&day.value===config.prefill.date&&(!config.prefill.resource||!resource.value||resource.value===config.prefill.resource);
  async function loadSlots(){
   const seq=++sequence;controller?.abort();controller=new AbortController();selected=null;submit.disabled=true;$("slots").replaceChildren();if(waitBox)waitBox.hidden=true;
   const s=current();forceOk=false;groupNote();
@@ -103,7 +105,7 @@
    $("slot-status").textContent="Scrivi giorno e ora: quando confermi il programma dice cosa stai superando.";return;
   }
   // 2.22.4: from the agenda the time clicked is shown pressed at once, before the service is chosen
-  if(!s&&config.prefill?.time&&day.value===config.prefill.date){const b=document.createElement("button");b.type="button";b.className="slot";b.setAttribute("aria-pressed","true");b.disabled=true;b.append(config.prefill.time);$("slots").append(b);const who=config.services.flatMap(x=>x.resources).find(r=>r.id===config.prefill.resource)?.name;$("slot-status").textContent=t("Orario scelto dall'agenda")+(who?" con "+who:"")+t(": ora scegli il servizio.");return;}
+  if(!s&&pinned()){const b=document.createElement("button");b.type="button";b.className="slot";b.setAttribute("aria-pressed","true");b.disabled=true;b.append(config.prefill.time);$("slots").append(b);const who=config.services.flatMap(x=>x.resources).find(r=>r.id===config.prefill.resource)?.name;$("slot-status").textContent=t("Orario scelto dall'agenda")+(who?" con "+who:"")+t(": ora scegli il servizio.");return;}
   if(!s||!day.value||(s.kind==="day"&&!departure.value)){$("slot-status").textContent=t($("service-label").textContent===t("Sede")?"Scegli la sede e la data.":s&&s.kind==="day"?"Scegli le date per vedere le disponibilità.":$("service-wrap").hidden?"Scegli la data per vedere gli orari liberi.":"Scegli servizio e data per vedere gli orari liberi.");return;}
   $("slot-status").textContent=t("Controllo delle disponibilità…");$("slots").setAttribute("aria-busy","true");
   try{
@@ -125,8 +127,14 @@
     $("slots").append(button);
    }
    // 2.10.0: from the agenda, the time of the free space clicked is chosen already, when it is free for this service
-   if(config.prefill?.time&&!selected){const hit=[...$("slots").querySelectorAll("button")].find(b=>b.firstChild?.textContent===config.prefill.time);if(hit){hit.click();hit.scrollIntoView({block:"nearest"});}}
-   $("slot-status").textContent=t(result.slots.length?(units?"Scegli l'unità che preferisci.":"Scegli uno degli orari disponibili."):(units?"Nessuna unità libera per tutte le date scelte.":"Nessun orario disponibile: prova un'altra data."));
+   // 2.22.4: and it stays the only one in view: the other times open with «Altri orari», not by themselves once the service is chosen
+   let said=false;
+   if(pinned()&&!selected){said=true;const all=[...$("slots").querySelectorAll("button")],hit=all.find(b=>b.firstChild?.textContent===config.prefill.time);
+    if(hit){hit.click();all.forEach(b=>{b.hidden=b!==hit;});const more=document.createElement("button");more.type="button";more.className="ghost small slot-more";more.textContent=t("Altri orari");
+     more.addEventListener("click",()=>{unpinned=true;all.forEach(b=>{b.hidden=false;});more.remove();$("slot-status").textContent=t("Scegli uno degli orari disponibili.");});
+     $("slots").append(more);$("slot-status").textContent=t("Orario scelto dall'agenda.");}
+    else $("slot-status").textContent=t("Le ")+config.prefill.time+t(" non è libero per questo servizio: scegli un altro orario.");}
+   if(!said)$("slot-status").textContent=t(result.slots.length?(units?"Scegli l'unità che preferisci.":"Scegli uno degli orari disponibili."):(units?"Nessuna unità libera per tutte le date scelte.":"Nessun orario disponibile: prova un'altra data."));
    if(!result.closed)waitShow(!result.slots.length);  // a closed day: nothing to wait for
   }catch(e){if(e.name!=="AbortError"&&seq===sequence)$("slot-status").textContent=e.message;}
   finally{if(seq===sequence)$("slots").removeAttribute("aria-busy");}

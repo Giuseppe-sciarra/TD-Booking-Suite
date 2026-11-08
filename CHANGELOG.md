@@ -2,10 +2,13 @@
 
 **8 novembre 2026 · versione 2.22.4**
 
-## 2.22.4 — dall'agenda data e ora subito, Cassa con un tocco e la ×, colore dell'operatore
+## 2.22.4 — dall'agenda data e ora subito e solo quella, Cassa con un tocco e la ×, colore dell'operatore, conto che resta sempre, vedi cosa è stato battuto
 
 - **Dall'agenda, data e ora subito**: l'ora cliccata è già premuta appena si apre il modulo, con «Orario scelto dall'agenda con <operatore>: ora scegli il servizio»; non compare più solo dopo aver scelto il servizio.
 - **Cassa, i servizi: un tocco mette, la × toglie, il colore è dell'operatore**: un tocco sulla mattonella mette il servizio nel conto una volta (la spunta), non aumenta più la quantità; un altro tocco sullo stesso servizio rende corrente la sua riga, così tocchi l'operatore e lo cambi; si toglie con la × (la spunta diventa × passandoci sopra) o con la × della riga; la quantità si cambia sulla riga con − e +. La mattonella accesa prende il colore dell'operatore della riga (il colore dell'attività finché non ce n'è uno). I nomi dei servizi si leggono interi (prima erano tagliati a 32 caratteri, il limite della stampante, che resta solo per lo scontrino).
+- **Dall'agenda l'ora resta sola anche dopo il trattamento**: scelto il trattamento (e anche gli altri servizi della visita) si vede solo l'ora cliccata, premuta, con accanto *Altri orari* per aprire tutti gli altri; se quell'ora non è libera per il servizio scelto lo dice e mostra gli orari liberi. Cambiando giorno o operatore si torna alla griglia completa.
+- **Cassa, il conto resta com'era, sempre**: tornando alla Cassa (da un'altra pagina, con Indietro, o riaprendo il programma) tutto quello messo è ancora lì: righe di servizi e prodotti, operatori, quantità, sconti di riga, *Non nello scontrino*, gift card venduta (resta bloccata), cliente, codice fiscale e lotteria, sconto sul totale, codice della gift card che paga e quanto usarne, pagamento e pagamento diviso, copia per email, la gift card che stavi scrivendo, l'operatore premuto, la prenotazione da cui era partito. Prima restavano solo righe e cliente e si perdeva chiudendo la finestra; ora è salvato su questo PC per registratore. Sparisce quando il conto parte o con il nuovo *Svuota il conto* (chiede conferma). Aperta la Cassa da un'altra prenotazione o preventivo, quello è un conto nuovo.
+- **Scontrini di oggi, vedi cosa è stato battuto**: sotto ogni scontrino *Vedi cosa è stato battuto* apre le righe con l'operatore, gli sconti, la gift card, il totale e come ha pagato, senza stampare niente. Il vecchio *Copia* si chiama *Stampa la copia per il cliente* (è la copia di cortesia da stampare).
 
 ## 2.22.3 — prima l'orario poi i servizi da una lista sola, sincronizzazione che non rallenta, vista dell'agenda che resta
 

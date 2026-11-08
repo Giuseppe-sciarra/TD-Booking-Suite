@@ -622,6 +622,7 @@ def till_view(request,slug):
     names_ok=can(request,"pii.read")
     for s in due:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else "Cliente"
     for s in rows:s.who=" ".join(x for x in (s.contact.data.get("first_name",""),s.contact.data.get("last_name","")) if x) if names_ok and s.contact_id else ""  # 2.22.2: who paid, in Scontrini di oggi
+    for s in rows:s.detail=copy_lines(t,s,who=True)[1] if s.kind=="sale" and s.pii else []  # 2.22.4: what was done, open under the receipt
     who=booking.data if booking and names_ok else {}
     lines=prefill(booking) if booking else []
     # 2.22.0: suspended bills and a quote taken into this bill; their client when the booking has none

@@ -515,6 +515,34 @@ document.querySelectorAll("canvas[data-sign]").forEach(c=>{const out=document.qu
 // 2.22.0: Gift card page: an amount pressed goes in the field; the form opens the Cassa with the card in the bill
 document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("click",()=>{const f=b.closest("form").querySelector("[data-gift-amount]");f.value=b.dataset.giftPreset;f.focus();}));
 // 2.16.0: Cassa: tap a service to add it, quantity, price and lines by hand, the total as it is typed, the client looked up
+// 2.22.4: the Cassa stays as it was left, whatever was put in it: rows (services, products, gift cards sold, free rows,
+// operators, discounts, «Non nello scontrino»), client, codice fiscale, lotteria, discount on the total, gift card that pays,
+// payment and its split, copy by email, the gift card being typed, the operator pressed. Kept on this PC (localStorage, per
+// register), also after closing the program; it goes when the bill is sent or emptied. Restored before the Cassa starts.
+const tillDraft={key:()=>"tdbs-till-"+(document.querySelector("form[data-till] [name=sede]")?.value||""),
+ fields:()=>[...document.querySelectorAll(".till input,.till select,.till textarea")].filter(i=>!i.closest(".till-lines")&&!i.closest("template")&&i.closest("form[data-till],.till-client,.till-gift")&&!["key","sede","csrfmiddlewaretoken","booking","parked"].includes(i.name)&&!i.hasAttribute("data-till-search")&&(i.id||i.name))};
+(()=>{const form=document.querySelector("form[data-till]");if(!form)return;
+ let d=null;try{d=JSON.parse(localStorage.getItem(tillDraft.key())||"null");}catch{}
+ if(!d)return;
+ const tpl=document.getElementById("till-row"),body=form.querySelector(".till-lines tbody"),id=document.querySelector("[data-till-contact]");
+ const booking=form.querySelector("[name=booking]")?.value||"";
+ // opened empty (from the menu, Back, another page), or on the same booking it was left on: it comes back as it was;
+ // opened on another booking, quote or suspended bill: that is a new bill and this one gives way
+ const fresh=!body.children.length&&!booking&&!form.querySelector("[name=parked]")&&!(id&&id.value);
+ if(!(fresh||booking&&d.booking===booking)||!tpl)return;
+ body.replaceChildren();
+ (d.lines||[]).forEach(l=>{const tr=tpl.content.firstElementChild.cloneNode(true);[...tr.querySelectorAll("input,select")].forEach(i=>{if(i.name in l)i.value=l[i.name];});
+  if(l.park==="1"){tr.classList.add("is-parked");tr.querySelector("[data-till-park]")?.setAttribute("aria-pressed","true");}body.append(tr);});
+ const hidden=(n,v)=>{const i=document.createElement("input");i.type="hidden";i.name=n;i.value=v;form.prepend(i);};
+ if(d.booking&&!booking)hidden("booking",d.booking);(d.parked||[]).forEach(v=>hidden("parked",v));
+ const f=d.fields||{};
+ tillDraft.fields().forEach(i=>{const k=i.type==="radio"?i.name+"="+i.value:i.id||i.name;if(!(k in f))return;
+  if(i.type==="radio"||i.type==="checkbox")i.checked=!!f[k];else i.value=f[k];
+  if(f[k]&&i.type!=="radio")i.closest("details")?.setAttribute("open","");});
+ if(id?.value){const h=document.querySelector("[data-till-history]");if(h&&!h.dataset.tillHistoryId)h.hidden=false;}
+ if(f["gift-amount"]){const g=document.querySelector("[data-till-gift]"),o=document.querySelector("[data-till-gift-open]");if(g){g.hidden=false;o?.setAttribute("aria-expanded","true");}}
+ if(d.active)document.querySelectorAll("[data-till-op]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tillOp===d.active)));
+})();
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  const body=form.querySelector("[data-till-lines]"),row=document.querySelector("#till-row"),total=form.querySelector("[data-till-total]");
  const num=v=>parseFloat(String(v||"").replace(",","."))||0;
@@ -599,27 +627,22 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
 
       extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
 })();
-// 2.22.2: the bill stays while you go and look at something else: every change is kept on this device (sessionStorage,
-// per register) and comes back when the Cassa opens again empty; sending it, or Svuota, forgets it
-(()=>{const form=document.querySelector("form[data-till]");if(!form||!window.sessionStorage)return;
- const sede=form.querySelector("[name=sede]")?.value||"",key="tdbs-till-"+sede,who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]");
- const rows=()=>[...form.querySelectorAll(".till-lines tbody tr")];
- const read=()=>({lines:rows().map(tr=>Object.fromEntries([...tr.querySelectorAll("input,select")].filter(i=>i.name).map(i=>[i.name,i.value]))).filter(l=>l.desc||l.price),
-  contact:id?.value||"",who:who?.value||"",cf:form.querySelector("[data-till-cf]")?.value||""});
- const save=()=>{try{const d=read();if(d.lines.length||d.contact)sessionStorage.setItem(key,JSON.stringify(d));else sessionStorage.removeItem(key);}catch{}};
- document.addEventListener("till-changed",save);form.addEventListener("change",save);
- form.addEventListener("submit",()=>{try{sessionStorage.removeItem(key);}catch{}});
- // back with nothing on the bill (no booking, quote or parked rows asked, no refused send): what was there comes back
- const tpl=document.getElementById("till-row"),body=form.querySelector(".till-lines tbody");
- const fresh=tpl&&body&&!rows().length&&!form.querySelector("[name=booking]")&&!form.querySelector("[name=parked]")&&!(id&&id.value);
- if(!fresh)return;
- let d=null;try{d=JSON.parse(sessionStorage.getItem(key)||"null");}catch{}
- if(!d||!(d.lines||[]).length&&!d.contact)return;
- (d.lines||[]).forEach(l=>{const tr=tpl.content.firstElementChild.cloneNode(true);[...tr.querySelectorAll("input,select")].forEach(i=>{if(i.name in l)i.value=l[i.name];});
-  if(l.park==="1"){tr.classList.add("is-parked");tr.querySelector("[data-till-park]")?.setAttribute("aria-pressed","true");}body.append(tr);});
- if(d.contact&&id){id.value=d.contact;if(who)who.value=d.who||"";const h=document.querySelector("[data-till-history]");if(h&&!h.dataset.tillHistoryId)h.hidden=false;}
- const cf=form.querySelector("[data-till-cf]");if(cf&&d.cf)cf.value=d.cf;
- form.dispatchEvent(new Event("input",{bubbles:true}));
+// 2.22.4: every change of the Cassa is kept at once (see tillDraft above); leaving the page keeps the last one too
+(()=>{const form=document.querySelector("form[data-till]");if(!form||!window.localStorage)return;
+ const key=tillDraft.key(),body=form.querySelector(".till-lines tbody");let sent=false;
+ const read=()=>{const lines=[...body.querySelectorAll("tr")].map(tr=>Object.fromEntries([...tr.querySelectorAll("input,select")].filter(i=>i.name).map(i=>[i.name,i.value]))).filter(l=>l.desc||l.price);
+  const fields={};tillDraft.fields().forEach(i=>{if(i.type==="radio")fields[i.name+"="+i.value]=i.checked;else if(i.type==="checkbox")fields[i.id||i.name]=i.checked;else fields[i.id||i.name]=i.value;});
+  return {lines,fields,booking:form.querySelector("[name=booking]")?.value||"",parked:[...form.querySelectorAll("[name=parked]")].map(i=>i.value),
+   active:document.querySelector("[data-till-op][aria-pressed=true]")?.dataset.tillOp||""};};
+ const typed=d=>d.lines.length||d.booking||d.parked.length||Object.entries(d.fields).some(([k,v])=>v&&v!==true&&!k.startsWith("gift-expires")||v===true&&!k.startsWith("pay=")&&k!=="pay=cash");
+ const save=()=>{if(sent)return;try{const d=read();if(typed(d))localStorage.setItem(key,JSON.stringify(d));else localStorage.removeItem(key);}catch{}};
+ const later=()=>setTimeout(save,0);
+ document.addEventListener("till-changed",save);document.addEventListener("input",e=>{if(e.target.closest(".till"))later();});document.addEventListener("change",e=>{if(e.target.closest(".till"))later();});
+ document.addEventListener("click",e=>{if(e.target.closest(".till"))later();});addEventListener("pagehide",save);
+ // sent to the register, or set aside: this bill is done (a bill stopped here, a missing price, stays)
+ form.addEventListener("submit",e=>{if(e.defaultPrevented)return;const act=e.submitter?.value||"";if(act&&act!=="sell"&&act!=="park")return;sent=true;try{localStorage.removeItem(key);}catch{}});
+ document.querySelector("[data-till-clear]")?.addEventListener("click",e=>{if(!e.currentTarget.dataset.confirmed)return;sent=true;try{localStorage.removeItem(key);}catch{}location.href=location.pathname+"?sede="+encodeURIComponent(form.querySelector("[name=sede]")?.value||"");});
+ save();
 })();
 // 2.22.2: Storico in the Cassa: the client's record in a window over the bill, with the period to choose, the bill untouched
 (()=>{const btn=document.querySelector("[data-till-history]");if(!btn)return;
