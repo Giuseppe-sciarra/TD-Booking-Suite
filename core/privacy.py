@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,Quote,Parked,GiftCard,audit
+from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,Quote,Parked,GiftCard,ClientPhoto,audit
 from .crypto import encrypt
 from .booking import BookingError,OPEN
 
@@ -25,6 +25,12 @@ def history(contact):
     """2.14.0: with the history of the cards merged into this one, which stay (without data) only for it."""
     return list(ConsentEvent.objects.filter(Q(contact=contact)|Q(contact__merged_into=contact)).order_by("at","pk"))
 
+def photos_of(tenant,contact):
+    import base64
+    from .crypto import decrypt_bytes
+    return [{"date":p.date.isoformat(),"booking":str(p.booking_id or ""),"jpeg_base64":base64.b64encode(decrypt_bytes(tenant,p.image,"photo:"+str(p.pk))).decode()}
+        for p in ClientPhoto.objects.filter(contact=contact).defer("thumb").order_by("date","created")]
+
 def export_contact(tenant,contact):
     """Access request: everything held about one contact, this tenant only."""
     bookings=[]
@@ -40,6 +46,8 @@ def export_contact(tenant,contact):
         # 2.22.0: quotes, Preventivo pagamenti cassa and gift cards in his name
         "quotes":[{"number":q.ref,"created":q.created.isoformat(),"total":str(q.total),**q.data} for q in Quote.objects.filter(contact=contact).order_by("created")],
         "to_pay_at_the_desk":[{"created":x.created.isoformat(),"total":str(x.total),**x.data} for x in Parked.objects.filter(contact=contact).order_by("created")],
+        # 2.22.9: his photos, the JPEG as kept, in base64
+        "photos":photos_of(tenant,contact),
         "gift_cards":[{"code":g.code,"amount":str(g.amount),"balance":str(g.balance),"expires":g.expires.isoformat() if g.expires else None,"status":g.status} for g in GiftCard.objects.filter(contact=contact)]}
 
 def _anonymize_booking(tenant,b):
@@ -48,6 +56,7 @@ def _anonymize_booking(tenant,b):
     b.snapshot.pop("consent_request",None);b.snapshot["anonymized"]=timezone.now().isoformat()
     b.save(update_fields=["pii","request_fingerprint","contact","snapshot"])
     ActionToken.objects.filter(booking=b).delete()
+    ClientPhoto.objects.filter(booking=b).delete()  # 2.22.9: the photos of that visit go with its data
 
 def _anonymize_contact(tenant,c,forget=False):
     keys=[]
@@ -63,6 +72,7 @@ def _anonymize_contact(tenant,c,forget=False):
     c.phone_index=c.name_index=c.tag_index=c.birthday_index="";c.vip=c.online_blocked=False;c.save()
     ActionToken.objects.filter(contact=c).delete()
     Treatment.objects.filter(contact=c).delete()  # 2.8.0: the client record goes with the person
+    ClientPhoto.objects.filter(contact=c).delete()  # 2.22.9: and his photos
     WaitEntry.objects.filter(contact=c).delete()  # 2.14.0: and the waiting list
     from .cassa import forget
     forget(tenant,Sale.objects.filter(contact=c))  # 2.16.0: his receipts keep lines and totals, not his codice fiscale
@@ -106,6 +116,7 @@ def apply_retention(tenant,apply=False,now=None):
     report["contacts"]=len(stale)
     old_records=Treatment.objects.filter(date__lt=since)
     report["treatments"]=old_records.count()
+    old_photos=ClientPhoto.objects.filter(date__lt=since);report["photos"]=old_photos.count()  # 2.22.9: as old as the record entries
     report["deliveries"]=Delivery.objects.filter(created__lt=cutoff).exclude(payload="").count()
     old_quotes=Quote.objects.filter(created__lt=cutoff);report["quotes"]=old_quotes.count()  # 2.22.0: name and phone inside, also without a card
     if not apply:return report
@@ -114,7 +125,7 @@ def apply_retention(tenant,apply=False,now=None):
         for b in old.iterator(chunk_size=200):_anonymize_booking(tenant,b)
         for c in stale:
             _anonymize_contact(tenant,c);record(tenant,c,"erased","retention")
-        old_records.delete();gone.delete();old_quotes.delete()
+        old_records.delete();gone.delete();old_quotes.delete();old_photos.delete()
         from .cassa import forget
         forget(tenant,Sale.objects.filter(created__lt=cutoff).exclude(actor=""))
         for d in Delivery.objects.filter(created__lt=cutoff).exclude(payload=""):

@@ -577,6 +577,17 @@ class Treatment(Scoped):
     class Meta:indexes=[models.Index(fields=["tenant","contact","date"])]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"treatment:"+str(self.pk))
+class ClientPhoto(Scoped):
+    """2.22.9: a photo of the work done (a cut, a colour, a nail art), in the client's album by day, at most 4 a day: the
+    JPEG compressed on the way in and sealed with the business key, a small copy for the lists. Kept in this program only,
+    never sent to the site; it goes with the client's erasure and when the visit of that day loses its data."""
+    contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="photos")
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="photos")
+    date=models.DateField()
+    image=models.BinaryField()
+    thumb=models.BinaryField()
+    created=models.DateTimeField(auto_now_add=True)
+    class Meta:indexes=[models.Index(fields=["tenant","contact","date"])]
 class ConsentEvent(Scoped):
     """Append-only consent history. No personal data: who and what live in Contact."""
     contact=models.ForeignKey(Contact,on_delete=models.PROTECT,related_name="consent_events")

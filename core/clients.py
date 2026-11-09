@@ -242,7 +242,8 @@ def merge(tenant,main,other,keep,actor):
         if taken(new):raise BookingError("Un altro cliente ha già questa email o questo telefono.")
         main.email_index=new;seal_card(tenant,main,d);main.save()
         from .wpsync import touch
-        for model,kind in ((Booking,"booking"),(Treatment,"treatment"),(WaitEntry,"")):
+        from .models import ClientPhoto
+        for model,kind in ((Booking,"booking"),(Treatment,"treatment"),(WaitEntry,""),(ClientPhoto,"")):  # 2.22.9: the photos too
             if kind:touch(tenant.pk,kind,model.objects.filter(contact=other).values_list("pk",flat=True))  # 2.18.0: the site's archive moves them too
             model.objects.filter(contact=other).update(contact=main)
         # a confirmation asked to a mailbox the card no longer has must not confirm anything

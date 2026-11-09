@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.8 — registro modifiche
+# TD Booking Suite 2.22.9 — registro modifiche
 
-**8 novembre 2026 · versione 2.22.8**
+**9 novembre 2026 · versione 2.22.9**
+
+## 2.22.9 — l'album foto del cliente
+
+- **Foto del lavoro fatto, nella scheda del cliente**: dove c'è la scheda cliente (parrucchieri, estetisti, tatuatori…), nell'appuntamento c'è *Foto del giorno* con **Aggiungi foto**: dal telefono si scatta o si sceglie dalla galleria, dal PC si sceglie il file, anche più di una alla volta. Al massimo **4 foto per giorno** per cliente; quelle in più non vengono prese e lo dice. Nella scheda del cliente la nuova scheda **Foto** mostra l'album giorno per giorno, con i servizi di quel giorno; lì si aggiungono anche le foto di oggi. Un tocco apre la foto grande (con *Scarica*), la × la toglie dopo la conferma.
+- **Compresse da sole**: la foto viene rimpicciolita già nel browser prima di partire (al massimo 1600 px, JPEG, sotto 1 MB anche da una foto del telefono di 10 MB) e il programma la rifà JPEG di 1600 px più una copia piccola per l'album, raddrizzata come è stata scattata. Una foto pesa circa 200-400 KB.
+- **Restano nel programma**: sono chiuse con la chiave dell'attività come i dati dei clienti, nel database (quindi nel backup), e **non vanno sul sito**. Le vede solo chi vede i dati dei clienti (un operatore solo i clienti dei suoi appuntamenti); le aggiunge e le toglie chi può modificare le prenotazioni. Seguono la privacy: escono nell'esportazione dei dati del cliente, vanno via con la sua cancellazione e quando il periodo di conservazione toglie i dati di quel giorno; unendo due schede passano a quella che resta.
 
 ## 2.22.8 — il grazie del giorno dopo anche in alto
 

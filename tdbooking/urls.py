@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from core import gift,quotes,cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
+from core import photos,gift,quotes,cassa,api,reports,stays,identity,platform,portal,public,branding,site,agency,trial,pages,wpconnect,mailsetup,agenda,tables
 urlpatterns=[
  path("brand/<slug:slug>/style.css",branding.css,name="brand_css"),
  path("brand/<slug:slug>/app.css",branding.app_css,name="brand_app_css"),
@@ -74,6 +74,9 @@ urlpatterns=[
  path("t/<slug:slug>/contacts/search/",portal.contacts_search,name="contacts_search"),
  path("t/<slug:slug>/contacts/import/",portal.contacts_import,name="contacts_import"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/",portal.contact_detail,name="contact_detail"),
+ path("t/<slug:slug>/contacts/<uuid:contact_id>/foto/",photos.upload,name="photo_upload"),  # 2.22.9
+ path("t/<slug:slug>/foto/<uuid:photo_id>/",photos.image,name="photo_image"),
+ path("t/<slug:slug>/foto/<uuid:photo_id>/togli/",photos.remove,name="photo_remove"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/storico/",portal.contact_history,name="contact_history"),
  path("t/<slug:slug>/promemoria-whatsapp/",portal.wa_reminders,name="wa_reminders"),
  path("t/<slug:slug>/contacts/<uuid:contact_id>/unisci/",portal.contact_merge,name="contact_merge"),

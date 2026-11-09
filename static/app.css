@@ -1714,3 +1714,18 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-history-in{padding:18px 22px 22px;position:relative;overflow:auto;max-height:92vh}.till-history-close{position:absolute;right:10px;top:8px;font-size:22px;padding:2px 10px;border:0}
 .till-history .page-heading,.till-history .back{display:none}.till-history .filters.card{margin-top:8px}
 .peek-cancel{margin:0}.peek-cancel .button{width:100%}
+/* 2.22.9: the client's photos: square small copies in a row, the × on the corner, the big one in a dialog */
+.photo-grid{list-style:none;margin:8px 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;max-width:780px}
+.photo-grid:empty{display:none}
+.photo-grid li{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;border:2px solid var(--pastel);background:var(--soft);box-shadow:0 2px 6px rgba(36,26,48,.08)}
+.photo-grid a{display:block;width:100%;height:100%}.photo-grid img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-grid form{position:absolute;top:6px;right:6px;margin:0}
+.photo-x{width:28px;height:28px;min-height:0;padding:0;border-radius:50%;border:0;background:rgba(36,26,48,.72);color:#fff;font-size:18px;line-height:1;font-weight:700;cursor:pointer;display:grid;place-items:center}
+.photo-x:hover,.photo-x:focus-visible{background:#b3261e}
+.photo-add{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0}.photo-add .button{margin:0}.photos p.small{padding-left:0;padding-right:0}.photo-pick{position:relative;cursor:pointer}
+.photo-pick input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.photo-pick:focus-within{outline:3px solid var(--brand);outline-offset:2px}
+.photo-day{padding:14px 0;border-top:2px solid var(--line)}.photo-day:first-of-type{border-top:0}.photo-day h3{margin:0 0 4px;font-size:1.05rem}
+.photo-view{max-width:min(92vw,1100px);max-height:92vh;padding:14px;border:0;border-radius:14px;background:var(--paper)}
+.photo-view::backdrop{background:rgba(20,14,28,.75)}.photo-view img{display:block;max-width:100%;max-height:78vh;margin:0 auto 10px;border-radius:8px}
+.photo-view .actions{justify-content:flex-end}

@@ -618,6 +618,10 @@ def booking_detail(request,slug,booking_id):
     ctx["texts"]=Delivery.objects.filter(booking=booking).order_by("created")
     ctx["sales"]=booking.sales.filter(kind="sale").order_by("created")  # 2.16.0: its receipts from the Cassa
     g=booking.snapshot.get("google","");ctx["google_moved"]=datetime.fromisoformat(g[6:]).astimezone(tz) if g.startswith("moved:") and len(g)>6 else None
+    from . import photos
+    if booking.contact_id and photos.on(request):  # 2.22.9: the photos of the work of that day
+        day=booking.start.astimezone(tz).date();got=photos.album(booking.contact,tz,day)
+        ctx.update(photos_on=True,photo_day=day,day_photos=got[0]["photos"] if got else [],photos_left=got[0]["left"] if got else photos.PER_DAY,photo_write=can(request,"booking.write"),photo_max=photos.PER_DAY)
     return render(request,"booking_detail.html",ctx)
 def test_due(booking):
     """2.14.0: the service wants a test done within so many days: what the desk must know, never a refusal."""
@@ -922,6 +926,12 @@ def contact_detail(request,slug,contact_id):
     from .cassa import owed
     ctx["owed"]=list(owed(contact=contact).order_by("created"));ctx["owed_total"]=sum(s.due for s in ctx["owed"])  # 2.20.9: what he still has to pay
     ctx.update(client_extras(request,contact))
+    from . import photos
+    if photos.on(request):  # 2.22.9: Foto, the album by day
+        tz=ZoneInfo(request.tenant.timezone);today=timezone.now().astimezone(tz).date();got=photos.album(contact,tz)
+        count=sum(len(d["photos"]) for d in got)
+        if can(request,"booking.write") and not any(d["date"]==today for d in got):got.insert(0,{"date":today,"label":"","photos":[],"left":photos.PER_DAY})  # room for today's
+        ctx.update(photos_on=True,album=got,photo_count=count,photo_write=can(request,"booking.write"),photo_max=photos.PER_DAY,photo_today=today)
     return render(request,"contact_detail.html",ctx)
 def client_extras(request,contact):
     """2.22.0: what the client card shows from the Cassa: Preventivo pagamenti cassa, gift cards, quotes."""

@@ -22,6 +22,12 @@ def reveal(value,label):
 def tenant_key(tenant): return unb64(reveal(tenant.wrapped_key,"tenant-key:"+str(tenant.pk)))
 def encrypt(tenant,data,label): return seal(data,tenant_key(tenant),str(tenant.pk)+":"+label)
 def decrypt(tenant,data,label): return open_seal(data,tenant_key(tenant),str(tenant.pk)+":"+label)
+def encrypt_bytes(tenant,data,label):
+    """2.22.9: bytes (a photo) sealed with the business key, without the JSON and base64 of encrypt: 28 bytes more."""
+    nonce=secrets.token_bytes(12)
+    return nonce+AESGCM(tenant_key(tenant)).encrypt(nonce,bytes(data),(str(tenant.pk)+":"+label).encode())
+def decrypt_bytes(tenant,blob,label):
+    raw=bytes(blob);return AESGCM(tenant_key(tenant)).decrypt(raw[:12],raw[12:],(str(tenant.pk)+":"+label).encode())
 def index(value,key,purpose):
     k=HKDF(algorithm=hashes.SHA256(),length=32,salt=None,info=purpose.encode()).derive(key)
     return hmac.new(k,value.encode(),hashlib.sha256).hexdigest()
