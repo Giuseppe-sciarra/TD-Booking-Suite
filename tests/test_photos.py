@@ -1,6 +1,6 @@
-"""2.22.9: the client's photo album: up to 4 photos a day on the visit (from the booking) or on today (from the client
-card), made small and sealed; shown only to who may see that client; gone with the erasure, the retention and in the
-export; moved with a merge; only where the business keeps a client record."""
+"""2.22.9: the client's photo album: up to 4 photos a day on the visit (from the booking), on today (from the client
+card) or on the day of a record entry, made small and sealed; seen by all the staff who see the clients' data; gone with
+the erasure, the retention and in the export; moved with a merge; only where the business keeps a client record."""
 import io,secrets
 from datetime import timedelta
 import pytest
@@ -77,16 +77,41 @@ def test_client_card_album_by_day_and_today(salon):
     r=c.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"photo":[up()],"next":"https://evil.example/"})
     assert r["Location"]==f"/t/salone/contacts/{b.contact_id}/#foto"
 
+def test_photos_on_the_days_of_the_record(salon):
+    """2.22.9: in the client card each record entry shows the photos of its day and takes more; the album goes to the
+    entry and the appointment of that day; the earlier visits in the booking show theirs."""
+    t,loc,svc,b=salon;c,_=client_as(t)
+    tz=ZoneInfo(t.timezone);old=timezone.now().astimezone(tz).date()-timedelta(days=20)
+    with scope(t):
+        from core.clients import save_treatment
+        e=save_treatment(t,Contact.objects.get(pk=b.contact_id),{"date":old,"service":"Colore","staff":"Cristina","details":"6.0 + 20 vol"},None)
+    r=c.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"treatment":str(e.pk),"photo":[up(),up()]},HTTP_X_REQUESTED_WITH="fetch")
+    assert r.json()["left"]==2
+    with scope(t):assert set(ClientPhoto.objects.filter(contact_id=b.contact_id).values_list("date",flat=True))=={old}
+    page=c.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
+    tl=page[page.index('<ol class="timeline">'):page.index("</ol>",page.index('<ol class="timeline">'))]
+    assert tl.count("?piccola=1")==2 and f'name="treatment" value="{e.pk}"' in tl and "Ancora 2 foto" in tl
+    assert "Vedi il trattamento di quel giorno" in page
+    # the booking of today shows them among the earlier visits, without × or Aggiungi
+    with scope(t):
+        at=timezone.now().astimezone(tz).replace(hour=9,minute=0,second=0,microsecond=0)
+        Booking.objects.filter(pk=b.pk).update(start=at,end=at+timedelta(hours=1),busy_start=at,busy_end=at+timedelta(hours=1))
+    page=c.get(f"/t/salone/bookings/{b.pk}/").content.decode()
+    early=page[page.index("Le volte precedenti"):]
+    assert early.count("?piccola=1")==2 and "photo-x" not in early[:early.index("</ol>")]
+    # a wrong entry
+    assert c.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"treatment":"nope","photo":[up()]}).status_code==404
+
 def test_who_sees_the_photos(salon):
     t,loc,svc,b=salon;owner,_=client_as(t)
     j=owner.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"booking":str(b.pk),"photo":[up()]},HTTP_X_REQUESTED_WITH="fetch").json()
     url=j["photos"][0]["full"]
-    # an operator of another location: not his client
+    # an operator of another location sees it too: who did what to whom is no secret among the staff
     with scope(t):other=Location.objects.create(tenant=t,name="Altra")
     op,u=client_as(t,role="operator")
     Membership.objects.filter(user=u).update(locations=[str(other.pk)])
-    assert op.get(url).status_code==403
-    assert op.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"booking":str(b.pk),"photo":[up()]}).status_code==404
+    assert op.get(url).status_code==200
+    assert op.post(f"/t/salone/contacts/{b.contact_id}/foto/",{"booking":str(b.pk),"photo":[up()]}).status_code==404  # adds only on his appointments
     Membership.objects.filter(user=u).update(locations=[str(loc.pk)])
     assert op.get(url).status_code==200
     # an operator does not see client cards: from the card no, from his booking yes

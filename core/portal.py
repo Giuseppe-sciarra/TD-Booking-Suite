@@ -622,6 +622,9 @@ def booking_detail(request,slug,booking_id):
     if booking.contact_id and photos.on(request):  # 2.22.9: the photos of the work of that day
         day=booking.start.astimezone(tz).date();got=photos.album(booking.contact,tz,day)
         ctx.update(photos_on=True,photo_day=day,day_photos=got[0]["photos"] if got else [],photos_left=got[0]["left"] if got else photos.PER_DAY,photo_write=can(request,"booking.write"),photo_max=photos.PER_DAY)
+        if ctx.get("earlier"):
+            days=photos.by_day(booking.contact)
+            for t in ctx["earlier"]:t.photos=days.get(t.date)  # 2.22.9: the photos of the earlier visits, to see them before starting
     return render(request,"booking_detail.html",ctx)
 def test_due(booking):
     """2.14.0: the service wants a test done within so many days: what the desk must know, never a refusal."""
@@ -930,6 +933,7 @@ def contact_detail(request,slug,contact_id):
     if photos.on(request):  # 2.22.9: Foto, the album by day
         tz=ZoneInfo(request.tenant.timezone);today=timezone.now().astimezone(tz).date();got=photos.album(contact,tz)
         count=sum(len(d["photos"]) for d in got)
+        if ctx.get("tpage"):photos.place(ctx["tpage"].paginator.object_list,photos.by_day(contact))  # 2.22.9: each record entry with the photos of its day
         if can(request,"booking.write") and not any(d["date"]==today for d in got):got.insert(0,{"date":today,"label":"","photos":[],"left":photos.PER_DAY})  # room for today's
         ctx.update(photos_on=True,album=got,photo_count=count,photo_write=can(request,"booking.write"),photo_max=photos.PER_DAY,photo_today=today)
     return render(request,"contact_detail.html",ctx)

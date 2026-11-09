@@ -774,25 +774,35 @@ document.querySelectorAll('[data-print]:not([data-print=""])').forEach(b=>b.addE
  const view=document.createElement("dialog");view.className="photo-view";view.innerHTML='<img alt=""><div class="actions"><a class="button secondary small" download>Scarica</a><button type="button" class="primary small" data-close>Chiudi</button></div>';
  document.body.append(view);view.querySelector("[data-close]").addEventListener("click",()=>view.close());view.addEventListener("click",e=>{if(e.target===view)view.close();});
  const open=a=>{view.querySelector("img").src=a.href;view.querySelector("img").alt=a.querySelector("img")?.alt||"";view.querySelector("a").href=a.href+(a.href.includes("?")?"&":"?")+"scarica=1";view.showModal();};
+ // the same day shown twice on a page (an entry of the record and the album): a change in one is copied to the other;
+ // a day the album does not have yet comes with the page opened again on Foto
+ let stale=false;const album=document.getElementById("foto");
+ document.querySelector('a[data-tab="foto"]')?.addEventListener("click",e=>{if(!stale)return;e.preventDefault();location.hash="#foto";location.reload();});
+ const sync=set=>{const others=[...sets].filter(s=>s!==set&&s.dataset.photoDay===set.dataset.photoDay);
+  if(album&&!album.contains(set)&&!others.some(s=>album.contains(s)))stale=true;
+  others.forEach(o=>{const ol=o.querySelector("[data-photo-list]");ol.innerHTML=set.querySelector("[data-photo-list]").innerHTML;
+   if(o.dataset.readonly!==undefined)ol.querySelectorAll("form").forEach(f=>f.remove());
+   ol.querySelectorAll("li").forEach(li=>o._bind?.(li));o._say?.(Math.max(0,4-ol.children.length));});};
  sets.forEach(set=>{const list=set.querySelector("[data-photo-list]"),form=set.querySelector("[data-photo-form]"),full=set.querySelector("[data-photo-full]");
   const say=left=>{if(!form)return;form.hidden=!left;if(full)full.hidden=!!left;const l=form.querySelector("[data-photo-left]");if(l)l.textContent=left===1?"Ancora 1 foto":"Ancora "+left+" foto";};
   const csrf=()=>set.querySelector("[name=csrfmiddlewaretoken]")?.value||"";
   const bind=li=>{li.querySelector("[data-photo-open]")?.addEventListener("click",e=>{e.preventDefault();open(e.currentTarget);});
    li.querySelector("[data-photo-remove]")?.addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget;
-    try{const r=await fetch(f.action,{method:"POST",headers:{"X-Requested-With":"fetch"},body:new FormData(f)});const j=await r.json();if(j.ok){li.remove();say(j.left);}}catch{f.submit();}});};
+    try{const r=await fetch(f.action,{method:"POST",headers:{"X-Requested-With":"fetch"},body:new FormData(f)});const j=await r.json();if(j.ok){li.remove();say(j.left);sync(set);}}catch{f.submit();}});};
+  set._bind=bind;set._say=say;
   list.querySelectorAll("li").forEach(bind);
   const input=form?.querySelector("[data-photo-input]");
   input?.addEventListener("change",async()=>{const files=[...input.files];input.value="";if(!files.length)return;const status=form.querySelector("[data-photo-status]");
    let n=0,msg="";
    for(const file of files){n++;status.textContent=files.length>1?`Carico ${n} di ${files.length}…`:"Carico la foto…";
-    const fd=new FormData();fd.append("csrfmiddlewaretoken",csrf());const b=form.querySelector("[name=booking]");if(b)fd.append("booking",b.value);
+    const fd=new FormData(form);fd.delete("photo");fd.delete("next");
     const blob=await small(file);fd.append("photo",blob,(file.name||"foto").replace(/\.[^.]+$/,"")+".jpg");
     try{const r=await fetch(form.action,{method:"POST",headers:{"X-Requested-With":"fetch"},body:fd});const j=await r.json();
      (j.photos||[]).forEach(p=>{const li=document.createElement("li");li.innerHTML=`<a href="${p.full}" data-photo-open><img src="${p.thumb}" alt="Foto" width="180" height="180"></a>`;
       const tpl=list.querySelector("[data-photo-remove]");if(tpl){const f=tpl.cloneNode(true);f.action=f.action.replace(/foto\/[0-9a-f-]+\/togli\//,"foto/"+p.id+"/togli/");f.querySelector("button")?.removeAttribute("data-confirmed");li.append(f);}
       else{const f=document.createElement("form");f.method="post";f.action=form.action.replace(/contacts\/[0-9a-f-]+\/foto\//,"foto/"+p.id+"/togli/");f.dataset.photoRemove="";f.innerHTML=`<input type="hidden" name="csrfmiddlewaretoken" value="${csrf()}"><button class="photo-x" aria-label="Togli questa foto" title="Togli" data-confirm="Togliere questa foto? Non si recupera." data-confirm-label="Togli la foto">×</button>`;li.append(f);}
       list.append(li);bind(li);});
-     say(j.left);if(j.error)msg=j.error;if(!j.left)break;}
+     say(j.left);sync(set);if(j.error)msg=j.error;if(!j.left)break;}
     catch{msg="Non riesco a caricare la foto: controlla la connessione e riprova.";break;}}
    status.textContent=msg;status.classList.toggle("danger-text",!!msg);});
  });

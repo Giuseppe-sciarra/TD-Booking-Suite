@@ -18,6 +18,10 @@ from .crypto import encrypt_bytes,decrypt_bytes
 from .models import Booking,ClientPhoto,Contact,audit
 from .permissions import can,require,visible_bookings
 
+def uid(v):
+    import uuid
+    try:return uuid.UUID(str(v))
+    except ValueError:return None
 PER_DAY=4  # more is a mess to look at later
 MAX_UPLOAD=20*1024*1024  # a phone photo as it is, when the browser could not make it small
 FULL,THUMB=1600,360
@@ -52,15 +56,34 @@ def album(contact,tz,day=None):
     days={}
     for p in rows:days.setdefault(p.date,[]).append(p)
     if not days:return []
-    names={}
+    names={};first={}
+    from .models import Treatment
+    entries={}
+    for e in Treatment.objects.filter(contact=contact,date__in=list(days)).order_by("created"):
+        entries.setdefault(e.date,[]).append(e.data.get("service",""))
     for b in Booking.objects.filter(contact=contact,start__date__gte=min(days)-timedelta(days=1),start__date__lte=max(days)+timedelta(days=1)).exclude(status__in=("cancelled","rejected","expired")).select_related("service"):
-        names.setdefault(b.start.astimezone(tz).date(),[]).append(b.snapshot.get("service") or b.service.name)
-    return [{"date":d,"label":" · ".join(dict.fromkeys(names.get(d,[]))),"photos":ps,"left":max(0,PER_DAY-len(ps))} for d,ps in days.items()]
+        d=b.start.astimezone(tz).date();names.setdefault(d,[]).append(b.snapshot.get("service") or b.service.name);first.setdefault(d,b.pk)
+    # 2.22.9: each day with its appointment and its record entry, to go from the photos to what was done
+    return [{"date":d,"label":" · ".join(x for x in dict.fromkeys(entries.get(d,[])+names.get(d,[])) if x),"photos":ps,"left":max(0,PER_DAY-len(ps)),
+        "booking":next((p.booking_id for p in ps if p.booking_id),None) or first.get(d),"entry":d in entries} for d,ps in days.items()]
 
 def allowed(request,contact):
-    """Who sees the client cards sees his photos; an operator only a client of a booking he can see."""
-    if can(request,"contacts.read"):return True
-    return visible_bookings(request,Booking.objects.filter(contact=contact)).exists()
+    """2.22.9: everybody who sees the clients' data sees every photo: who did what to whom is no secret among the staff."""
+    return can(request,"pii.read")
+
+def by_day(contact):
+    """{day: [photos]} of a client, without the images: for the record entries and the earlier visits."""
+    out={}
+    for p in ClientPhoto.objects.filter(contact=contact).defer("image","thumb").order_by("created"):out.setdefault(p.date,[]).append(p)
+    return out
+
+def place(entries,days):
+    """The photos of a day on the first record entry of that day (the newest), each entry with how many more fit."""
+    seen=set()
+    for t in entries:
+        t.photos=None
+        if t.date in seen:continue
+        seen.add(t.date);t.photos=days.get(t.date,[]);t.photos_left=max(0,PER_DAY-len(t.photos))
 
 def back(request,fallback):
     nxt=request.POST.get("next") or request.GET.get("next") or ""
@@ -77,13 +100,19 @@ def upload(request,slug,contact_id):
     t=request.tenant;tz=ZoneInfo(t.timezone)
     contact=get_object_or_404(Contact.objects.exclude(email_index__startswith="erased:"),pk=contact_id)
     booking=None
-    if request.POST.get("booking"):
-        booking=get_object_or_404(visible_bookings(request,Booking.objects.filter(contact=contact)),pk=request.POST["booking"])
+    from .models import Treatment
+    entry=Treatment.objects.filter(contact=contact,pk=uid(request.POST["treatment"])).select_related("booking").first() if request.POST.get("treatment") else None
+    if request.POST.get("treatment") and not entry:return HttpResponse(status=404)
+    if entry:  # 2.22.9: on the day of an entry of the record, and its visit if it came from one
+        if not can(request,"contacts.read"):raise PermissionDenied("Il tuo ruolo non consente di vedere le schede dei clienti.")
+        booking,day=entry.booking,entry.date
+    elif request.POST.get("booking"):
+        booking=get_object_or_404(visible_bookings(request,Booking.objects.filter(contact=contact)),pk=uid(request.POST["booking"]))
         day=booking.start.astimezone(tz).date()
     else:
         if not can(request,"contacts.read"):raise PermissionDenied("Il tuo ruolo non consente di vedere le schede dei clienti.")
         day=timezone.now().astimezone(tz).date()
-    fallback=reverse("booking_detail",args=[slug,booking.pk])+"#foto" if booking else reverse("contact_detail",args=[slug,contact.pk])+"#foto"
+    fallback=reverse("contact_detail",args=[slug,contact.pk])+"#scheda" if entry else reverse("booking_detail",args=[slug,booking.pk])+"#foto" if booking else reverse("contact_detail",args=[slug,contact.pk])+"#foto"
     files=request.FILES.getlist("photo")
     room=PER_DAY-ClientPhoto.objects.filter(contact=contact,date=day).count()
     error="";made=[]
