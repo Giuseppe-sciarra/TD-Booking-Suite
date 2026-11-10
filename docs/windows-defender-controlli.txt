@@ -1,0 +1,82 @@
+TD BOOKING SUITE - COSA HA BLOCCATO WINDOWS DEFENDER
+=====================================================
+
+Tutti i comandi vanno in PowerShell aperto COME AMMINISTRATORE
+(Start > scrivi "PowerShell" > tasto destro > Esegui come amministratore).
+Si copiano e incollano cosi' come sono.
+
+
+1) CHI HA BLOCCATO, E QUANDO
+----------------------------
+Mostra gli ultimi 10 blocchi di Defender, del tipo che conta:
+
+Get-WinEvent -LogName "Microsoft-Windows-Windows Defender/Operational" -MaxEvents 500 | Where-Object Id -in 1116,1117,1121,1122,1123,1124 | Select-Object -First 10 TimeCreated,Id,Message | Format-List
+
+Come leggere il numero Id:
+  1116 / 1117  = ANTIVIRUS: ha visto un file come minaccia (di solito durante
+                 l'installazione: l'msi sta in Download, fuori dalle esclusioni)
+  1123 / 1124  = ACCESSO ALLE CARTELLE CONTROLLATO (protezione ransomware):
+                 ha impedito a python.exe di scrivere in Documenti/Desktop/Download
+  1121 / 1122  = REGOLA ASR (riduzione della superficie di attacco)
+  niente       = probabilmente SMART APP CONTROL (vedi punto 5)
+
+
+2) LE ESCLUSIONI CHE CI SONO GIA'
+---------------------------------
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+Get-MpPreference | Select-Object -ExpandProperty ExclusionProcess
+Get-MpPreference | Select-Object -ExpandProperty ControlledFolderAccessAllowedApplications
+Get-MpPreference | Select-Object -ExpandProperty AttackSurfaceReductionOnlyExclusions
+
+
+3) LA SOLUZIONE, SECONDO L'Id DEL PUNTO 1
+-----------------------------------------
+Se 1123 / 1124 (accesso alle cartelle controllato) - autorizza il programma:
+
+Add-MpPreference -ControlledFolderAccessAllowedApplications "C:\Program Files\TD Booking Suite\python\python.exe"
+Add-MpPreference -ControlledFolderAccessAllowedApplications "C:\Program Files\TD Booking Suite\postazione\TDBookingSuite.exe"
+
+Se 1121 / 1122 (regola ASR):
+
+Add-MpPreference -AttackSurfaceReductionOnlyExclusions "C:\Program Files\TD Booking Suite"
+Add-MpPreference -AttackSurfaceReductionOnlyExclusions "C:\ProgramData\TD Booking Suite"
+
+Se 1116 / 1117 (antivirus durante l'installazione): l'msi e i file che Windows
+scompatta mentre installa non sono nelle cartelle escluse. Escludi la cartella
+dove tieni l'msi (esempio Download) solo per il tempo dell'installazione:
+
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\Downloads"
+  (installa, poi toglila con:)
+Remove-MpPreference -ExclusionPath "$env:USERPROFILE\Downloads"
+
+
+4) SE HA MESSO python.exe IN QUARANTENA
+---------------------------------------
+Vedi cosa ha messo in quarantena:
+
+Get-MpThreatDetection | Select-Object InitialDetectionTime,ThreatID,Resources | Format-List
+
+Ripristinalo da: Sicurezza di Windows > Protezione da virus e minacce >
+Cronologia protezione > la voce di python > Azioni > Ripristina.
+Se non c'e' niente da ripristinare: rilancia l'msi della stessa versione e
+scegli "Ripristina" (rimette i file, i dati restano). Poi riavvia il PC.
+
+
+5) SMART APP CONTROL (solo Windows 11)
+--------------------------------------
+Se il messaggio dice "Smart App Control ha bloccato...", non e' l'antivirus:
+le esclusioni non contano. Si vede se e' acceso cosi':
+
+Get-MpComputerStatus | Select-Object SmartAppControlState
+
+"On" = acceso. Si spegne solo da Sicurezza di Windows > Controllo app e browser >
+Smart App Control > Disattivato (una volta spento non si riaccende senza
+reinstallare Windows). La soluzione vera e' l'msi firmato.
+
+
+6) CONTROLLO VELOCE CHE IL PROGRAMMA GIRI
+-----------------------------------------
+Get-Service TDBooking* | Format-Table Name,Status
+Get-ChildItem "C:\ProgramData\TD Booking Suite\log" | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name,LastWriteTime
+
+Mandare a Tastiere Digitali quello che escono dal punto 1 e dal punto 6.

@@ -730,7 +730,11 @@ def contacts_search(request,slug):
     from .clients import search as find,receipt_code
     require(request,"contacts.read","pii.read")
     from django.http import JsonResponse
-    found=find(request.tenant,request.GET.get("q",""),limit=8);extra={}
+    found=find(request.tenant,request.GET.get("q",""),limit=8) if not request.GET.get("id") else []
+    if request.GET.get("id") and uid(request.GET["id"]):  # 2.22.10: one client by id (the Cassa taken back with him: his credit)
+        found=list(Contact.objects.filter(pk=uid(request.GET["id"])).exclude(email_index__startswith="erased:"))
+        for c in found:c.found=c.data
+    extra={}
     if request.GET.get("cassa") and can(request,"sale.write"):
         # 2.22.0: in Cassa, the client's gift cards with credit and what he has in Preventivo pagamenti cassa
         from .gift import of

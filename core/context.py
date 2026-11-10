@@ -1,6 +1,9 @@
 from django.conf import settings
 from .wpsync import banner as wp_banner
 from .portal import wa_due,thanks_todo
+def standby_count(request):
+    from .models import Standby
+    return Standby.objects.count()
 def presentation(request):
  from .models import Tenant
  brand=getattr(request,"tenant",None) or (Tenant.objects.first() if settings.EDITION=="private" else None)
@@ -34,4 +37,6 @@ def presentation(request):
          # 2.22.0: the clients to remind on WhatsApp, on top of every page until it is done
          "wa_due":wa_due(request) if mfa_ok and user and user.is_authenticated and getattr(request,"tenant",None) and "/promemoria-whatsapp/" not in request.path else 0,
          # 2.22.8: the clients of yesterday to thank with the review link, on top of every page until it is done
-         "thanks_due":thanks_todo(request) if mfa_ok and user and user.is_authenticated and getattr(request,"tenant",None) and "/promemoria-whatsapp/" not in request.path else 0}
+         "thanks_due":thanks_todo(request) if mfa_ok and user and user.is_authenticated and getattr(request,"tenant",None) and "/promemoria-whatsapp/" not in request.path else 0,
+         # 2.22.10: how many bills wait in the Parcheggio, beside Stand-by in the menu
+         "standby_count":standby_count(request) if mfa_ok and user and user.is_authenticated and getattr(request,"tenant",None) and "sale.write" in can else 0}

@@ -1,6 +1,15 @@
-# TD Booking Suite 2.22.9 — registro modifiche
+# TD Booking Suite 2.22.10 — registro modifiche
 
-**9 novembre 2026 · versione 2.22.9**
+**10 novembre 2026 · versione 2.22.10**
+
+## 2.22.10 — Parcheggio (zona stand-by) in Cassa, credito della card in vista
+
+- **Parcheggia**: accanto a *Paga in cassa* c'è **Parcheggia**, con una nota facoltativa («sotto il casco», «signora delle 10:30»). Il conto (righe, operatori, quantità, sconti, cliente, pagamento scelto) va nel Parcheggio **senza scontrino** e la Cassa si svuota per il cliente dopo. Non è un lavoro segnato fatto né un incasso: non va nella scheda del cliente né nei report.
+- **Sezione Parcheggio** sotto il conto, sempre in vista, con due riquadri: **In stand-by**, i conti parcheggiati di quella sede con cliente (o nota, o «Senza nome»), servizi con l'operatore, totale e da che ora aspettano, **Riprendi** e la × per toglierli (chiede conferma); **Da pagare**, i pagamenti posticipati (gli scontrini con «Da pagare», prima in *Da incassare*), con *Segna pagato* come prima. Il Parcheggio lo vedono tutte le postazioni della sede: si prepara il conto a una e si fa lo scontrino a un'altra.
+- **Stand-by nel menu**: sotto *Cassa* c'è **Stand-by**, con accanto quanti conti aspettano: la pagina li mostra tutti (di ogni cassa, se ce n'è più d'una), con *Riprendi* che li apre in Cassa e la × per toglierli.
+- **Riprendi** riporta il conto in Cassa com'era, operatore premuto compreso; se in Cassa c'era già un conto aperto, quello va nel Parcheggio al suo posto, così non si perde niente. Se un'altra postazione l'ha già ripreso, lo dice.
+- **Credito della card in vista**: appena in Cassa c'è il cliente (scelto, dalla prenotazione, ripreso dal Parcheggio o ritrovato tornando in Cassa) compare «Credito card 35,00 € · Usa»: un tocco e la card paga il conto (scontrino a 0 € se copre tutto).
+- **Privacy**: un conto parcheggiato va via con la cancellazione del cliente e con il periodo di conservazione.
 
 ## 2.22.9 — l'album foto del cliente
 

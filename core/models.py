@@ -732,6 +732,19 @@ class Parked(Scoped):
     class Meta:constraints=[models.UniqueConstraint(fields=["tenant","key"],name="parked_key")]
     @property
     def data(self):return decrypt(self.tenant,self.pii,"parked:"+str(self.pk))
+class Standby(Scoped):
+    """2.22.10: Parcheggio, the stand-by zone of the Cassa: a bill being prepared (rows, operators, client, discounts, as
+    typed) left aside without a receipt, to be taken back and finished, from any PC of that location. Not done, not paid:
+    no record entry, no report. The bill (and the note) sealed in pii."""
+    location=models.ForeignKey(Location,on_delete=models.PROTECT)
+    contact=models.ForeignKey(Contact,null=True,blank=True,on_delete=models.SET_NULL,related_name="standby")
+    booking=models.ForeignKey(Booking,null=True,blank=True,on_delete=models.SET_NULL,related_name="standby")
+    total=models.DecimalField(max_digits=9,decimal_places=2,default=0)
+    actor=models.CharField(max_length=36,blank=True)
+    pii=models.TextField()
+    created=models.DateTimeField(auto_now_add=True)
+    @property
+    def data(self):return decrypt(self.tenant,self.pii,"standby:"+str(self.pk))
 class Quote(Scoped):
     """2.22.0: a quote for a client: who, lines of services, products or free text, notes, sealed in pii."""
     year=models.PositiveSmallIntegerField()

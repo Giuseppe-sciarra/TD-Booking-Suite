@@ -520,16 +520,19 @@ document.querySelectorAll("[data-gift-preset]").forEach(b=>b.addEventListener("c
 // payment and its split, copy by email, the gift card being typed, the operator pressed. Kept on this PC (localStorage, per
 // register), also after closing the program; it goes when the bill is sent or emptied. Restored before the Cassa starts.
 const tillDraft={key:()=>"tdbs-till-"+(document.querySelector("form[data-till] [name=sede]")?.value||""),
- fields:()=>[...document.querySelectorAll(".till input,.till select,.till textarea")].filter(i=>!i.closest(".till-lines")&&!i.closest("template")&&i.closest("form[data-till],.till-client,.till-gift")&&!["key","sede","csrfmiddlewaretoken","booking","parked"].includes(i.name)&&!i.hasAttribute("data-till-search")&&(i.id||i.name))};
+ fields:()=>[...document.querySelectorAll(".till input,.till select,.till textarea")].filter(i=>!i.closest(".till-lines")&&!i.closest("template")&&i.closest("form[data-till],.till-client,.till-gift")&&!["key","sede","csrfmiddlewaretoken","booking","parked","standby_note","draft","swap"].includes(i.name)&&!i.hasAttribute("data-till-search")&&(i.id||i.name))};
 (()=>{const form=document.querySelector("form[data-till]");if(!form)return;
  let d=null;try{d=JSON.parse(localStorage.getItem(tillDraft.key())||"null");}catch{}
+ // 2.22.10: a bill taken back from the Parcheggio takes the place of the empty Cassa
+ const back=document.getElementById("till-resume");let resumed=null;try{resumed=back?JSON.parse(back.textContent):null;}catch{}
+ if(resumed)d=resumed;
  if(!d)return;
  const tpl=document.getElementById("till-row"),body=form.querySelector(".till-lines tbody"),id=document.querySelector("[data-till-contact]");
  const booking=form.querySelector("[name=booking]")?.value||"";
  // opened empty (from the menu, Back, another page), or on the same booking it was left on: it comes back as it was;
  // opened on another booking, quote or suspended bill: that is a new bill and this one gives way
  const fresh=!body.children.length&&!booking&&!form.querySelector("[name=parked]")&&!(id&&id.value);
- if(!(fresh||booking&&d.booking===booking)||!tpl)return;
+ if(!(resumed||fresh||booking&&d.booking===booking)||!tpl)return;
  body.replaceChildren();
  (d.lines||[]).forEach(l=>{const tr=tpl.content.firstElementChild.cloneNode(true);[...tr.querySelectorAll("input,select")].forEach(i=>{if(i.name in l)i.value=l[i.name];});
   if(l.park==="1"){tr.classList.add("is-parked");tr.querySelector("[data-till-park]")?.setAttribute("aria-pressed","true");}body.append(tr);});
@@ -615,17 +618,19 @@ const tillDraft={key:()=>"tdbs-till-"+(document.querySelector("form[data-till] [
  // 2.22.2: the client is in his own card above the bill (the hidden id is bound to the form by form=)
  const who=document.querySelector("[data-till-client]"),id=document.querySelector("[data-till-contact]"),found=document.querySelector("[data-till-found]"),history=document.querySelector("[data-till-history]");let timer;
  const showHistory=()=>{if(history&&!history.dataset.tillHistoryId)history.hidden=!id?.value;};showHistory();
+ // 2.22.10: his credit on the card in view as soon as the client is there: picked, or back with the bill (Parcheggio, a return)
+ const credits=gifts=>{const extra=document.querySelector("[data-till-extra]");if(!extra)return;extra.replaceChildren();
+  (gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small till-credit";x.textContent="Credito card "+g.balance+" € · Usa ("+g.code+")";x.addEventListener("click",()=>use(g.code));extra.append(x);});
+  extra.hidden=!extra.children.length;};
+ const extraBox=document.querySelector("[data-till-extra]");
+ if(id?.value&&who?.dataset.tillClient&&extraBox&&!extraBox.children.length)fetch(who.dataset.tillClient+"?cassa=1&id="+encodeURIComponent(id.value),{credentials:"same-origin"}).then(r=>r.json()).then(d=>credits(d.results?.[0]?.gifts)).catch(()=>{});
  who?.addEventListener("input",()=>{id.value="";showHistory();document.dispatchEvent(new Event("till-changed"));clearTimeout(timer);const q=who.value.trim();if(q.length<2){found.replaceChildren();return;}
   timer=setTimeout(async()=>{try{const r=await fetch(who.dataset.tillClient+"?cassa=1&q="+encodeURIComponent(q),{credentials:"same-origin"});const d=await r.json();
    found.replaceChildren(...d.results.map(c=>{const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.className="till-pick";
     b.textContent=[c.first_name,c.last_name].join(" ").trim()+(c.email?" · "+c.email:"");b.addEventListener("click",()=>{id.value=c.id;who.value=[c.first_name,c.last_name].join(" ").trim();found.replaceChildren();showHistory();document.dispatchEvent(new Event("till-changed"));
      const cf=form.querySelector("[data-till-cf]");if(cf&&c.cf){cf.value=c.cf;cf.closest("details").open=true;}
-     // 2.22.0: his gift cards with credit, and what he has in Preventivo pagamenti cassa
-     const extra=document.querySelector("[data-till-extra]");if(extra){extra.replaceChildren();
-      (c.gifts||[]).forEach(g=>{const x=document.createElement("button");x.type="button";x.className="secondary small";x.textContent="Usa gift card "+g.code+" · "+g.balance+" €";x.addEventListener("click",()=>use(g.code));extra.append(x);});
-      // 2.22.0: what the client has outside a receipt is not reminded here: it is in his record, the owner decides
-
-      extra.hidden=!extra.children.length;}});li.append(b);return li;}));}catch{}},250);});
+     credits(c.gifts);});  // 2.22.0: his gift cards with credit; what he has outside a receipt stays in his record
+    li.append(b);return li;}));}catch{}},250);});
 })();
 // 2.22.5: every change of the Cassa is kept at once (see tillDraft above); leaving the page keeps the last one too
 (()=>{const form=document.querySelector("form[data-till]");if(!form||!window.localStorage)return;
@@ -640,7 +645,12 @@ const tillDraft={key:()=>"tdbs-till-"+(document.querySelector("form[data-till] [
  document.addEventListener("till-changed",save);document.addEventListener("input",e=>{if(e.target.closest(".till"))later();});document.addEventListener("change",e=>{if(e.target.closest(".till"))later();});
  document.addEventListener("click",e=>{if(e.target.closest(".till"))later();});addEventListener("pagehide",save);
  // sent to the register, or set aside: this bill is done (a bill stopped here, a missing price, stays)
- form.addEventListener("submit",e=>{if(e.defaultPrevented)return;const act=e.submitter?.value||"";if(act&&act!=="sell"&&act!=="park")return;sent=true;try{localStorage.removeItem(key);}catch{}});
+ form.addEventListener("submit",e=>{if(e.defaultPrevented)return;const act=e.submitter?.value||"";if(act&&act!=="sell"&&act!=="park"&&act!=="standby")return;
+  if(act==="standby"){let h=form.querySelector("[name=draft]");if(!h){h=document.createElement("input");h.type="hidden";h.name="draft";form.append(h);}h.value=JSON.stringify(read());}
+  sent=true;try{localStorage.removeItem(key);}catch{}});
+ // 2.22.10: Riprendi with a bill open here: that bill goes to the Parcheggio, nothing is lost
+ document.querySelectorAll("form[data-till-resume]").forEach(f=>f.addEventListener("submit",()=>{const d=read();if(!typed(d)||!d.lines.length)return;
+  let h=f.querySelector("[name=swap]");if(!h){h=document.createElement("input");h.type="hidden";h.name="swap";f.append(h);}h.value=JSON.stringify(d);sent=true;try{localStorage.removeItem(key);}catch{}}));
  document.querySelector("[data-till-clear]")?.addEventListener("click",e=>{if(!e.currentTarget.dataset.confirmed)return;sent=true;try{localStorage.removeItem(key);}catch{}location.href=location.pathname+"?sede="+encodeURIComponent(form.querySelector("[name=sede]")?.value||"");});
  save();
 })();
@@ -806,4 +816,12 @@ document.querySelectorAll('[data-print]:not([data-print=""])').forEach(b=>b.addE
     catch{msg="Non riesco a caricare la foto: controlla la connessione e riprova.";break;}}
    status.textContent=msg;status.classList.toggle("danger-text",!!msg);});
  });
+})();
+// 2.22.10: Stand-by from the menu: Riprendi with a bill open in the Cassa of that register on this PC sends that bill to
+// the Parcheggio, as in the Cassa (there the Cassa's own code does it)
+(()=>{if(document.querySelector("form[data-till]"))return;
+ document.querySelectorAll("form[data-till-resume]").forEach(f=>f.addEventListener("submit",()=>{const key="tdbs-till-"+(f.querySelector("[name=sede]")?.value||"");
+  let open=null;try{open=localStorage.getItem(key);}catch{}if(!open)return;
+  let d=null;try{d=JSON.parse(open);}catch{}if(!d||!(d.lines||[]).length)return;
+  let h=f.querySelector("[name=swap]");if(!h){h=document.createElement("input");h.type="hidden";h.name="swap";f.append(h);}h.value=open;try{localStorage.removeItem(key);}catch{}}));
 })();

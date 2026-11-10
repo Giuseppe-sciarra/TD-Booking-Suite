@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,Quote,Parked,GiftCard,ClientPhoto,audit
+from .models import Tenant,Contact,Booking,ActionToken,Delivery,ConsentEvent,Treatment,WaitEntry,Sale,Quote,Parked,GiftCard,ClientPhoto,Standby,audit
 from .crypto import encrypt
 from .booking import BookingError,OPEN
 
@@ -73,6 +73,7 @@ def _anonymize_contact(tenant,c,forget=False):
     ActionToken.objects.filter(contact=c).delete()
     Treatment.objects.filter(contact=c).delete()  # 2.8.0: the client record goes with the person
     ClientPhoto.objects.filter(contact=c).delete()  # 2.22.9: and his photos
+    Standby.objects.filter(contact=c).delete()  # 2.22.10: and a bill of his left in the Parcheggio
     WaitEntry.objects.filter(contact=c).delete()  # 2.14.0: and the waiting list
     from .cassa import forget
     forget(tenant,Sale.objects.filter(contact=c))  # 2.16.0: his receipts keep lines and totals, not his codice fiscale
@@ -117,6 +118,7 @@ def apply_retention(tenant,apply=False,now=None):
     old_records=Treatment.objects.filter(date__lt=since)
     report["treatments"]=old_records.count()
     old_photos=ClientPhoto.objects.filter(date__lt=since);report["photos"]=old_photos.count()  # 2.22.9: as old as the record entries
+    old_standby=Standby.objects.filter(created__lt=cutoff);report["standby"]=old_standby.count()  # 2.22.10: a bill forgotten in the Parcheggio
     report["deliveries"]=Delivery.objects.filter(created__lt=cutoff).exclude(payload="").count()
     old_quotes=Quote.objects.filter(created__lt=cutoff);report["quotes"]=old_quotes.count()  # 2.22.0: name and phone inside, also without a card
     if not apply:return report
@@ -125,7 +127,7 @@ def apply_retention(tenant,apply=False,now=None):
         for b in old.iterator(chunk_size=200):_anonymize_booking(tenant,b)
         for c in stale:
             _anonymize_contact(tenant,c);record(tenant,c,"erased","retention")
-        old_records.delete();gone.delete();old_quotes.delete();old_photos.delete()
+        old_records.delete();gone.delete();old_quotes.delete();old_photos.delete();old_standby.delete()
         from .cassa import forget
         forget(tenant,Sale.objects.filter(created__lt=cutoff).exclude(actor=""))
         for d in Delivery.objects.filter(created__lt=cutoff).exclude(payload=""):

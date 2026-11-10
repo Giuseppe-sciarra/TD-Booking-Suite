@@ -1731,3 +1731,12 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .photo-view{max-width:min(92vw,1100px);max-height:92vh;padding:14px;border:0;border-radius:14px;background:var(--paper)}
 .photo-view::backdrop{background:rgba(20,14,28,.75)}.photo-view img{display:block;max-width:100%;max-height:78vh;margin:0 auto 10px;border-radius:8px}
 .photo-view .actions{justify-content:flex-end}
+/* 2.22.10: Parcheggio: Parcheggia beside Paga in cassa with its note; the bills in stand-by and the Da pagare side by side */
+.till-send{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.till-standby{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
+.till-standby input{width:260px;max-width:100%;margin:0}
+.card.till-parking{border-top-color:#2f8f6b}
+.till-standby-list li{align-items:flex-start}.till-standby-items{display:block;margin-top:3px;color:var(--ink)}
+.till-standby-actions{display:flex;align-items:center;gap:8px}.till-standby-actions form{margin:0}
+.till-standby-actions .photo-x{background:rgba(36,26,48,.12);color:var(--ink)}.till-standby-actions .photo-x:hover{background:#b3261e;color:#fff}
+.till-credit{font-weight:700}
+@media(max-width:700px){.till-standby{margin-left:0;width:100%}.till-standby input{flex:1}}

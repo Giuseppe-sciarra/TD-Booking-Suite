@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% load presentation %}{% block content %}
+{# 2.22.10: Stand-by, from the menu: the Parcheggio of every register in one place #}
+<p class="back"><a href="{% url 'till' tenant.slug %}">Cassa</a></p><div class="page-heading"><div><h1>Stand-by</h1><p>I conti preparati e messi da parte con <em>Parcheggia</em> in Cassa. <em>Riprendi</em> lo apre in Cassa com'era per fare lo scontrino; se in Cassa c'è già un conto aperto, va lui nel Parcheggio.</p></div><div class="actions"><a class="button secondary" href="{% url 'till' tenant.slug %}">Vai alla Cassa</a></div></div>
+{% for loc,rows in groups %}<section class="card till-low till-parking"><div class="section-heading"><h2>{% if many %}{{ loc.name }}{% else %}In stand-by{% endif %}{% if rows %} <span class="count">{{ rows|length }}</span>{% endif %}</h2></div>{% include "_standby_list.html" with standby=rows loc=loc from="standby" %}</section>
+{% empty %}<section class="card"><p class="muted">Nessuna cassa collegata.</p></section>{% endfor %}
+{% endblock %}

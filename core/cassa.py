@@ -28,7 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .clients import receipt_code
 from . import gift
 from .crypto import encrypt,token_hash
-from .models import Booking,ConsentEvent,Contact,GiftCard,Location,Option,Parked,Product,Quote,Resource,Sale,Service,Tenant,audit
+from .models import Booking,ConsentEvent,Contact,GiftCard,Location,Option,Parked,Product,Quote,Resource,Sale,Service,Standby,Tenant,audit
 from .permissions import can,require,visible_bookings
 from .prices import euro
 from .tenancy import scope
@@ -535,6 +535,65 @@ def sell(request,t,loc,booking,action):
         text_hash=__import__("core.privacy",fromlist=["text_hash"]).text_hash(COPY_TEXT),ref=str(sale.pk),actor=str(request.user.pk))
     audit(t,request.user,"sale.sent",sale.pk,total=str(sale.total),booking=str(booking.pk) if booking else "")
     return "Conto inviato alla cassa."+(f" Non nello scontrino: {euro(parked_x.total)}, tra i trattamenti del cliente." if parked_x else "")
+# ---------- 2.22.10: Parcheggio, the bills in stand-by
+DRAFT_MAX=64*1024
+def draft_of(raw,post=None):
+    """The bill as the Cassa had it (the page sends it as it keeps it: rows, fields, booking, operator pressed); without
+    the page's help, the rows of the form. None when there is nothing."""
+    d=None
+    if raw and len(raw)<=DRAFT_MAX:
+        try:d=json.loads(raw)
+        except ValueError:d=None
+    if not isinstance(d,dict) or not isinstance(d.get("lines"),list):
+        if post is None:return None
+        n=len(post.getlist("desc"));col=lambda k:(post.getlist(k)+[""]*n)[:n]
+        d={"lines":[dict(zip(ROW+("park",),r)) for r in zip(*(col(k) for k in ROW+("park",)))],"fields":{},"booking":post.get("booking",""),"parked":post.getlist("parked")}
+        if post.get("contact"):d["fields"]["contact"]=post["contact"]
+    d["lines"]=[{k:str(v)[:200] for k,v in l.items() if isinstance(k,str)} for l in d["lines"] if isinstance(l,dict) and (str(l.get("desc","")).strip() or str(l.get("price","")).strip())][:60]
+    d["fields"]={str(k)[:40]:v if isinstance(v,bool) else str(v)[:200] for k,v in (d.get("fields") or {}).items()} if isinstance(d.get("fields"),dict) else {}
+    d["booking"]=str(d.get("booking") or "")[:36];d["parked"]=[str(x)[:36] for x in (d.get("parked") or []) if isinstance(x,str)][:20]
+    d["active"]=str(d.get("active") or "")[:100]
+    return d if d["lines"] else None
+def draft_total(d,till):
+    """What the bill comes to, as far as it can be said: a row without its price counts nothing."""
+    from django.http import QueryDict
+    q=QueryDict(mutable=True)
+    for l in d["lines"]:
+        if l.get("park")=="1":continue
+        for k in ROW:q.appendlist(k,l.get(k,""))
+    q["discount"]=d["fields"].get("till-discount") or d["fields"].get("discount") or ""
+    try:return Decimal(bill(q,till)[1])/100
+    except (ValueError,ArithmeticError):
+        tot=Decimal(0)
+        for l in d["lines"]:
+            try:tot+=Decimal(cents(l.get("price","")))*max(1,int(l.get("qty") or 1))/100
+            except (ValueError,ArithmeticError):pass
+        return tot
+def standby(t,loc,user,d,note,contact_pk=None,booking_pk=None):
+    """A bill to the Parcheggio: not a receipt, not done; the client and the booking are kept as links."""
+    contact=Contact.objects.filter(pk=contact_pk).exclude(email_index__startswith="erased:").first() if contact_pk and re.fullmatch(r"[0-9a-f-]{36}",str(contact_pk)) else None
+    booking=Booking.objects.filter(pk=booking_pk).first() if booking_pk and re.fullmatch(r"[0-9a-f-]{36}",str(booking_pk)) else None
+    x=Standby(tenant=t,location=loc,contact=contact,booking=booking,total=draft_total(d,loc.till),actor=str(user.pk))
+    x.pii=encrypt(t,{"draft":d,"note":" ".join(str(note or "").split())[:80]},"standby:"+str(x.pk));x.save()
+    audit(t,user,"sale.standby",x.pk,total=str(x.total))
+    return x
+def standby_rows(loc,names_ok,tz):
+    rows=list(Standby.objects.filter(location=loc).select_related("contact").order_by("created"))
+    for x in rows:
+        d=x.data;x.note=d.get("note","");lines=d.get("draft",{}).get("lines",[])
+        x.items=[(l.get("desc",""),l.get("staff","")) for l in lines]
+        x.who=" ".join(v for v in (x.contact.data.get("first_name",""),x.contact.data.get("last_name","")) if v) if x.contact_id and names_ok else ""
+        x.since=x.created.astimezone(tz)
+    return rows
+
+def standby_page(request,slug):
+    """2.22.10: Stand-by, from the menu: every bill in the Parcheggio of every register, to take one back (it opens in
+    the Cassa of its location) or throw it away."""
+    require(request,"sale.write")
+    t=request.tenant;tz=ZoneInfo(t.timezone);names_ok=can(request,"pii.read");where=places()
+    groups=[(l,standby_rows(l,names_ok,tz)) for l in where]
+    return render(request,"standby.html",{"groups":groups,"many":len(where)>1,"total":sum(len(r) for _,r in groups),"today":timezone.now().astimezone(tz).date()})
+
 def resumed(request,loc):
     """The suspended bills taken back into this one (?sospeso=, more than one), with the rows of a quote (?preventivo=)."""
     rows=list(Parked.objects.filter(pk__in=[x for x in request.GET.getlist("sospeso") if re.fullmatch(r"[0-9a-f-]{36}",x)],location=loc).select_related("contact").order_by("created"))
@@ -566,6 +625,26 @@ def till_view(request,slug):
                     done=sell(request,t,loc,booking,action)
                 if done:messages.success(request,done)
                 return redirect(back)
+            if action=="standby":  # 2.22.10: the bill to the Parcheggio, the Cassa empty for the next client
+                d=draft_of(request.POST.get("draft",""),request.POST)
+                if not d:raise ValueError("Nel conto non c'è niente da parcheggiare.")
+                x=standby(t,loc,request.user,d,request.POST.get("standby_note",""),request.POST.get("contact") or d["fields"].get("contact"),d.get("booking") or (booking.pk if booking else None))
+                messages.success(request,f"Conto parcheggiato{': '+euro(x.total) if x.total else ''}. Lo riprendi dal Parcheggio.");return redirect(back)
+            if action=="resume":
+                with transaction.atomic():
+                    x=Standby.objects.select_for_update().filter(pk=request.POST.get("standby_id") if re.fullmatch(r"[0-9a-f-]{36}",request.POST.get("standby_id","")) else None,location=loc).first()
+                    if not x:raise ValueError("Questo conto non è più nel Parcheggio: forse l'ha già ripreso un'altra postazione.")
+                    swap=draft_of(request.POST.get("swap",""))  # the bill open here goes to the Parcheggio, it is not lost
+                    if swap:standby(t,loc,request.user,swap,"",swap["fields"].get("contact"),swap.get("booking"))
+                    d=x.data.get("draft") or {};audit(t,request.user,"sale.standby_resumed",x.pk);x.delete()
+                request.session["till_resume"]={"sede":str(loc.pk),"draft":d}
+                messages.success(request,"Conto ripreso dal Parcheggio."+(" Quello che c'era in cassa è andato nel Parcheggio." if swap else ""))
+                return redirect(back)
+            if action=="drop_standby":
+                x=get_object_or_404(Standby,pk=request.POST.get("standby_id") if re.fullmatch(r"[0-9a-f-]{36}",request.POST.get("standby_id","")) else None,location=loc)
+                audit(t,request.user,"sale.standby_dropped",x.pk,total=str(x.total));x.delete()
+                messages.success(request,"Conto tolto dal Parcheggio.")
+                return redirect(reverse("till_standby",args=[slug]) if request.POST.get("from")=="standby" else back)
             if action=="close":
                 if loc.till["device"]=="rch" and not rch_cmd(loc.till,"rch_close"):raise ValueError("Su questa cassa la chiusura si fa dalla cassa.")
                 enqueue(t,loc,kind="close",actor=str(request.user.pk));audit(t,request.user,"sale.close",loc.pk)
@@ -659,7 +738,10 @@ def till_view(request,slug):
         discount=again.get("discount","");taken=[]
         if again.get("contact") and can(request,"contacts.read"):contact=Contact.objects.filter(pk=again["contact"]).first() or contact
     today_d=timezone.now().astimezone(tz).date()
-    return render(request,"cassa.html",{"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":lines,
+    resume=request.session.pop("till_resume",None)
+    if resume and resume.get("sede")!=str(loc.pk):request.session["till_resume"]=resume;resume=None  # another register's: it waits there
+    waiting_bills=standby_rows(loc,names_ok,tz)
+    return render(request,"cassa.html",{"resume":resume["draft"] if resume else None,"standby":waiting_bills,"park_count":len(waiting_bills)+len(due),"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),
         "gifts":[c for c in gift.of(contact) if c.status=="active" and c.balance>0 and not (c.expires and c.expires<today_d)] if contact else [],
         "missing_close":missing_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),

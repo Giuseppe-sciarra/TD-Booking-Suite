@@ -326,7 +326,7 @@ def test_da_pagare_open_then_paid_in_the_reports(shop):
         assert info["amount"]==2000 and info["by"]=={"Cristina":2000} and "Da pagare  35,00 €" in info["details"]
         assert list(cassa.owed())==[s]
     page=c.get(f"/t/salone/cassa/?sede={loc.pk}").content.decode()
-    assert "Da incassare" in page and "Segna pagato" in page and "da pagare 35,00" in page
+    assert "Parcheggio" in page and "Da pagare" in page and "Segna pagato" in page and "da pagare 35,00" in page
     owner,_=client_as(t)
     assert "Deve 35,00 €" in owner.get(f"/t/salone/contacts/{b.contact_id}/").content.decode()
     rep=owner.get("/t/salone/report/").content.decode().replace(",",".")
