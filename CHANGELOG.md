@@ -1,6 +1,13 @@
-# TD Booking Suite 2.22.10 — registro modifiche
+# TD Booking Suite 2.22.11 — registro modifiche
 
-**10 novembre 2026 · versione 2.22.10**
+**11 novembre 2026 · versione 2.22.11**
+
+## 2.22.11 — la chiusura giornaliera fatta non viene più richiesta
+
+- **Corretto**: fatta la chiusura dal programma, il giorno dopo la Cassa continuava a dire «Manca la chiusura giornaliera». La cassa stampa la chiusura e manda i corrispettivi prima di rispondere, e ci mette più di uno scontrino: il programma smetteva di aspettare (3 secondi via USB, 20 in rete), la chiusura restava «Da verificare» e l'avviso non la contava. Ora per la chiusura il programma aspetta la cassa fino a un minuto e mezzo.
+- **Se resta comunque «Da verificare»**, il giorno dopo l'avviso non chiede un'altra chiusura: chiede **«La chiusura giornaliera inviata … è uscita dalla cassa?»**, con **È uscita** (la segna fatta, nel giorno in cui è stata inviata) e **Non è uscita, rifalla** (la rimanda alla cassa).
+- Chi ha ancora l'avviso di una chiusura già fatta con la 2.22.10: dopo l'aggiornamento compare la domanda, basta premere **È uscita**.
+- Il ponte della cassa (per chi ha il programma in cloud) prende la stessa attesa con il file `ponte_cassa.py` nuovo; con quello vecchio resta la domanda del giorno dopo.
 
 ## 2.22.10 — Parcheggio (zona stand-by) in Cassa, credito della card in vista
 

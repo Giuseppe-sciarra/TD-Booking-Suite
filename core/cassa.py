@@ -43,6 +43,7 @@ def pay_code(conf,k):return conf.get("payments",{}).get(k,DEFAULT_PAY[conf["devi
 COPY_TEXT="Il cliente vuole la copia dello scontrino per email."
 TIMEOUT=20
 STALE=timedelta(seconds=120)  # longer than a direct send (busy retries, one timeout): past it nobody is still waiting
+CLOSE_WAIT=90  # 2.22.11: the register answers a closure when it has printed it and sent the day: slower than a receipt, under STALE
 CF=re.compile(r"[A-Z0-9]{16}|[0-9]{11}")  # codice fiscale, or the partita IVA
 LOTTERY=re.compile(r"[A-Z0-9]{8}")
 
@@ -133,6 +134,7 @@ def off_label(l):return f"SCONTO {l['pct']}%" if l.get("pct") else "SCONTO"
 def job(sale):
     """What the register gets, for deliver: a POST on the network, or the commands through the COM port."""
     conf=sale.location.till;out={"id":str(sale.pk),"attempt":attempt(sale)}
+    if sale.kind=="close":out["wait"]=CLOSE_WAIT
     if conf["device"]=="epson":return {**out,"url":url(conf),"body":epson(sale,sale.data,conf)}
     cmds=rch(sale,sale.data,conf)
     if conf.get("connection")=="usb":return {**out,"serial":{k:conf.get(k) for k in ("port","baud","framing")},"commands":cmds}
@@ -207,7 +209,9 @@ def finish(tenant,sale,state,info,attempt_id=None):
             # it had when it was sent, so the ones printed after it are not shifted
             if was=="unknown" and sale.claimed:sale.printed=sale.claimed
             sale.z,sale.number=counted(sale)
-        if sale.kind=="close":closed(sale.location)
+        if sale.kind=="close":
+            if was=="unknown" and sale.claimed:sale.printed=sale.claimed  # 2.22.11: found printed later: it closed the day it was sent
+            closed(sale.location)
     sale.save(update_fields=["status","error","number","z","serial","printed"])
     audit(tenant,None,"sale."+state,sale.pk,kind=sale.kind,number=sale.number)
     if sale.kind=="sale":
@@ -744,20 +748,26 @@ def till_view(request,slug):
     return render(request,"cassa.html",{"resume":resume["draft"] if resume else None,"standby":waiting_bills,"park_count":len(waiting_bills)+len(due),"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),
         "gifts":[c for c in gift.of(contact) if c.status=="active" and c.balance>0 and not (c.expires and c.expires<today_d)] if contact else [],
-        "missing_close":missing_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),
+        "missing_close":missing_close(t,loc),"unsure_close":unsure_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),
         "staff_names":names,"staff":staff,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"settle":SETTLE,"due":due,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":contact if contact and names_ok else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"counted":loc.till["device"]=="rch","can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(contact.data) if contact and names_ok else ""})
-def missing_close(t,loc):
-    """2.22.0: the last day with receipts emitted here and no daily closure after them, before today: the register
+def unclosed(t,loc):
+    """2.22.0: when the last receipt was emitted here with no daily closure after it, before today: the register
     wants the closure of that day before it emits again. The closure counts when it is emitted, or marked done by hand."""
     tz=ZoneInfo(t.timezone);today=datetime.combine(timezone.now().astimezone(tz).date(),datetime.min.time(),tz)
     last=Sale.objects.filter(location=loc,kind="close",status="done",printed__isnull=False).order_by("-printed").values_list("printed",flat=True).first()
     q=Sale.objects.filter(location=loc,kind="sale",status__in=("done","void"),printed__lt=today)
     if last:q=q.filter(printed__gt=last)
-    s=q.order_by("-printed").values_list("printed",flat=True).first()
-    return s.astimezone(tz).date() if s else None
+    return q.order_by("-printed").values_list("printed",flat=True).first()
+def missing_close(t,loc):
+    s=unclosed(t,loc);return s.astimezone(ZoneInfo(t.timezone)).date() if s else None
+def unsure_close(t,loc):
+    """2.22.11: the closure sent after those receipts and still «Da verificare» (the register did not answer in time):
+    the reminder asks whether it came out, instead of asking for another one every day."""
+    s=unclosed(t,loc)
+    return Sale.objects.filter(location=loc,kind="close",status="unknown",created__gt=s).order_by("-created").first() if s else None
 
 def summary(request,slug):
     """2.22.2: Riepilogo di cassa in PDF, beside the closure: one day, or a period (?dal=&al=), everything the register

@@ -22,13 +22,13 @@ def lan(url):
     except ValueError:return False
 
 OPENER=urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the register is on the shop's network: never through a proxy
-def http_send(url,body):
+def http_send(url,body,wait=None):
     """{"status","body"}; {"error":"unreachable"} when nothing reached the register; {"error":"unknown"} when it got the
     request and did not answer: it may have printed."""
     if not lan(url):return {"error":"refused","detail":"Indirizzo della cassa fuori dalla rete del negozio."}
     request=urllib.request.Request(url,data=body.encode(),method="POST",headers={"Content-Type":"text/xml; charset=utf-8"})
     try:
-        with OPENER.open(request,timeout=TIMEOUT) as r:return {"status":r.status,"body":r.read(1<<20).decode("utf-8","replace")}
+        with OPENER.open(request,timeout=wait or TIMEOUT) as r:return {"status":r.status,"body":r.read(1<<20).decode("utf-8","replace")}
     except urllib.error.HTTPError as ex:return {"status":ex.code,"body":ex.read(1<<20).decode("utf-8","replace")}
     except urllib.error.URLError:return {"error":"unreachable"}  # urllib wraps only the errors of connecting and sending
     except OSError:return {"error":"unknown"}
@@ -79,7 +79,7 @@ def frame(command,framing):
     # its manual (support.rch.it, Struttura del protocollo) is behind a login: check it on the first Print!F via USB
     body=b"01"+f"{len(data):03d}".encode()+b"N"+data
     return STX+body+f"{sum(body)%256:02X}".encode()+ETX
-def serial_send(conf,commands,opener=None):
+def serial_send(conf,commands,opener=None,wait=None):
     """RCH via USB (a virtual COM port): one frame a command, ACK before the next, NAK sent again up to 3 times.
     {"serial":"ok"}; {"serial":"nak","at":i}; {"serial":"sent"} without handshake (framing cr: nothing confirms it);
     {"error":...} as http_send."""
@@ -88,7 +88,7 @@ def serial_send(conf,commands,opener=None):
         try:import serial
         except ImportError:return {"error":"refused","detail":"Per la cassa via USB serve pyserial: pip install pyserial"}
         opener=serial.Serial
-    try:port=opener(conf["port"],int(conf.get("baud") or 9600),timeout=3,write_timeout=3,xonxoff=framing=="cr")
+    try:port=opener(conf["port"],int(conf.get("baud") or 9600),timeout=wait or 3,write_timeout=3,xonxoff=framing=="cr")
     except Exception:return {"error":"unreachable"}
     with port:
         for i,command in enumerate(commands):
@@ -103,9 +103,11 @@ def serial_send(conf,commands,opener=None):
     return {"serial":"sent" if framing=="cr" else "ok"}
 
 def deliver(job,opener=None):
-    """A request of the program to the register, network or USB."""
-    if job.get("serial"):return serial_send(job["serial"],job["commands"],opener)
-    return http_send(job["url"],job["body"])
+    """A request of the program to the register, network or USB. wait: the seconds to wait for the answer, when the
+    program asks for more than usual (2.22.11: the daily closure, slower than a receipt)."""
+    wait=min(int(job.get("wait") or 0),300)
+    if job.get("serial"):return serial_send(job["serial"],job["commands"],opener,wait)
+    return http_send(job["url"],job["body"],wait)
 
 def call(server,token,data=None):
     request=urllib.request.Request(server,data=json.dumps(data).encode() if data is not None else None,method="POST" if data is not None else "GET",

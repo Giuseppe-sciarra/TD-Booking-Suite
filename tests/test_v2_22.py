@@ -242,6 +242,33 @@ def test_missing_daily_closure_banner(shop):
     assert "Manca la chiusura giornaliera" not in page and "Chiusura giornaliera fatta dalla cassa" in page
     assert "Manca la chiusura giornaliera" not in c.get("/t/salone/").content.decode()
 
+def test_closure_left_to_check_is_asked_not_demanded_again(shop):
+    # 2.22.11: the register printed the closure and answered late: the day after, the reminder asks whether it came out
+    t,loc,svc=shop;c,_=client_as(t)
+    with scope(t):
+        s=cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[],"payments":[]});s=cassa.claim(loc);cassa.finish(t,s,"done",{})
+        Sale.objects.filter(pk=s.pk).update(printed=timezone.now()-timedelta(days=1,hours=1))
+        cl=cassa.enqueue(t,loc,kind="close");cl=cassa.claim(loc);assert cassa.job(cl)["wait"]==cassa.CLOSE_WAIT and "wait" not in cassa.job(s)
+        cassa.finish(t,cl,"unknown",{"error":"x"});sent=timezone.now()-timedelta(days=1)
+        Sale.objects.filter(pk=cl.pk).update(created=sent,claimed=sent)
+    page=c.get("/t/salone/cassa/").content.decode()
+    assert "è uscita dalla cassa?" in page and "Manca la chiusura giornaliera" not in page and f'name="sale" value="{cl.pk}"' in page
+    c.post("/t/salone/cassa/",{"action":"printed","sede":str(loc.pk),"sale":str(cl.pk)})
+    with scope(t):cl.refresh_from_db();assert cl.status=="done" and cl.printed==sent  # it closed the day it was sent
+    page=c.get("/t/salone/cassa/").content.decode()
+    assert "è uscita dalla cassa?" not in page and "Manca la chiusura giornaliera" not in page
+    assert "Manca la chiusura giornaliera" not in c.get("/t/salone/").content.decode()
+    # the register is given the time the closure asks for, a receipt the usual one
+    ponte=cassa.ponte();seen=[]
+    class Port:
+        def __init__(self,*a,**k):seen.append(k["timeout"])
+        def __enter__(self):return self
+        def __exit__(self,*a):pass
+        def write(self,b):pass
+        def read(self,n):return ponte.ACK
+    assert ponte.deliver({"serial":{"port":"COM3"},"commands":["=C10"],"wait":90},Port)=={"serial":"ok"}
+    assert ponte.deliver({"serial":{"port":"COM3"},"commands":["1R"]},Port)=={"serial":"ok"} and seen==[90,3]
+
 def test_erasure_and_export_take_quotes_suspended_and_cards(shop):
     from core.privacy import erase_contact,export_contact
     t,loc,svc=shop;c,u=client_as(t)
