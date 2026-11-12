@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.15 — registro modifiche
+# TD Booking Suite 2.22.16 — registro modifiche
 
-**12 novembre 2026 · versione 2.22.15**
+**12 novembre 2026 · versione 2.22.16**
+
+## 2.22.16 — il programma per Windows si apre subito
+
+- **Corretto**: a ogni apertura la prima pagina arrivava dopo 10 secondi. Misurato con i log della 2.22.15: 9,6 secondi passavano prima ancora di collegarsi, il programma rispondeva in un decimo di secondo. La finestra cercava prima un proxy nella rete (in Windows, *Rileva automaticamente impostazioni*) e aspettava che la ricerca scadesse.
+- Ora, quando il programma è su questo PC o nella rete del negozio (un nome senza punti come `ufficio-pc`, o un indirizzo 192.168…, 10…, 172.16…), la finestra non cerca nessun proxy. Per un server su Internet restano le impostazioni di Windows.
+- Nient'altro cambia, né nel programma né nel plugin WordPress.
 
 ## 2.22.15 — dove si è persa l'attesa di una pagina lenta
 
