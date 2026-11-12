@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.12 — registro modifiche
+# TD Booking Suite 2.22.13 — registro modifiche
 
-**12 novembre 2026 · versione 2.22.12**
+**12 novembre 2026 · versione 2.22.13**
+
+## 2.22.13 — i log dicono cosa stava facendo il programma quando si ferma
+
+- **Cassa**: ogni invio alla cassa lascia due righe nel log del programma, quando parte («Cassa: invio sale …») e come finisce, con i secondi («finito in 2.1 s: done»). Uno scontrino che resta appeso si vede: c'è la prima riga e manca la seconda.
+- **Programma per Windows, pagine che non finiscono**: una pagina ancora in corso dopo 10 secondi lascia subito una riga («Pagina ancora in corso dopo 10 s: POST …»). Prima una pagina lenta veniva scritta solo quando finiva: se intanto il programma veniva chiuso di forza non restava niente.
+- **Programma per Windows, finestra**: `finestra.log` (in `%LOCALAPPDATA%\TD Booking Suite`) ora dice quando la finestra si apre e si chiude e ogni pagina che apre; alla riapertura dopo una chiusura forzata lo scrive («la volta prima la finestra non è stata chiusa dal suo tasto»). Scrive anche quando il browser interno della finestra si ferma e viene ricaricato: prima succedeva in silenzio.
 
 ## 2.22.12 — data e ora nei log del programma per Windows
 

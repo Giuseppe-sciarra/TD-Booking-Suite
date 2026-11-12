@@ -9,7 +9,7 @@ POSTed to /cgi-bin/fpmate.cgi, network only). The Windows edition, on the shop's
 with the location's token, sends them and gives back the answer, read here. Both send with the bridge's own deliver.
 A request is marked "sending" and committed before it leaves: an answer lost on the way leaves it "unknown", and the
 operator checks the register before sending it again, so a bill is never printed twice."""
-import importlib.util,ipaddress,json,re,secrets,threading,time,unicodedata
+import importlib.util,ipaddress,json,re,secrets,sys,threading,time,unicodedata
 from datetime import datetime,timedelta,date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from xml.etree import ElementTree as ET
@@ -315,12 +315,17 @@ def send_now(tenant_id,location_id):
             location=Location.objects.get(pk=location_id);sale=claim(location)
             if not sale:return
             request,device=job(sale),location.till["device"]
+        # 2.22.13: what goes to the register and how it ends, in the program's log: a receipt that hangs was seen nowhere
+        said(f"Cassa: invio {sale.kind} {sale.pk} ({device}, {location.till.get('connection') or 'rete'})");start=time.monotonic()
         for _ in range(5):
             state,info=outcome(device,ponte().deliver(request))
             if state!="busy":break
             time.sleep(1)
         else:state,info="failed",{"error":"La cassa è occupata: riprova tra poco."}
+        said(f"Cassa: {sale.kind} {sale.pk} finito in {time.monotonic()-start:.1f} s: {state}"+(f" ({info['error']})" if info.get("error") else ""))
         with scope(tenant):finish(tenant,sale,state,info,attempt(sale))
+def said(text):
+    if not settings.TESTING:print(text,file=sys.stderr,flush=True)
 LINES={}  # one sender a location at a time: the register takes one request at a time
 def kick(tenant_id,location_id):
     """2.20.5: the register is called after the page has answered, in a thread of its own: the page no longer waits
