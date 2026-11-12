@@ -771,7 +771,13 @@ document.querySelectorAll('[data-print]:not([data-print=""])').forEach(b=>b.addE
 // (only its path and how long), also when the program had answered in time: the first time of an action, the antivirus
 (()=>{const url=document.body.dataset.slowLog;if(!url)return;
  addEventListener("load",()=>setTimeout(()=>{try{const n=performance.getEntriesByType("navigation")[0];
-  if(n&&n.duration>5000)fetch(url,{method:"POST",credentials:"same-origin",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({p:location.pathname,ms:Math.round(n.duration)})});}catch{}},0));
+  if(!n||n.duration<=5000)return;
+  // 2.22.15: where the wait was, for the program's log: before the connection (proxy, name), the connection, the
+  // program's answer, the page itself, and the slowest file of the page with its path
+  const r=performance.getEntriesByType("resource").reduce((a,x)=>!a||x.duration>a.duration?x:a,null),ms=x=>Math.round(x);
+  fetch(url,{method:"POST",credentials:"same-origin",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify({p:location.pathname,ms:ms(n.duration),
+   f:[ms(n.connectStart-n.startTime),ms(n.connectEnd-n.connectStart),ms(n.responseStart-n.requestStart),ms(n.responseEnd-n.responseStart),ms(n.domContentLoadedEventEnd-n.responseEnd),ms(n.duration-n.domContentLoadedEventEnd)],
+   r:r?new URL(r.name).pathname.slice(0,120):"",rms:r?ms(r.duration):0})});}catch{}},0));
 })();
 // 2.22.9: the client's photos. Each photo is made small here (at most 1600 px, JPEG) before it leaves, so it goes fast
 // and under the size limit of a proxy, then sent one at a time; the server makes it small again and seals it. The × takes

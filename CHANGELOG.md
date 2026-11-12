@@ -1,6 +1,11 @@
-# TD Booking Suite 2.22.14 — registro modifiche
+# TD Booking Suite 2.22.15 — registro modifiche
 
-**12 novembre 2026 · versione 2.22.14**
+**12 novembre 2026 · versione 2.22.15**
+
+## 2.22.15 — dove si è persa l'attesa di una pagina lenta
+
+- **Programma per Windows**: quando la finestra aspetta una pagina più di 5 secondi, nel log del programma ora c'è anche **dove** è passato il tempo: prima della connessione, nella connessione, nella risposta del programma, nella pagina, e il file più lento della pagina. Serve a capire le attese fisse (per esempio 10 secondi alla prima apertura del giorno) che il programma da solo non vede.
+- Nient'altro cambia, né nel programma né nel plugin WordPress.
 
 ## 2.22.14 — la finestra si accorge di una pagina ferma sullo schermo
 
