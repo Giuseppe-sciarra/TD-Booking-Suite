@@ -1,6 +1,11 @@
-# TD Booking Suite 2.22.11 — registro modifiche
+# TD Booking Suite 2.22.12 — registro modifiche
 
-**11 novembre 2026 · versione 2.22.11**
+**12 novembre 2026 · versione 2.22.12**
+
+## 2.22.12 — data e ora nei log del programma per Windows
+
+- **Programma per Windows**: ogni riga dei log dei servizi (`TDBookingWeb.err.log`, `TDBookingWorker.err.log` e i rispettivi `.out.log`) comincia con data e ora, anche le righe degli errori: quando il programma si ferma si vede a che ora è successo cosa. Prima dicevano cosa, mai quando.
+- Nient'altro cambia, né nel programma né nel plugin WordPress.
 
 ## 2.22.11 — la chiusura giornaliera fatta non viene più richiesta
 
