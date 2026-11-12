@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.13 — registro modifiche
+# TD Booking Suite 2.22.14 — registro modifiche
 
-**12 novembre 2026 · versione 2.22.13**
+**12 novembre 2026 · versione 2.22.14**
+
+## 2.22.14 — la finestra si accorge di una pagina ferma sullo schermo
+
+- **Programma per Windows**: è successo che la pagina, mentre si inserivano i servizi in Cassa, non prendesse più i clic e la finestra andasse chiusa di forza. Il controllo della finestra guardava solo se la pagina rispondeva, e quella rispondeva. Ora guarda anche se **si ridisegna**: ferma da 15 secondi con la finestra in primo piano, lo scrive in `finestra.log` e ricarica la pagina da sola, una volta. Il conto in Cassa resta: la pagina lo tiene mentre lo componi.
+- Se dopo la ricarica è ancora ferma lo scrive una seconda volta e non insiste.
+- Nient'altro cambia, né nel programma né nel plugin WordPress.
 
 ## 2.22.13 — i log dicono cosa stava facendo il programma quando si ferma
 
