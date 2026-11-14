@@ -731,7 +731,17 @@ document.querySelectorAll("[data-client-search]").forEach(who=>{const box=who.cl
   if(e.target.closest("[data-wa-undo]"))mark(li,false);}));
 })();
 // 2.16.0: a page waiting for the register looks again by itself
-(()=>{const w=document.querySelector("[data-reload]");if(w)setTimeout(()=>location.reload(),1000*Number(w.dataset.reload));})();
+// 2.22.20: only that part of the page, in place (it has an id): the whole Cassa reloaded every 3 seconds while a receipt
+// or the closure went out, and the clicks on the bill being made in the meantime were lost
+(()=>{let w=document.querySelector("[data-reload]");if(!w)return;const wait=1000*Number(w.dataset.reload);
+ const tick=async()=>{let r;try{r=await fetch(location.href,{headers:{"X-TDBS-Refresh":"1"},credentials:"same-origin"});}catch{setTimeout(tick,wait);return;}
+  if(!r.ok||r.redirected){location.reload();return;}
+  const fresh=new DOMParser().parseFromString(await r.text(),"text/html").getElementById(w.id);
+  if(!fresh){location.reload();return;}
+  w.replaceWith(fresh);w=fresh;if(fresh.hasAttribute("data-reload"))setTimeout(tick,wait);};
+ setTimeout(tick,wait);})();
+// 2.22.20: F5 reloads the page in the program for Windows too, where the browser's keys are off (the window does it itself when it can)
+document.addEventListener("keydown",e=>{if(e.key==="F5"&&window.tdwinPrint&&!e.defaultPrevented){e.preventDefault();location.reload();}});
 
 // 2.20.3: Registratore di cassa, Cerca la cassa: «Usa questa» fills the form of that location
 document.querySelectorAll("[data-till-use]").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.target,set=(k,v)=>{const el=document.getElementById(k+"-"+id);if(el&&v!==undefined){el.value=v;el.dispatchEvent(new Event("change",{bubbles:true}));}};

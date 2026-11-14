@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.19 — registro modifiche
+# TD Booking Suite 2.22.20 — registro modifiche
 
-**14 novembre 2026 · versione 2.22.19**
+**14 novembre 2026 · versione 2.22.20**
+
+## 2.22.20 — la Cassa non si ricarica più mentre lo scontrino esce
+
+- **Cassa**: mentre uno scontrino o la chiusura giornaliera sono in uscita, la pagina non si ricarica più tutta ogni 3 secondi: si aggiorna solo **Scontrini di oggi**. Il conto che si sta preparando nel frattempo non perde più i tocchi e non salta.
+- **Programma per Windows**: **F5** ricarica la pagina (il conto in Cassa resta), senza chiudere il programma né riavviare il PC.
+- **Programma per Windows**, `finestra.log`: scrive se la finestra stessa smette di rispondere e per quanto, e quale finestra di un altro programma si mette davanti. Il controllo della pagina ferma non scatta più per sbaglio durante la chiusura giornaliera, e controlla la pagina anche quando la finestra non è in primo piano.
 
 ## 2.22.19 — tolta ogni segnatura a mano della chiusura
 

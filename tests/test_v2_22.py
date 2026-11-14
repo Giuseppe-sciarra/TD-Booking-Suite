@@ -588,3 +588,13 @@ def test_the_agenda_view_stays_the_one_chosen_and_the_past_is_marked(shop):
     page=c.get(f"/t/salone/bookings/?vista=giorno&data={yesterday.isoformat()}").content.decode()
     assert 'class="agenda-past"' in page and 'class="agenda-free"' not in page
     page=c.get(f"/t/salone/bookings/?data={tomorrow.isoformat()}").content.decode();assert 'class="agenda-past"' not in page and 'class="agenda-free"' in page
+
+
+def test_cassa_refreshes_only_the_receipts_while_the_register_works():
+    """2.22.20: the whole page reloaded every 3 seconds while a receipt went out, taking the clicks of the next bill."""
+    from pathlib import Path
+    base=Path(__file__).resolve().parent.parent
+    assert 'id="scontrini-oggi"{% if busy %} data-reload="3"{% endif %}' in (base/"templates"/"cassa.html").read_text()
+    js=(base/"static"/"app.js").read_text()
+    part=js[js.index('document.querySelector("[data-reload]")'):js.index("F5 reloads")]
+    assert "getElementById(w.id)" in part and "w.replaceWith(fresh)" in part and '"X-TDBS-Refresh":"1"' in part

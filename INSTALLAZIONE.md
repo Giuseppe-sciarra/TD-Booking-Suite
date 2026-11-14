@@ -1,4 +1,4 @@
-# TD Booking Suite 2.22.19 · Installazione
+# TD Booking Suite 2.22.20 · Installazione
 
 Questa guida installa TD Booking Suite su un server nuovo, dietro NPMplus. Ogni passo dice cosa scrivere e cosa deve comparire. Se compare altro, fermati e guarda **Se qualcosa non va**, in fondo.
 
@@ -18,19 +18,19 @@ Sul server girano tre container: `db` (il database), `web` (l'applicazione) e `w
 Dal tuo computer:
 
 ```
-scp TD-Booking-Suite-2.22.19-sorgenti.zip root@IP-DEL-SERVER:/opt/
+scp TD-Booking-Suite-2.22.20-sorgenti.zip root@IP-DEL-SERVER:/opt/
 ```
 
 Sul server:
 
 ```
 cd /opt
-unzip -q TD-Booking-Suite-2.22.19-sorgenti.zip
+unzip -q TD-Booking-Suite-2.22.20-sorgenti.zip
 cd /opt/td-booking-suite
 cat VERSION
 ```
 
-**Deve comparire:** `2.22.19`
+**Deve comparire:** `2.22.20`
 
 ## 2. Crea la configurazione
 
