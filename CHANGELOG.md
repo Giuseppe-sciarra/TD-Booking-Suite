@@ -1,6 +1,11 @@
-# TD Booking Suite 2.22.17 — registro modifiche
+# TD Booking Suite 2.22.18 — registro modifiche
 
-**14 novembre 2026 · versione 2.22.17**
+**14 novembre 2026 · versione 2.22.18**
+
+## 2.22.18 — tolto «L'ho fatta dalla cassa»
+
+- **Tolto** dalla Cassa il tasto «L'ho fatta dalla cassa» accanto a **Chiusura giornaliera**. Resta solo il tasto della chiusura.
+- Sulle casse dove la chiusura non si può fare dal programma resta, come prima, **Chiusura fatta dalla cassa**.
 
 ## 2.22.17 — tolto l'avviso «Manca la chiusura giornaliera»
 
