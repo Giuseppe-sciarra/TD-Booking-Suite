@@ -264,7 +264,7 @@ def learn(location,sale,z,number):
         if z and z.isdigit():s.z=str(int(z))
         s.save(update_fields=["number","z"])
 def closed(location):
-    """A daily closure done on an RCH (emitted here or on its keys): the next documents belong to the closure after;
+    """A daily closure done on an RCH from the program: the next documents belong to the closure after;
     their numbers go on (2.22.2)."""
     location=Location.objects.get(pk=location.pk);conf=location.till  # fresh, never the copy read before the register was called
     if conf.get("device")=="rch" and conf.get("last_z") is not None:
@@ -662,11 +662,6 @@ def till_view(request,slug):
                 x=get_object_or_404(Parked,pk=request.POST.get("parked_id"),location=loc)
                 audit(t,request.user,"sale.parked_dropped",x.pk,total=str(x.total));settled(t,x);x.delete()
                 messages.success(request,f"Tolto: {euro(x.total)}. Il trattamento resta nella scheda del cliente.");return redirect(back)
-            if action=="closed_by_hand":
-                # 2.22.0: the closure done on the register's keys: noted here, the closure counter moves too
-                sale=Sale(tenant=t,location=loc,kind="close",status="done",printed=timezone.now(),error="Fatta dalla cassa",key=secrets.token_urlsafe(24),actor=str(request.user.pk))
-                sale.pii=encrypt(t,{},"sale:"+str(sale.pk));sale.save();closed(loc);audit(t,request.user,"sale.close_by_hand",loc.pk)
-                messages.success(request,"Segnata la chiusura fatta dalla cassa.");return redirect(back)
             if action=="void" and not request.POST.get("sale"):
                 void(request,t,loc,None);return redirect(back)
             sale=get_object_or_404(Sale,pk=request.POST.get("sale"),location=loc)

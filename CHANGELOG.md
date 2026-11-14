@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.18 — registro modifiche
+# TD Booking Suite 2.22.19 — registro modifiche
 
-**14 novembre 2026 · versione 2.22.18**
+**14 novembre 2026 · versione 2.22.19**
+
+## 2.22.19 — tolta ogni segnatura a mano della chiusura
+
+- **Tolto** anche «Chiusura fatta dalla cassa», dove c'era (le casse su cui la chiusura non parte dal programma): il programma non segna più a mano nessuna chiusura e non chiede niente al riguardo.
+- Resta il tasto **Chiusura giornaliera**, sulle casse che la fanno dal programma. Le chiusure già segnate a mano restano nello storico e nel riepilogo.
+- Cassa RCH: se una chiusura viene fatta dai tasti della cassa, il numero di chiusura che il programma conta si corregge in *Configura → Registratore di cassa → Ultima chiusura giornaliera n.*
 
 ## 2.22.18 — tolto «L'ho fatta dalla cassa»
 

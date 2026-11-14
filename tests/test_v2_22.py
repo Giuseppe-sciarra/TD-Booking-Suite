@@ -240,8 +240,10 @@ def test_no_reminder_of_the_daily_closure_and_the_one_done_by_hand_is_noted(shop
         cassa.finish(t,cl,"unknown",{"error":"x"})
     for url in ("/t/salone/cassa/","/t/salone/"):
         page=c.get(url).content.decode();assert "Manca la chiusura" not in page and "è uscita dalla cassa?" not in page
+    # 2.22.19: nothing left to mark a closure by hand either
+    assert "fatta dalla cassa" not in c.get("/t/salone/cassa/").content.decode()
     c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
-    assert "Chiusura giornaliera fatta dalla cassa" in c.get("/t/salone/cassa/").content.decode()
+    with scope(t):assert Sale.objects.filter(kind="close",status="done").count()==0
     # the register is given the time the closure asks for, a receipt the usual one
     ponte=cassa.ponte();seen=[]
     class Port:
@@ -372,9 +374,9 @@ def test_rch_counts_the_numbers_and_voids_without_asking(shop):
         v=Sale.objects.get(kind="void");assert cassa.rch(v,v.data,loc.till)[-1]=="=k/&"+date.today().strftime("%d%m%y")+"/[2027/]0004"
         cassa.finish(t,cassa.claim(loc),"done",{});assert Sale.objects.get(pk=s.pk).status=="void"
         s2=sell_one();assert (s2.z,s2.number)==("2027","6")  # the annullo counted too
-    # the closure done on the register's keys, marked here: the counter moves too
-    c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
+    # the closure done from the program: the counter moves too
     with scope(t):
+        cassa.enqueue(t,loc,kind="close");cassa.finish(t,cassa.claim(loc),"done",{})
         loc.refresh_from_db();assert loc.till["last_z"]==2027
         s3=sell_one();assert (s3.z,s3.number)==("2028","7")
         # no closure number: the void command without the [z/] part; typed by hand «5-0007» wins
