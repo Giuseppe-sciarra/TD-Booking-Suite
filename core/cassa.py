@@ -663,7 +663,7 @@ def till_view(request,slug):
                 audit(t,request.user,"sale.parked_dropped",x.pk,total=str(x.total));settled(t,x);x.delete()
                 messages.success(request,f"Tolto: {euro(x.total)}. Il trattamento resta nella scheda del cliente.");return redirect(back)
             if action=="closed_by_hand":
-                # 2.22.0: the closure done on the register: only noted, so the reminder goes away
+                # 2.22.0: the closure done on the register's keys: noted here, the closure counter moves too
                 sale=Sale(tenant=t,location=loc,kind="close",status="done",printed=timezone.now(),error="Fatta dalla cassa",key=secrets.token_urlsafe(24),actor=str(request.user.pk))
                 sale.pii=encrypt(t,{},"sale:"+str(sale.pk));sale.save();closed(loc);audit(t,request.user,"sale.close_by_hand",loc.pk)
                 messages.success(request,"Segnata la chiusura fatta dalla cassa.");return redirect(back)
@@ -753,27 +753,11 @@ def till_view(request,slug):
     return render(request,"cassa.html",{"resume":resume["draft"] if resume else None,"standby":waiting_bills,"park_count":len(waiting_bills)+len(due),"where":where,"loc":loc,"groups":groups,"booking":booking,"who":who,"lines":lines,
         "taken":taken,"parked":parked,"waiting":waiting,"quote":quote,"discount":discount,"gift_presets":gift.PRESETS,"gift_expires":gift.proposed(today_d),
         "gifts":[c for c in gift.of(contact) if c.status=="active" and c.balance>0 and not (c.expires and c.expires<today_d)] if contact else [],
-        "missing_close":missing_close(t,loc),"unsure_close":unsure_close(t,loc),"today":today_d,"month_start":today_d.replace(day=1),
+        "today":today_d,"month_start":today_d.replace(day=1),
         "staff_names":names,"staff":staff,"default_staff":booking.resource.name if booking and booking.resource_id else "",
         "key":secrets.token_urlsafe(24),"payments":PAYMENTS,"settle":SETTLE,"due":due,"rows":rows,"busy":busy,"pick_client":can(request,"contacts.read") and can(request,"pii.read"),
         "contact":contact if contact and names_ok else None,"can_void":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_void")),"counted":loc.till["device"]=="rch","can_close":loc.till["device"]=="epson" or bool(rch_cmd(loc.till,"rch_close")),
         "cf":receipt_code(contact.data) if contact and names_ok else ""})
-def unclosed(t,loc):
-    """2.22.0: when the last receipt was emitted here with no daily closure after it, before today: the register
-    wants the closure of that day before it emits again. The closure counts when it is emitted, or marked done by hand."""
-    tz=ZoneInfo(t.timezone);today=datetime.combine(timezone.now().astimezone(tz).date(),datetime.min.time(),tz)
-    last=Sale.objects.filter(location=loc,kind="close",status="done",printed__isnull=False).order_by("-printed").values_list("printed",flat=True).first()
-    q=Sale.objects.filter(location=loc,kind="sale",status__in=("done","void"),printed__lt=today)
-    if last:q=q.filter(printed__gt=last)
-    return q.order_by("-printed").values_list("printed",flat=True).first()
-def missing_close(t,loc):
-    s=unclosed(t,loc);return s.astimezone(ZoneInfo(t.timezone)).date() if s else None
-def unsure_close(t,loc):
-    """2.22.11: the closure sent after those receipts and still «Da verificare» (the register did not answer in time):
-    the reminder asks whether it came out, instead of asking for another one every day."""
-    s=unclosed(t,loc)
-    return Sale.objects.filter(location=loc,kind="close",status="unknown",created__gt=s).order_by("-created").first() if s else None
-
 def summary(request,slug):
     """2.22.2: Riepilogo di cassa in PDF, beside the closure: one day, or a period (?dal=&al=), everything the register
     did day by day: the receipts with lines, who paid and how, the annulli, the closures, then the day's totals by

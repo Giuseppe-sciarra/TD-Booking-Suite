@@ -1628,8 +1628,6 @@ kbd{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 
 .till-gift-amounts{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
 .till-client-extra{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .till-waiting{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
-.till-close-alert{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-.till-close-alert .actions{margin:0}
 .till-park-all{margin-top:10px}
 .gift-list>li{display:block}
 .gift-amounts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.gift-sell .form-grid{align-items:end}

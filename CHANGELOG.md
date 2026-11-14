@@ -1,6 +1,12 @@
-# TD Booking Suite 2.22.16 — registro modifiche
+# TD Booking Suite 2.22.17 — registro modifiche
 
-**12 novembre 2026 · versione 2.22.16**
+**14 novembre 2026 · versione 2.22.17**
+
+## 2.22.17 — tolto l'avviso «Manca la chiusura giornaliera»
+
+- **Tolto** dalla Cassa e dalla Dashboard l'avviso «Manca la chiusura giornaliera» (e la domanda «è uscita dalla cassa?» della 2.22.11): continuava a comparire anche con la chiusura fatta e stampata. Il programma non chiede più niente sulla chiusura.
+- La **Chiusura giornaliera** si fa come prima, dal suo tasto in Cassa. Accanto resta **L'ho fatta dalla cassa**, per segnare una chiusura fatta dai tasti della cassa.
+- Nient'altro cambia.
 
 ## 2.22.16 — il programma per Windows si apre subito
 

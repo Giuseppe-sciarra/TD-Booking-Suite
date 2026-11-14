@@ -441,11 +441,7 @@ def dashboard(request,slug):
     if can(request,"contacts.read") and can(request,"pii.read"):
         from .clients import birthdays
         born=birthdays(request.tenant,today)[:20]
-    closes=[]
-    if can(request,"sale.write"):  # 2.22.0: a day of receipts without its daily closure
-        from .cassa import places,missing_close
-        closes=[(l,d) for l in places() for d in [missing_close(request.tenant,l)] if d]
-    return render(request,"dashboard.html",{"closes":closes,"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").exclude(channel="webhook").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).exclude(channel="webhook").count(),
+    return render(request,"dashboard.html",{"wait":wait,"born":born,"rows":shown_rows,"week":week,"metrics":metrics,"stats":stats,"today":today,"pending":Delivery.objects.filter(status="pending").exclude(channel="webhook").count(),"mail_issues":Delivery.objects.filter(status__in=["failed","unknown"]).exclude(channel="webhook").count(),
         "todo":todo,"undo":undo,"walkin":Service.objects.filter(active=True,kind__in=("resource","capacity")).exists(),"turns":turn_list,"turn_day":turn_day,"many_locations":Location.objects.filter(active=True).count()>1})
 def period(request,default_days=7):
     tz=ZoneInfo(request.tenant.timezone)

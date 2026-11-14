@@ -230,34 +230,18 @@ def test_appointment_summary_and_client_history(shop):
     reception,_=client_as(t,role="reception")
     assert reception.get(f"/t/salone/bookings/{b.pk}/riepilogo/").status_code==200
 
-def test_missing_daily_closure_banner(shop):
+def test_no_reminder_of_the_daily_closure_and_the_one_done_by_hand_is_noted(shop):
+    # 2.22.17: the reminder is gone (it kept asking for closures already done); the closure done on the register is still noted
     t,loc,svc=shop;c,_=client_as(t)
     with scope(t):
         s=cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[],"payments":[]});s=cassa.claim(loc);cassa.finish(t,s,"done",{})
         Sale.objects.filter(pk=s.pk).update(printed=timezone.now()-timedelta(days=1))
-    assert "Manca la chiusura giornaliera" in c.get("/t/salone/cassa/").content.decode()
-    assert "Manca la chiusura giornaliera" in c.get("/t/salone/").content.decode()
-    c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
-    page=c.get("/t/salone/cassa/").content.decode()
-    assert "Manca la chiusura giornaliera" not in page and "Chiusura giornaliera fatta dalla cassa" in page
-    assert "Manca la chiusura giornaliera" not in c.get("/t/salone/").content.decode()
-
-def test_closure_left_to_check_is_asked_not_demanded_again(shop):
-    # 2.22.11: the register printed the closure and answered late: the day after, the reminder asks whether it came out
-    t,loc,svc=shop;c,_=client_as(t)
-    with scope(t):
-        s=cassa.enqueue(t,loc,total=Decimal("10"),data={"lines":[],"payments":[]});s=cassa.claim(loc);cassa.finish(t,s,"done",{})
-        Sale.objects.filter(pk=s.pk).update(printed=timezone.now()-timedelta(days=1,hours=1))
         cl=cassa.enqueue(t,loc,kind="close");cl=cassa.claim(loc);assert cassa.job(cl)["wait"]==cassa.CLOSE_WAIT and "wait" not in cassa.job(s)
-        cassa.finish(t,cl,"unknown",{"error":"x"});sent=timezone.now()-timedelta(days=1)
-        Sale.objects.filter(pk=cl.pk).update(created=sent,claimed=sent)
-    page=c.get("/t/salone/cassa/").content.decode()
-    assert "è uscita dalla cassa?" in page and "Manca la chiusura giornaliera" not in page and f'name="sale" value="{cl.pk}"' in page
-    c.post("/t/salone/cassa/",{"action":"printed","sede":str(loc.pk),"sale":str(cl.pk)})
-    with scope(t):cl.refresh_from_db();assert cl.status=="done" and cl.printed==sent  # it closed the day it was sent
-    page=c.get("/t/salone/cassa/").content.decode()
-    assert "è uscita dalla cassa?" not in page and "Manca la chiusura giornaliera" not in page
-    assert "Manca la chiusura giornaliera" not in c.get("/t/salone/").content.decode()
+        cassa.finish(t,cl,"unknown",{"error":"x"})
+    for url in ("/t/salone/cassa/","/t/salone/"):
+        page=c.get(url).content.decode();assert "Manca la chiusura" not in page and "è uscita dalla cassa?" not in page
+    c.post("/t/salone/cassa/",{"action":"closed_by_hand","sede":str(loc.pk)})
+    assert "Chiusura giornaliera fatta dalla cassa" in c.get("/t/salone/cassa/").content.decode()
     # the register is given the time the closure asks for, a receipt the usual one
     ponte=cassa.ponte();seen=[]
     class Port:
